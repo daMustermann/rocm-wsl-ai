@@ -75,11 +75,40 @@ fi
 cd "$HOME"
 echo "--------------------------------------------------"
 
+# --- 4. Install ComfyUI Manager ---
+echo "[TASK 4/4] Installing ComfyUI Manager..."
+
+# Define the ComfyUI Manager directory
+COMFYUI_MANAGER_DIR="${COMFYUI_DIR}/custom_nodes/comfyui-manager"
+
+# Check if ComfyUI Manager directory already exists
+if [ ! -d "$COMFYUI_MANAGER_DIR" ]; then
+    echo "Creating custom_nodes directory if it doesn't exist..."
+    mkdir -p "${COMFYUI_DIR}/custom_nodes"
+
+    echo "Cloning ComfyUI Manager from GitHub into ${COMFYUI_MANAGER_DIR}..."
+    git clone https://github.com/Comfy-Org/ComfyUI-Manager.git "$COMFYUI_MANAGER_DIR"
+    echo "ComfyUI Manager repository cloned successfully."
+
+    # Install ComfyUI Manager dependencies if requirements.txt exists
+    if [ -f "${COMFYUI_MANAGER_DIR}/requirements.txt" ]; then
+        echo "Installing ComfyUI Manager dependencies..."
+        pip install --no-cache-dir -r "${COMFYUI_MANAGER_DIR}/requirements.txt"
+        echo "ComfyUI Manager dependencies installed successfully."
+    fi
+else
+    echo "ComfyUI Manager directory already exists at ${COMFYUI_MANAGER_DIR}. Skipping installation."
+    echo "You can update ComfyUI Manager later by navigating into the directory ('cd ${COMFYUI_MANAGER_DIR}') and running 'git pull'."
+fi
+echo "--------------------------------------------------"
+
 # --- Script End ---
 echo ""
-echo "[SUCCESS] ComfyUI installation script finished!"
+echo "[SUCCESS] ComfyUI and ComfyUI Manager installation script finished!"
 echo ""
 echo "[HOW TO RUN COMFYUI]"
+echo "EASY: Just run the '3_start_comfyui.sh' script in the same directory as this script."
+echo "OR: Use the following steps:"
 echo "1. Open a new terminal or use the current one."
 echo "2. Activate the virtual environment:"
 echo "   source ~/${VENV_NAME}/bin/activate"
@@ -90,6 +119,8 @@ echo "   python main.py"
 echo ""
 echo "[IMPORTANT NOTES]"
 echo "* You MUST activate the '${VENV_NAME}' environment every time before running ComfyUI."
+echo "* ComfyUI Manager is now installed and will be available in the ComfyUI interface."
+echo "* You can use ComfyUI Manager to easily install additional custom nodes and models."
 echo "* You will need to download AI models (Stable Diffusion checkpoints, VAEs, LoRAs, ControlNets, etc.)"
 echo "    and place them into the corresponding subdirectories within '${COMFYUI_DIR}/models/'."
 echo "* Check the ComfyUI documentation/repository for more details on models and usage."

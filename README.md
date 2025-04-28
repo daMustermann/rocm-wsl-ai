@@ -9,6 +9,7 @@ This repository provides a streamlined setup for running AI workloads (like Stab
 - ✅ Automated ROCm installation for WSL2
 - ✅ PyTorch with ROCm support setup
 - ✅ ComfyUI installation and configuration
+- ✅ ComfyUI Manager for easy extension management
 - ✅ Optimized for RDNA3 GPUs (RX 7900 XTX, etc.)
 - ✅ Compatible with Ubuntu 24.04 LTS
 
@@ -27,11 +28,12 @@ This script sets up the foundation for AI development with AMD GPUs:
 
 ### 2️⃣ `2_install_comfyui.sh`
 
-This script installs ComfyUI, a powerful UI for Stable Diffusion:
+This script installs ComfyUI, a powerful UI for Stable Diffusion, along with ComfyUI Manager:
 
 - Activates the previously created virtual environment
 - Clones the ComfyUI repository
 - Installs all required Python dependencies
+- Installs ComfyUI Manager for easy extension and model management
 - Provides instructions for running ComfyUI
 
 ### 3️⃣ `3_start_comfyui.sh`
@@ -87,12 +89,16 @@ A convenience script to easily start ComfyUI:
 After starting ComfyUI:
 
 1. Open your browser and navigate to `http://127.0.0.1:8188`
-2. Download models into the appropriate folders in `~/ComfyUI/models/`
-3. Create amazing AI-generated images with your AMD GPU!
+2. Click on the "Manager" button in the top menu to access ComfyUI Manager
+3. Use ComfyUI Manager to easily install custom nodes and models
+4. Download additional models into the appropriate folders in `~/ComfyUI/models/`
+5. Create amazing AI-generated images with your AMD GPU!
 
 ## 🔄 Updating
 
 - To update ComfyUI: Navigate to the ComfyUI directory and run `git pull`
+- To update ComfyUI Manager: Navigate to the ComfyUI Manager directory (`~/ComfyUI/custom_nodes/comfyui-manager`) and run `git pull`
+- To update custom nodes: Use the "Update All" button in ComfyUI Manager
 - To update ROCm/PyTorch: Refer to the AMD documentation for the latest instructions
 
 ## 🤝 Contributing
@@ -106,5 +112,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 🙏 Acknowledgements
 
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - The powerful and modular Stable Diffusion UI
+- [ComfyUI Manager](https://github.com/Comfy-Org/ComfyUI-Manager) - Extension for managing ComfyUI custom nodes and models
 - [AMD ROCm](https://www.amd.com/en/graphics/servers-solutions-rocm) - AMD's open software platform for GPU computing
 - [PyTorch](https://pytorch.org/) - The machine learning framework
