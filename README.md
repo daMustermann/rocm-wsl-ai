@@ -10,7 +10,8 @@ This repository provides a streamlined setup for running AI workloads (like Stab
 - ✅ PyTorch with ROCm support setup
 - ✅ ComfyUI installation and configuration
 - ✅ ComfyUI Manager for easy extension management
-- ✅ Optimized for RDNA3 GPUs (RX 7900 XTX, etc.)
+- ✅ Auto-detection of AMD GPU architecture
+- ✅ Support for RDNA3, RDNA2, RDNA1, Vega, and Polaris GPUs
 - ✅ Compatible with Ubuntu 24.04 LTS
 
 ## 🛠️ Scripts Overview
@@ -19,6 +20,8 @@ This repository provides a streamlined setup for running AI workloads (like Stab
 
 This script sets up the foundation for AI development with AMD GPUs:
 
+- Auto-detects your AMD GPU model and architecture
+- Configures the appropriate settings for your specific GPU
 - Installs AMD ROCm drivers for WSL2
 - Configures necessary user groups
 - Creates a Python virtual environment (`genai_env`)
@@ -51,7 +54,12 @@ A convenience script to easily start ComfyUI:
 
 - Windows 11 with WSL2 enabled
 - Ubuntu 24.04 LTS installed in WSL2
-- Compatible AMD GPU (RDNA2/RDNA3 architecture recommended)
+- Compatible AMD GPU:
+  - RDNA3 (RX 7000 series) - Best performance
+  - RDNA2 (RX 6000 series) - Great performance
+  - RDNA1 (RX 5000 series) - Good performance
+  - Vega (Vega 56/64, Radeon VII) - Compatible
+  - Polaris (RX 400/500 series) - Basic compatibility
 - Latest AMD drivers installed in Windows
 
 ### Installation Steps

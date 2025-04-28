@@ -18,6 +18,11 @@ COMFYUI_DIR="$HOME/ComfyUI"
 echo "Attempting to start ComfyUI..."
 echo "---------------------------------"
 
+# Display GPU information if available
+if [ ! -z "$HSA_OVERRIDE_GFX_VERSION" ]; then
+    echo "[INFO] Using GPU architecture: $HSA_OVERRIDE_GFX_VERSION"
+fi
+
 # --- 1. Define and Check Paths ---
 VENV_PATH="$HOME/$VENV_NAME"
 ACTIVATE_SCRIPT="$VENV_PATH/bin/activate"

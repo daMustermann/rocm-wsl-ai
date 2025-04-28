@@ -4,7 +4,7 @@
 # Script to install AMD GPU drivers (ROCm), PyTorch, and Triton
 # for generative AI (ComfyUI, SD.Next, etc.) on Ubuntu 24.04 LTS within WSL2.
 #
-# Target GPU: Radeon RX 7900 XTX (or other compatible RDNA3 GPUs)
+# Auto-detects AMD GPU and applies appropriate configurations
 # ROCm Version: Based on AMD's current recommendations for Ubuntu 24.04/WSL
 # PyTorch Version: Stable version compatible with the installed ROCm
 #
@@ -15,20 +15,162 @@
 # ==============================================================================
 
 # --- Configuration ---
+# Python Virtual Environment Name
+VENV_NAME="genai_env"
+
+# --- GPU Detection and Configuration ---
 # You can change the ROCm version components here if AMD updates recommendations
 # Check the AMD docs link above for the latest installer URL/version if needed.
 ROCM_INSTALLER_DEB_URL="https://repo.radeon.com/amdgpu-install/6.3.4/ubuntu/noble/amdgpu-install_6.3.60304-1_all.deb"
 # Define the ROCm version string used for the PyTorch install URL (e.g., "6.3")
 # This should match the major.minor version of the ROCm stack being installed.
 PYTORCH_ROCM_VERSION="6.3"
-# Python Virtual Environment Name
-VENV_NAME="genai_env"
+
+# Default HSA_OVERRIDE_GFX_VERSION (will be set based on detected GPU)
+HSA_OVERRIDE_GFX_VERSION=""
 
 # --- Script Start ---
 echo "Starting ROCm + PyTorch setup for WSL2 Ubuntu 24.04..."
 
 # Exit immediately if a command exits with a non-zero status
 set -e
+
+# --- GPU Detection ---
+echo "[INFO] Detecting AMD GPU..."
+
+# First, check if we're in WSL
+if grep -q Microsoft /proc/version; then
+    echo "[INFO] Running in Windows Subsystem for Linux (WSL)"
+
+    # In WSL, we need to get the GPU info from Windows
+    # Install PowerShell if not already installed
+    if ! command -v pwsh &> /dev/null; then
+        echo "[INFO] Installing PowerShell to detect Windows GPU..."
+        sudo apt-get update
+        sudo apt-get install -y wget apt-transport-https software-properties-common
+        wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+        sudo dpkg -i packages-microsoft-prod.deb
+        rm packages-microsoft-prod.deb
+        sudo apt-get update
+        sudo apt-get install -y powershell
+    fi
+
+    # Use PowerShell to get GPU info from Windows
+    GPU_INFO=$(pwsh -Command "Get-CimInstance -ClassName Win32_VideoController | Where-Object { \$_.Name -like '*Radeon*' -or \$_.Name -like '*AMD*' } | Select-Object -ExpandProperty Name")
+
+    if [ -z "$GPU_INFO" ]; then
+        echo "[WARNING] No AMD GPU detected in Windows. This script is intended for AMD GPUs."
+        echo "[WARNING] Continuing with default settings, but ROCm may not work correctly."
+    else
+        echo "[INFO] Detected AMD GPU: $GPU_INFO"
+    fi
+else
+    # Direct Linux detection
+    if command -v lspci &> /dev/null; then
+        GPU_INFO=$(lspci | grep -i 'vga\|3d\|display' | grep -i 'amd\|radeon\|ati')
+        if [ -z "$GPU_INFO" ]; then
+            echo "[WARNING] No AMD GPU detected. This script is intended for AMD GPUs."
+            echo "[WARNING] Continuing with default settings, but ROCm may not work correctly."
+        else
+            echo "[INFO] Detected AMD GPU: $GPU_INFO"
+        fi
+    else
+        echo "[WARNING] lspci command not found. Cannot detect GPU directly."
+        echo "[WARNING] Continuing with default settings, but ROCm may not work correctly."
+    fi
+fi
+
+# --- GPU Architecture Detection and Configuration ---
+# Extract GPU model information from the detected GPU
+if [ ! -z "$GPU_INFO" ]; then
+    # Check for RDNA3 GPUs (RX 7000 series)
+    if [[ "$GPU_INFO" =~ RX[[:space:]]*7[0-9]{3} ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]*7[0-9]{3} ]]; then
+        echo "[INFO] Detected RDNA3 GPU (RX 7000 series)"
+        # gfx1100 for Navi31 (RX 7900 XTX, 7900 XT)
+        # gfx1101 for Navi32 (RX 7800 XT, 7700 XT)
+        # gfx1102 for Navi33 (RX 7600, 7600 XT)
+        if [[ "$GPU_INFO" =~ 79[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1100"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1100 for Navi31 GPU"
+        elif [[ "$GPU_INFO" =~ 78[0-9]{2} ]] || [[ "$GPU_INFO" =~ 77[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1101"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1101 for Navi32 GPU"
+        elif [[ "$GPU_INFO" =~ 76[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1102"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1102 for Navi33 GPU"
+        else
+            HSA_OVERRIDE_GFX_VERSION="gfx1100"
+            echo "[INFO] Setting default HSA_OVERRIDE_GFX_VERSION=gfx1100 for RDNA3 GPU"
+        fi
+    # Check for RDNA2 GPUs (RX 6000 series)
+    elif [[ "$GPU_INFO" =~ RX[[:space:]]*6[0-9]{3} ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]*6[0-9]{3} ]]; then
+        echo "[INFO] Detected RDNA2 GPU (RX 6000 series)"
+        # gfx1030 for Navi21 (RX 6900 XT, 6800 XT, 6800)
+        # gfx1031 for Navi22 (RX 6700 XT, 6700)
+        # gfx1032 for Navi23 (RX 6600 XT, 6600)
+        # gfx1034 for Navi24 (RX 6500 XT, 6400)
+        if [[ "$GPU_INFO" =~ 69[0-9]{2} ]] || [[ "$GPU_INFO" =~ 68[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1030"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1030 for Navi21 GPU"
+        elif [[ "$GPU_INFO" =~ 67[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1031"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1031 for Navi22 GPU"
+        elif [[ "$GPU_INFO" =~ 66[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1032"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1032 for Navi23 GPU"
+        elif [[ "$GPU_INFO" =~ 65[0-9]{2} ]] || [[ "$GPU_INFO" =~ 64[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1034"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1034 for Navi24 GPU"
+        else
+            HSA_OVERRIDE_GFX_VERSION="gfx1030"
+            echo "[INFO] Setting default HSA_OVERRIDE_GFX_VERSION=gfx1030 for RDNA2 GPU"
+        fi
+    # Check for RDNA1 GPUs (RX 5000 series)
+    elif [[ "$GPU_INFO" =~ RX[[:space:]]*5[0-9]{3} ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]*5[0-9]{3} ]]; then
+        echo "[INFO] Detected RDNA1 GPU (RX 5000 series)"
+        # gfx1010 for Navi10 (RX 5700 XT, 5700, 5600 XT)
+        # gfx1011 for Navi12
+        # gfx1012 for Navi14 (RX 5500 XT, 5500)
+        if [[ "$GPU_INFO" =~ 57[0-9]{2} ]] || [[ "$GPU_INFO" =~ 56[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1010"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1010 for Navi10 GPU"
+        elif [[ "$GPU_INFO" =~ 55[0-9]{2} ]] || [[ "$GPU_INFO" =~ 54[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1012"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1012 for Navi14 GPU"
+        else
+            HSA_OVERRIDE_GFX_VERSION="gfx1010"
+            echo "[INFO] Setting default HSA_OVERRIDE_GFX_VERSION=gfx1010 for RDNA1 GPU"
+        fi
+    # Check for Vega GPUs
+    elif [[ "$GPU_INFO" =~ Vega ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]VII ]]; then
+        echo "[INFO] Detected Vega GPU"
+        if [[ "$GPU_INFO" =~ Radeon[[:space:]]VII ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx906"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx906 for Radeon VII"
+        else
+            HSA_OVERRIDE_GFX_VERSION="gfx900"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx900 for Vega GPU"
+        fi
+    # Check for Polaris GPUs (RX 500/400 series)
+    elif [[ "$GPU_INFO" =~ RX[[:space:]]*[54][0-9]{2} ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]*[54][0-9]{2} ]]; then
+        echo "[INFO] Detected Polaris GPU (RX 500/400 series)"
+        HSA_OVERRIDE_GFX_VERSION="gfx803"
+        echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx803 for Polaris GPU"
+    else
+        echo "[WARNING] Could not determine specific AMD GPU architecture."
+        echo "[WARNING] Using default configuration for RDNA3 GPUs."
+        HSA_OVERRIDE_GFX_VERSION="gfx1100"
+        echo "[INFO] Setting default HSA_OVERRIDE_GFX_VERSION=gfx1100"
+    fi
+else
+    echo "[WARNING] No AMD GPU detected, using default configuration for RDNA3 GPUs."
+    HSA_OVERRIDE_GFX_VERSION="gfx1100"
+    echo "[INFO] Setting default HSA_OVERRIDE_GFX_VERSION=gfx1100"
+fi
+
+# Export HSA_OVERRIDE_GFX_VERSION for use in the script
+export HSA_OVERRIDE_GFX_VERSION
+echo "[INFO] GPU detection complete. Proceeding with installation..."
 
 # --- 1. System Update and Prerequisites ---
 echo "[TASK 1/6] Updating system packages and installing prerequisites..."
@@ -103,6 +245,12 @@ echo "Running PyTorch installation command (this may take a while):"
 echo "${PYTORCH_PIP_COMMAND}"
 ${PYTORCH_PIP_COMMAND}
 
+# Set HSA_OVERRIDE_GFX_VERSION in the environment
+if [ ! -z "$HSA_OVERRIDE_GFX_VERSION" ]; then
+    echo "export HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION}" >> "$HOME/$VENV_NAME/bin/activate"
+    echo "[INFO] Added HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION} to virtual environment activation script"
+fi
+
 # WSL Specific PyTorch Library Path Update (Important!)
 # Ensures PyTorch uses the system's ROCm runtime installed earlier.
 echo "Performing WSL-specific PyTorch library path update..."
@@ -146,27 +294,42 @@ echo "---"
 
 # Check PyTorch and GPU detection
 echo "Verifying PyTorch ROCm integration..."
-python3 -c '
+python3 -c "
 import torch
 import os
-print(f"--- PyTorch Verification ---")
-print(f"PyTorch Version: {torch.__version__}")
+print(f'--- PyTorch Verification ---')
+print(f'PyTorch Version: {torch.__version__}')
 rocm_available = torch.cuda.is_available()
-print(f"ROCm Available via torch.cuda.is_available(): {rocm_available}")
+print(f'ROCm Available via torch.cuda.is_available(): {rocm_available}')
 # Check if ROCm specific functions are present (HIP is the runtime)
-print(f"Built with ROCm (HIP): {torch.version.hip is not None}")
+print(f'Built with ROCm (HIP): {torch.version.hip is not None}')
 if rocm_available:
     try:
-        print(f"Detected GPU Count: {torch.cuda.device_count()}")
-        print(f"Detected GPU Name [0]: {torch.cuda.get_device_name(0)}")
+        print(f'Detected GPU Count: {torch.cuda.device_count()}')
+        print(f'Detected GPU Name [0]: {torch.cuda.get_device_name(0)}')
         # Check environment variable that might be needed by some tools
-        print(f"HSA_OVERRIDE_GFX_VERSION set to: {os.environ.get("HSA_OVERRIDE_GFX_VERSION", "Not Set")}")
+        hsa_override = os.environ.get('HSA_OVERRIDE_GFX_VERSION', 'Not Set')
+        print(f'HSA_OVERRIDE_GFX_VERSION set to: {hsa_override}')
+
+        # Print GPU architecture information
+        if hsa_override.startswith('gfx11'):
+            print(f'GPU Architecture: RDNA3 (RX 7000 series)')
+        elif hsa_override.startswith('gfx10'):
+            if hsa_override.startswith('gfx103'):
+                print(f'GPU Architecture: RDNA2 (RX 6000 series)')
+            elif hsa_override.startswith('gfx101'):
+                print(f'GPU Architecture: RDNA1 (RX 5000 series)')
+        elif hsa_override.startswith('gfx9'):
+            print(f'GPU Architecture: Vega')
+        elif hsa_override.startswith('gfx8'):
+            print(f'GPU Architecture: GCN 4th Gen (Polaris)')
+
     except Exception as e:
-        print(f"[WARN] Error during GPU detail retrieval: {e}")
+        print(f'[WARN] Error during GPU detail retrieval: {e}')
 else:
-    print("[WARN] PyTorch does not detect a compatible ROCm device.")
-print(f"---------------------------")
-' || echo "[WARN] PyTorch verification script encountered an error."
+    print('[WARN] PyTorch does not detect a compatible ROCm device.')
+print(f'---------------------------')
+" || echo "[WARN] PyTorch verification script encountered an error."
 echo "---"
 
 # Check Triton (Basic Import)
