@@ -3,6 +3,7 @@
 > **Supercharge your AMD GPU for AI in Windows Subsystem for Linux!**
 
 This repository provides a streamlined setup for running AI workloads (like Stable Diffusion) on AMD GPUs using ROCm within Windows Subsystem for Linux (WSL2).
+
 Try the "Other GPU" branch if you got a Radeon GPU that is not a 7900XTX and report back!
 
 ## 🎯 Features
