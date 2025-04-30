@@ -10,11 +10,24 @@ This repository provides a streamlined setup for running AI workloads (like Stab
 - ✅ PyTorch with ROCm support setup
 - ✅ ComfyUI installation and configuration
 - ✅ ComfyUI Manager for easy extension management
+- ✅ SD.Next installation and configuration
 - ✅ Auto-detection of AMD GPU architecture
 - ✅ Support for RDNA3, RDNA2, RDNA1, Vega, and Polaris GPUs
 - ✅ Compatible with Ubuntu 24.04 LTS
 
 ## 🛠️ Scripts Overview
+
+### 0️⃣ `0_ai_tools_menu.sh`
+
+This combined menu script provides an easy-to-use interface for all installation and startup tasks:
+
+- Unified menu for all AI tools installation
+- Option to install ROCm and PyTorch (required first)
+- ComfyUI installation and startup
+- SD.Next installation and startup
+- Installation status checks
+- Color-coded output for better readability
+- Handles dependencies between components
 
 ### 1️⃣ `1_setup_pytorch_rocm_wsl.sh`
 
@@ -48,6 +61,15 @@ A convenience script to easily start ComfyUI:
 - Launches ComfyUI with any provided arguments
 - Handles error checking and proper environment setup
 
+### 4️⃣ `4_install_sdnext.sh`
+
+This script installs SD.Next, another powerful UI for Stable Diffusion:
+
+- Verifies ROCm and PyTorch installation
+- Clones the SD.Next repository
+- Configures SD.Next for AMD GPU support
+- Provides instructions for running SD.Next with ROCm
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -66,7 +88,7 @@ A convenience script to easily start ComfyUI:
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/rocm-wsl-ai.git
+   git clone https://github.com/daMustermann/rocm-wsl-ai.git
    cd rocm-wsl-ai
    ```
 
@@ -75,7 +97,13 @@ A convenience script to easily start ComfyUI:
    chmod +x *.sh
    ```
 
-3. Run the setup script:
+3. (Recommended) Use the menu interface:
+   ```bash
+   ./0_ai_tools_menu.sh
+   ```
+   > 💡 **Tip**: The menu script provides an interactive interface for all installation and startup tasks
+
+4. (Alternative) Run individual scripts in sequence:
    ```bash
    ./1_setup_pytorch_rocm_wsl.sh
    ```
@@ -90,7 +118,14 @@ A convenience script to easily start ComfyUI:
    ```bash
    ./3_start_comfyui.sh
    ```
-   > 💡 **Tip**: You can pass additional arguments to ComfyUI, e.g., `./3_start_comfyui.sh --listen --port 8888`
+   > 💡 **Tip**: You can pass additional arguments to ComfyUI, e.g., `./3_start_comfyui.sh --listen --port 8188`
+
+6. Alternatively, install SD.Next:
+   ```bash
+   ./4_install_sdnext.sh
+   ```
+   > 💡 **Tip**: After installation, you can run SD.Next with `cd ~/SD.Next && ./webui.sh --use-rocm`
+
 
 ## 🖼️ Using ComfyUI
 
@@ -102,11 +137,22 @@ After starting ComfyUI:
 4. Download additional models into the appropriate folders in `~/ComfyUI/models/`
 5. Create amazing AI-generated images with your AMD GPU!
 
+## 🎨 Using SD.Next
+
+After starting SD.Next:
+
+1. Open your browser and navigate to `http://127.0.0.1:7860`
+2. SD.Next offers multiple UI options (Standard and Modern)
+3. Use the built-in model downloader to get Stable Diffusion models
+4. Explore the extensive settings and features for image generation
+5. Enjoy advanced features like ControlNet, LoRA support, and more
+
 ## 🔄 Updating
 
 - To update ComfyUI: Navigate to the ComfyUI directory and run `git pull`
 - To update ComfyUI Manager: Navigate to the ComfyUI Manager directory (`~/ComfyUI/custom_nodes/comfyui-manager`) and run `git pull`
 - To update custom nodes: Use the "Update All" button in ComfyUI Manager
+- To update SD.Next: Navigate to the SD.Next directory (`~/SD.Next`) and run `git pull`
 - To update ROCm/PyTorch: Refer to the AMD documentation for the latest instructions
 
 ## 🤝 Contributing
@@ -121,5 +167,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - The powerful and modular Stable Diffusion UI
 - [ComfyUI Manager](https://github.com/Comfy-Org/ComfyUI-Manager) - Extension for managing ComfyUI custom nodes and models
+- [SD.Next](https://github.com/vladmandic/sdnext) - Advanced fork of Stable Diffusion web UI
 - [AMD ROCm](https://www.amd.com/en/graphics/servers-solutions-rocm) - AMD's open software platform for GPU computing
 - [PyTorch](https://pytorch.org/) - The machine learning framework
