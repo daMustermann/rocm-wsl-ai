@@ -15,8 +15,8 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}=== Starting facefusion-unlock ===${NC}"
 
 # Check if facefusion-unlock is installed
-if [ ! -f "$FACEFUSION_UNLOCK_DIR/run.py" ]; then
-    echo -e "${RED}[ERROR] facefusion-unlock (run.py) not found in '$FACEFUSION_UNLOCK_DIR'.${NC}"
+if [ ! -f "$FACEFUSION_UNLOCK_DIR/facefusion.py" ]; then
+    echo -e "${RED}[ERROR] facefusion-unlock (facefusion.py) not found in '$FACEFUSION_UNLOCK_DIR'.${NC}"
     echo -e "${YELLOW}Please install facefusion-unlock first (Option in the main menu).${NC}"
     exit 1
 fi
@@ -46,9 +46,9 @@ echo -e "${YELLOW}This might take a moment to start. Check your browser at http:
 # Run facefusion-unlock
 # Add any necessary arguments here. For ROCm, it usually auto-detects if onnxruntime-rocm is installed.
 # Common arguments might include --listen, --port, etc.
-python run.py
+python facefusion.py
 
-# Deactivate virtual environment (might not be reached if run.py runs indefinitely)
+# Deactivate virtual environment (might not be reached if facefusion.py runs indefinitely)
 deactivate
 
 echo -e "${GREEN}[INFO] facefusion-unlock script finished or was closed.${NC}"

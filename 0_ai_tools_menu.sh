@@ -154,7 +154,7 @@ check_status() {
     fi
 
     # Check facefusion-unlock
-    if [ -f "$FACEFUSION_UNLOCK_DIR/run.py" ]; then
+    if [ -f "$FACEFUSION_UNLOCK_DIR/facefusion.py" ]; then
         echo -e "${GREEN}[✓] facefusion-unlock installed${NC}"
     else
         echo -e "${RED}[✗] facefusion-unlock not installed${NC}"
