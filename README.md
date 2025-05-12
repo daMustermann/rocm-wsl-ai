@@ -13,6 +13,8 @@ Try the "Other GPU" branch if you got a Radeon GPU that is not a 7900XTX and rep
 - ✅ ComfyUI installation and configuration
 - ✅ ComfyUI Manager for easy extension management
 - ✅ SD.Next installation and configuration
+- ✅ FaceFusion-Unlock installation and configuration
+- ✅ Oobabooga (text-generation-webui) installation and configuration
 - ✅ Auto-detection of AMD GPU architecture
 - ✅ Support for RDNA3, RDNA2, RDNA1, Vega, and Polaris GPUs
 - ✅ Compatible with Ubuntu 24.04 LTS
@@ -27,6 +29,8 @@ This combined menu script provides an easy-to-use interface for all installation
 - Option to install ROCm and PyTorch (required first)
 - ComfyUI installation and startup
 - SD.Next installation and startup
+- FaceFusion-Unlock installation and startup
+- Oobabooga (text-generation-webui) installation and startup
 - Installation status checks
 - Color-coded output for better readability
 - Handles dependencies between components
@@ -71,6 +75,39 @@ This script installs SD.Next, another powerful UI for Stable Diffusion:
 - Clones the SD.Next repository
 - Configures SD.Next for AMD GPU support
 - Provides instructions for running SD.Next with ROCm
+
+### 5️⃣ `5_install_facefusion_unlock.sh` (New)
+
+This script installs `facefusion-unlock`, a tool for face swapping and enhancement:
+
+- Verifies ROCm/PyTorch environment.
+- Clones the `facefusion-unlock` repository.
+- Installs necessary Python dependencies within the `genai_env` virtual environment.
+- Prioritizes `onnxruntime-rocm` for AMD GPU acceleration.
+
+### 6️⃣ `6_start_facefusion_unlock.sh` (New)
+
+A convenience script to easily start `facefusion-unlock`:
+
+- Activates the Python virtual environment.
+- Navigates to the `facefusion-unlock` directory.
+- Launches `facefusion-unlock`.
+
+### 7️⃣ `7_install_oobabooga.sh` (New)
+
+This script installs `Oobabooga (text-generation-webui)`, a popular web UI for Large Language Models (LLMs):
+
+- Verifies ROCm/PyTorch environment.
+- Clones the `text-generation-webui` repository.
+- Installs Python dependencies, attempting to use ROCm/AMD specific requirements if available.
+
+### 8️⃣ `8_start_oobabooga.sh` (New)
+
+A convenience script to easily start `Oobabooga (text-generation-webui)`:
+
+- Activates the Python virtual environment.
+- Navigates to the `text-generation-webui` directory.
+- Launches the web UI with common ROCm flags.
 
 ## 🚀 Getting Started
 
@@ -155,7 +192,25 @@ After starting SD.Next:
 - To update ComfyUI Manager: Navigate to the ComfyUI Manager directory (`~/ComfyUI/custom_nodes/comfyui-manager`) and run `git pull`
 - To update custom nodes: Use the "Update All" button in ComfyUI Manager
 - To update SD.Next: Navigate to the SD.Next directory (`~/SD.Next`) and run `git pull`
+- To update facefusion-unlock: Navigate to `~/facefusion-unlock` and run `git pull`. Then, re-run its installation script from the menu if dependencies might have changed, or manually install new dependencies.
+- To update Oobabooga: Navigate to `~/text-generation-webui` and run `git pull`. Then, re-run its installation script from the menu if dependencies might have changed.
 - To update ROCm/PyTorch: Refer to the AMD documentation for the latest instructions
+
+## ✨ New Tools
+
+### FaceFusion-Unlock
+
+- **Installation**: Use option `6` in the `0_ai_tools_menu.sh`.
+- **Start**: Use option `7` in the `0_ai_tools_menu.sh`.
+- **Usage**: After starting, access the web UI (typically `http://127.0.0.1:7860` unless specified otherwise during startup). Follow the on-screen instructions for face swapping and enhancement.
+
+### Oobabooga (text-generation-webui)
+
+- **Installation**: Use option `8` in the `0_ai_tools_menu.sh`.
+- **Start**: Use option `9` in the `0_ai_tools_menu.sh`.
+- **Usage**: After starting, access the web UI (typically `http://127.0.0.1:7860` or `http://127.0.0.1:5000` depending on startup parameters).
+  - You will need to download LLM models separately. This can usually be done from the "Model" tab within the web UI.
+  - Ensure you select models compatible with your GPU's VRAM.
 
 ## 🤝 Contributing
 
@@ -170,5 +225,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - The powerful and modular Stable Diffusion UI
 - [ComfyUI Manager](https://github.com/Comfy-Org/ComfyUI-Manager) - Extension for managing ComfyUI custom nodes and models
 - [SD.Next](https://github.com/vladmandic/sdnext) - Advanced fork of Stable Diffusion web UI
+- [facefusion-unlock](https://github.com/hassan-sd/facefusion-unlock) - The specific FaceFusion fork added.
+- [Oobabooga/text-generation-webui](https://github.com/oobabooga/text-generation-webui) - Web UI for LLMs.
 - [AMD ROCm](https://www.amd.com/en/graphics/servers-solutions-rocm) - AMD's open software platform for GPU computing
 - [PyTorch](https://pytorch.org/) - The machine learning framework

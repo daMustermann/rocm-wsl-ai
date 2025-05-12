@@ -13,6 +13,8 @@ VENV_NAME="genai_env"
 VENV_PATH="$HOME/$VENV_NAME"
 COMFYUI_DIR="$HOME/ComfyUI"
 SDNEXT_DIR="$HOME/SD.Next"
+FACEFUSION_UNLOCK_DIR="$HOME/facefusion-unlock"
+OOBABOOGA_DIR="$HOME/text-generation-webui"
 
 # Colors for menu
 RED='\033[0;31m'
@@ -85,6 +87,30 @@ install_sdnext() {
     read -p "Press Enter to continue..."
 }
 
+install_facefusion_unlock() {
+    echo -e "${YELLOW}[INFO] Installing facefusion-unlock...${NC}"
+    ./5_install_facefusion_unlock.sh
+    read -p "Press Enter to continue..."
+}
+
+start_facefusion_unlock() {
+    echo -e "${YELLOW}[INFO] Starting facefusion-unlock...${NC}"
+    ./6_start_facefusion_unlock.sh
+    read -p "Press Enter to continue..."
+}
+
+install_oobabooga() {
+    echo -e "${YELLOW}[INFO] Installing Oobabooga (text-generation-webui)...${NC}"
+    ./7_install_oobabooga.sh
+    read -p "Press Enter to continue..."
+}
+
+start_oobabooga() {
+    echo -e "${YELLOW}[INFO] Starting Oobabooga (text-generation-webui)...${NC}"
+    ./8_start_oobabooga.sh
+    read -p "Press Enter to continue..."
+}
+
 start_sdnext() {
     echo -e "${YELLOW}[INFO] Starting SD.Next...${NC}"
     
@@ -126,6 +152,20 @@ check_status() {
     else
         echo -e "${RED}[✗] SD.Next not installed${NC}"
     fi
+
+    # Check facefusion-unlock
+    if [ -f "$FACEFUSION_UNLOCK_DIR/run.py" ]; then
+        echo -e "${GREEN}[✓] facefusion-unlock installed${NC}"
+    else
+        echo -e "${RED}[✗] facefusion-unlock not installed${NC}"
+    fi
+
+    # Check Oobabooga
+    if [ -f "$OOBABOOGA_DIR/server.py" ]; then
+        echo -e "${GREEN}[✓] Oobabooga (text-generation-webui) installed${NC}"
+    else
+        echo -e "${RED}[✗] Oobabooga (text-generation-webui) not installed${NC}"
+    fi
     
     read -p "Press Enter to continue..."
 }
@@ -142,7 +182,14 @@ while true; do
     echo -e "3. Start ComfyUI"
     echo -e "4. Install SD.Next"
     echo -e "5. Start SD.Next"
-    echo -e "6. Check Installation Status"
+    echo -e "${YELLOW}--- FaceFusion ---${NC}"
+    echo -e "6. Install facefusion-unlock"
+    echo -e "7. Start facefusion-unlock"
+    echo -e "${YELLOW}--- LLM Tools ---${NC}"
+    echo -e "8. Install Oobabooga (text-generation-webui)"
+    echo -e "9. Start Oobabooga (text-generation-webui)"
+    echo -e "${BLUE}----------------------------------------${NC}"
+    echo -e "S. Check Installation Status"
     echo -e "0. Exit"
     echo -e "${BLUE}========================================${NC}"
     
@@ -154,7 +201,11 @@ while true; do
         3) start_comfyui ;;
         4) install_sdnext ;;
         5) start_sdnext ;;
-        6) check_status ;;
+        6) install_facefusion_unlock ;;
+        7) start_facefusion_unlock ;;
+        8) install_oobabooga ;;
+        9) start_oobabooga ;;
+        S|s) check_status ;;
         0) 
             echo -e "${GREEN}Exiting...${NC}"
             exit 0
