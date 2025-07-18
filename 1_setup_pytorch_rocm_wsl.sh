@@ -19,12 +19,13 @@
 VENV_NAME="genai_env"
 
 # --- GPU Detection and Configuration ---
-# You can change the ROCm version components here if AMD updates recommendations
+# Updated for 2025 - ROCm 6.4.1 (latest stable)
+# Supports RDNA4 (RX 9000 series), RDNA3, RDNA2, RDNA1, Vega, and Polaris
 # Check the AMD docs link above for the latest installer URL/version if needed.
-ROCM_INSTALLER_DEB_URL="https://repo.radeon.com/amdgpu-install/6.3.4/ubuntu/noble/amdgpu-install_6.3.60304-1_all.deb"
-# Define the ROCm version string used for the PyTorch install URL (e.g., "6.3")
-# This should match the major.minor version of the ROCm stack being installed.
-PYTORCH_ROCM_VERSION="6.3"
+ROCM_INSTALLER_DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.1/ubuntu/noble/amdgpu-install_6.4.60401-1_all.deb"
+# Define the ROCm version string used for the PyTorch install URL
+PYTORCH_ROCM_VERSION="6.4"
+PYTORCH_VERSION="2.8.0"
 
 # Default HSA_OVERRIDE_GFX_VERSION (will be set based on detected GPU)
 HSA_OVERRIDE_GFX_VERSION=""
@@ -83,8 +84,23 @@ fi
 # --- GPU Architecture Detection and Configuration ---
 # Extract GPU model information from the detected GPU
 if [ ! -z "$GPU_INFO" ]; then
+    # Check for RDNA4 GPUs (RX 9000 series)
+    if [[ "$GPU_INFO" =~ RX[[:space:]]*9[0-9]{3} ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]*9[0-9]{3} ]]; then
+        echo "[INFO] Detected RDNA4 GPU (RX 9000 series)"
+        # gfx1200 for Navi41
+        # gfx1201 for Navi42
+        if [[ "$GPU_INFO" =~ 99[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1200"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1200 for Navi41 GPU"
+        elif [[ "$GPU_INFO" =~ 98[0-9]{2} ]] || [[ "$GPU_INFO" =~ 97[0-9]{2} ]]; then
+            HSA_OVERRIDE_GFX_VERSION="gfx1201"
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1201 for Navi42 GPU"
+        else
+            HSA_OVERRIDE_GFX_VERSION="gfx1200" # Default for the series
+            echo "[INFO] Setting HSA_OVERRIDE_GFX_VERSION=gfx1200 for unknown RDNA4 GPU"
+        fi
     # Check for RDNA3 GPUs (RX 7000 series)
-    if [[ "$GPU_INFO" =~ RX[[:space:]]*7[0-9]{3} ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]*7[0-9]{3} ]]; then
+    elif [[ "$GPU_INFO" =~ RX[[:space:]]*7[0-9]{3} ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]*7[0-9]{3} ]]; then
         echo "[INFO] Detected RDNA3 GPU (RX 7000 series)"
         # gfx1100 for Navi31 (RX 7900 XTX, 7900 XT)
         # gfx1101 for Navi32 (RX 7800 XT, 7700 XT)
@@ -180,8 +196,8 @@ sudo apt install -y wget gpg build-essential git python3-pip python3-venv libnum
 echo "[TASK 1/6] System update and prerequisites installation complete."
 echo "--------------------------------------------------"
 
-# --- 2. Install ROCm for WSL ---
-echo "[TASK 2/6] Installing ROCm stack for WSL..."
+# --- 2. Install AMD GPU Drivers and ROCm for WSL ---
+echo "[TASK 2/6] Installing AMD GPU drivers and ROCm stack for WSL..."
 
 # Download the amdgpu-install script package
 ROCM_INSTALLER_DEB_FILE=$(basename ${ROCM_INSTALLER_DEB_URL})
@@ -195,12 +211,17 @@ sudo apt install -y ./${ROCM_INSTALLER_DEB_FILE}
 # Clean up downloaded deb file
 rm ${ROCM_INSTALLER_DEB_FILE}
 
-# Install ROCm packages using the WSL usecase (no kernel modules)
+# Install AMD GPU drivers and ROCm packages using the WSL usecase (no kernel modules)
+# This includes both graphics drivers and compute drivers
 # This step can take a significant amount of time.
-echo "Running amdgpu-install for WSL usecase (this may take several minutes)..."
-sudo amdgpu-install -y --usecase=wsl,rocm --no-dkms
+echo "Running amdgpu-install for WSL usecase with graphics and ROCm support (this may take several minutes)..."
+sudo amdgpu-install -y --usecase=wsl,graphics,rocm --no-dkms
 
-echo "[TASK 2/6] ROCm stack installation complete."
+# Install additional AMD driver firmware if available
+echo "Installing AMD GPU firmware packages..."
+sudo apt install -y amdgpu-dkms-firmware || echo "Firmware package not available or already installed"
+
+echo "[TASK 2/6] AMD GPU drivers and ROCm stack installation complete."
 echo "--------------------------------------------------"
 
 # --- 3. User Group Configuration ---
@@ -235,11 +256,11 @@ echo "[TASK 4/6] Python virtual environment setup complete. Environment activate
 echo "--------------------------------------------------"
 
 # --- 5. Install PyTorch with ROCm Support & Triton ---
-echo "[TASK 5/6] Installing PyTorch for ROCm ${PYTORCH_ROCM_VERSION} and Triton..."
+echo "[TASK 5/6] Installing PyTorch ${PYTORCH_VERSION} for ROCm ${PYTORCH_ROCM_VERSION} and Triton..."
 
-# Construct the PyTorch installation command
+# Construct the PyTorch installation command (Updated 2025)
 # Check https://pytorch.org/get-started/locally/ for the latest stable command if needed.
-PYTORCH_PIP_COMMAND="pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm${PYTORCH_ROCM_VERSION}"
+PYTORCH_PIP_COMMAND="pip install torch==${PYTORCH_VERSION} torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm${PYTORCH_ROCM_VERSION}"
 
 echo "Running PyTorch installation command (this may take a while):"
 echo "${PYTORCH_PIP_COMMAND}"
@@ -312,7 +333,9 @@ if rocm_available:
         print(f'HSA_OVERRIDE_GFX_VERSION set to: {hsa_override}')
 
         # Print GPU architecture information
-        if hsa_override.startswith('gfx11'):
+        if hsa_override.startswith('gfx12'):
+            print(f'GPU Architecture: RDNA4 (RX 9000 series)')
+        elif hsa_override.startswith('gfx11'):
             print(f'GPU Architecture: RDNA3 (RX 7000 series)')
         elif hsa_override.startswith('gfx10'):
             if hsa_override.startswith('gfx103'):
