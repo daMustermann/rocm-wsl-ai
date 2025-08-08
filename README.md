@@ -1,220 +1,110 @@
-# 🔥 ROCm-WSL-AI 2025 🚀
 
-Supercharge your AMD GPU for AI in Windows Subsystem for Linux. This edition ships with a modern terminal UI, always uses the latest ROCm packages and PyTorch Nightly, and includes popular local AI tools for image generation and LLMs.
+## 🔥 ROCm-WSL-AI 2025
 
-## 🎯 Features
+Make your AMD GPU sing inside WSL2. This repo gives you a slick terminal menu for installing, launching, updating, and removing popular local AI tools — and it keeps your stack fresh with the latest ROCm and PyTorch Nightly.
 
-- ✅ **Always latest ROCm** (apt latest repo) + **PyTorch Nightly** (matched to installed ROCm)
-- ✅ **RDNA4 support** and earlier AMD generations
-- ✅ **Modern TUI (whiptail)** – keyboard-navigable, clear categories
-- ✅ **ComfyUI** with Manager for easy extension management
-- ✅ **SD.Next** - Advanced Stable Diffusion WebUI
-- ✅ **Automatic1111 WebUI** - Popular Stable Diffusion interface
-- ✅ **Ollama** - Run large language models locally (Llama, Mistral, etc.)
-- ✅ **InvokeAI** - Professional-grade AI image generation
-- ✅ **Comprehensive Update System** - Keep everything current
-- ✅ **Auto-detection** of AMD GPU architecture (RDNA4, RDNA3, RDNA2, RDNA1, Vega, Polaris)
-- ✅ **Smart Installation Checks** - Prevents conflicts and redundant installs
-- ✅ **Performance Optimization** guides for each tool
-- ✅ Compatible with **Ubuntu 24.04 LTS**
+## What you get
+- Always latest ROCm (from AMD’s “latest” apt repo) + PyTorch Nightly matched to your installed ROCm series
+- A modern, keyboard-driven TUI (whiptail) with clear categories and no duplicate installs
+- One place to install, start, update, and remove local AI tools (image gen + LLMs)
+- GitHub self-update for the menu itself
 
-## 🛠️ Scripts Overview
+## Tools included (by category)
+Image generation
+- ComfyUI
+- SD.Next
+- Automatic1111 WebUI
+- InvokeAI
+- Fooocus
+- SD WebUI Forge
 
-### 0️⃣ `0_ai_tools_menu.sh` - Modern TUI (whiptail)
+LLMs
+- Ollama (with a small model manager script)
+- Text Generation WebUI
+- llama.cpp
+- KoboldCpp
+- FastChat
 
-The completely redesigned menu system provides an intuitive interface for all operations:
+System & utilities
+- AMD GPU Drivers / ROCm
+- Base setup: ROCm & PyTorch Nightly
+- Updates (drivers, ROCm libs, PyTorch Nightly, tools)
+- Status checks & basic verification
+- Remove (uninstall) tools
+- Self-update (pull latest from GitHub)
 
-- Categories: Installation, Launch, Updates, Status, Remove
-- Self-update from GitHub
-- Clean, colorized UI; prevents duplicate installs (only Start/Remove if found)
-- Adds Fooocus, Text Generation WebUI, SD WebUI Forge, llama.cpp, KoboldCpp, FastChat
-
-### 1️⃣ `1_setup_pytorch_rocm_wsl.sh` - **Updated Foundation** ⬆️
-
-Enhanced setup script with latest versions:
-
-- **ROCm 6.4.1** - Latest stable release with RDNA4 support
-- **PyTorch 2.8.0** - Latest stable with ROCm support
-- **RDNA4 Detection** - Automatic configuration for RX 9000 series
-- **Improved GPU Detection** - Better architecture recognition
-- **Enhanced Error Handling** - More robust installation process
-- **Performance Optimizations** - Optimized for modern AMD GPUs
-
-### 2️⃣ `2_install_comfyui.sh` - **ComfyUI Installation**
-
-Installs ComfyUI with latest updates and ComfyUI Manager.
-
-### 3️⃣ `3_start_comfyui.sh` - **ComfyUI Launcher**
-
-Quick launcher for ComfyUI with proper environment setup.
-
-### 4️⃣ `4_install_sdnext.sh` - **SD.Next Installation**
-
-Installs SD.Next with ROCm optimization.
-
-### 5️⃣ `5_update_ai_setup.sh` - Comprehensive Update System
-
-**NEW!** Intelligent update system that handles:
-
-- Reinstall AMD GPU drivers (when needed), ROCm libraries update
-- PyTorch Nightly + Triton updates (matched to installed ROCm)
-- Tool updates: ComfyUI, SD.Next, Automatic1111, InvokeAI, Ollama, Fooocus, Text Generation WebUI
-- Cache cleanup and verification
-
-### 6️⃣ `6_install_automatic1111.sh` - Automatic1111 WebUI
-
-**NEW!** Professional Stable Diffusion WebUI with:
-
-- **ROCm Optimization** - Configured for AMD GPUs
-- **Essential Extensions** - ControlNet, Image Browser, LoRA support
-- **Memory Optimization** - Efficient VRAM usage
-- **Easy Launch Scripts** - One-click startup
-
-### 7️⃣ `7_install_ollama.sh` - Local LLMs (Ollama)
-
-**NEW!** Run large language models locally:
-
-- **Local LLM Support** - Llama 3.2, Mistral, CodeLlama, and more
-- **ROCm Acceleration** - GPU-accelerated inference
-- **Model Management** - Easy download and management
-- **Chat Interface** - Built-in chat capabilities
-- **Web UI Option** - Optional ChatGPT-like interface
-- **Service Management** - Automatic startup and management
-
-### 8️⃣ `8_install_invokeai.sh` - InvokeAI
-
-**NEW!** Professional-grade AI image generation:
-
-- **Advanced Features** - ControlNet, inpainting, outpainting
-- **Node-based Workflow** - Visual workflow editor  
-- **Batch Processing** - Efficient batch operations
-- **Professional Interface** - Clean, intuitive design
-- **Model Management** - Built-in model downloading and management
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Windows 11 with WSL2 enabled
-- Ubuntu 24.04 LTS installed in WSL2
-- Compatible AMD GPU:
-  - **RDNA4 (RX 9000 series)** - Cutting-edge performance ⭐⭐
-  - **RDNA3 (RX 7000 series)** - Best performance ⭐
-  - **RDNA2 (RX 6000 series)** - Great performance
-  - **RDNA1 (RX 5000 series)** - Good performance
-  - **Vega (Vega 56/64, Radeon VII)** - Compatible
-  - **Polaris (RX 400/500 series)** - Basic compatibility
-- Latest AMD drivers installed in Windows
-
-### Quick Start (PowerShell/WSL)
-
-1. **Clone this repository:**
+## Requirements
+- Windows 11 + WSL2
+- Ubuntu 24.04 inside WSL2
+- AMD GPU (RDNA4/3/2/1, Vega, Polaris)
+- whiptail (for the TUI). If the menu doesn’t render as a UI:
    ```bash
-   git clone https://github.com/daMustermann/rocm-wsl-ai.git
-   cd rocm-wsl-ai
+   sudo apt update && sudo apt install -y whiptail
    ```
 
-2. **Make scripts executable:**
-   ```bash
-   chmod +x *.sh
-   ```
-
-3. **Start the interactive menu:**
-   ```bash
-   ./0_ai_tools_menu.sh
-   ```
-
-4. **Follow the installation process:**
-   - Choose "Installation Menu" (Option 1)
-   - Install ROCm/PyTorch first (Option 1 in Installation Menu)
-   - **Important:** Restart WSL when prompted: `wsl --shutdown` in Windows PowerShell/CMD
-   - Restart your Ubuntu terminal and run the menu again
-   - Install your preferred AI tools (ComfyUI, Automatic1111, etc.)
-
-### Alternative: Manual Steps
-
-If you prefer manual installation:
-
+## Install the suite
 ```bash
-# 1. Install ROCm and PyTorch (restart WSL when prompted)
-./1_setup_pytorch_rocm_wsl.sh
-
-# 2. Install ComfyUI
-./2_install_comfyui.sh
-
-# 3. Start ComfyUI
-./3_start_comfyui.sh
+git clone https://github.com/daMustermann/rocm-wsl-ai.git
+cd rocm-wsl-ai
+chmod +x *.sh
+./0_ai_tools_menu.sh
 ```
 
-## 🎨 Available AI Tools
-
-### ComfyUI - Node-based Stable Diffusion
-- **Install:** Installation Menu → Option 2
-- **Start:** `./3_start_comfyui.sh` or Startup Menu → Option 1
-- **Access:** http://127.0.0.1:8188
-- **Features:** Advanced workflows, custom nodes, ComfyUI Manager
-
-### Automatic1111 WebUI - Popular SD Interface  
-- **Install:** Installation Menu → Option 4
-- **Start:** Startup Menu → Option 3
-- **Access:** http://127.0.0.1:7860
-- **Features:** ControlNet, extensions, user-friendly interface
-
-### SD.Next - Advanced SD WebUI
-- **Install:** Installation Menu → Option 3  
-- **Start:** Startup Menu → Option 2
-- **Access:** Varies by configuration
-- **Features:** Modern interface, advanced features
-
-### InvokeAI - Professional AI Art
-- **Install:** Installation Menu → Option 6
-- **Start:** Startup Menu → Option 6
-- **Access:** http://127.0.0.1:9090
-- **Features:** Professional tools, batch processing, node editor
-
-### Ollama - Local AI Chat Models
-- **Install:** Installation Menu → Option 5
-- **Start:** Startup Menu → Option 4 or `~/start_ollama_chat.sh`
-- **Models:** Llama 3.2, Mistral, CodeLlama, and more
-- **Features:** Local LLM inference, model management, chat interface
-
-## 🔄 Updates
-
-Keep your AI tools up-to-date with the comprehensive update system:
-
-```bash
-./5_update_ai_setup.sh
+If prompted to restart WSL during base setup (after adding your user to the render/video groups), run this in Windows PowerShell/CMD and reopen Ubuntu:
+```powershell
+wsl --shutdown
 ```
 
-Or use the menu: Main Menu → Updates
+## The menu (how to use)
+Use arrow keys + Enter to select; Esc cancels a dialog.
 
-The update system handles:
-- ROCm driver updates
-- PyTorch version updates  
-- AI tool updates (ComfyUI, extensions, models)
-- Dependency management
-- Cache cleanup
-- Installation verification
+- Installation
+   - System → AMD GPU Drivers / ROCm (optional if you already have it)
+   - Base → ROCm & PyTorch Nightly (do this first)
+   - Then pick your favorite tools in Image generation or LLMs
+   - Already installed tools won’t offer a second install
 
-## 📊 Monitoring & Status
+- Launch
+   - Starts only tools that are detected as installed
 
-### Verify Installation
+- Updates
+   - PyTorch Nightly (matched to your ROCm), ROCm libs, tools (ComfyUI, SD.Next, A1111, InvokeAI, Ollama, Fooocus, TextGen, etc.)
+   - Full driver reinstall flow when needed
+
+- Status
+   - Quick checks for ROCm, PyTorch, and what’s installed
+
+- Remove
+   - Safe, confirmed removal of a selected tool’s folder
+
+- Self-update
+   - Pulls latest changes from GitHub and refreshes the menu itself
+
+## Typical first run
+1) Installation → Base (ROCm & PyTorch Nightly)
+2) Restart WSL if asked
+3) Installation → Pick your tools (e.g., ComfyUI, A1111, Ollama)
+4) Launch → Start your tools
+
+## Upgrading
+Menu → Updates lets you:
+- Update PyTorch Nightly to match your currently installed ROCm
+- Update tools (ComfyUI, SD.Next, A1111, InvokeAI, Ollama, Fooocus, TextGen, …)
+- Reinstall drivers (when required), and verify everything
+
+Update the menu/repo itself with Self-update — or manually:
 ```bash
-# Via menu
-./0_ai_tools_menu.sh → Option 4
-
-# Check ROCm
-rocminfo
-rocm-smi
-
-# Check PyTorch
-source ~/genai_env/bin/activate
-python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'ROCm: {torch.cuda.is_available()}')"
+git pull --rebase
 ```
 
-### Performance Monitoring
-```bash
-# GPU usage
+## Useful tips
+- If the TUI looks very plain, install whiptail (see Requirements)
+- If you changed groups during base install: restart WSL (`wsl --shutdown` from Windows)
+- Ollama’s systemd user service may require systemd in WSL; if it doesn’t start, run it manually via the scripts
+- For ROCm trouble, use the menu’s Driver Management and follow the prompts
+
+## License
+MIT
 rocm-smi
 
 # Memory usage  
