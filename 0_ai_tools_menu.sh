@@ -1,16 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# AI Tools Menu Script for AMD GPUs on WSL2 - 2025 Edition
-# Enhanced with update capabilities and new AI tools
-# Combines functionality of:
-# - ROCm/PyTorch installation & updates
-# - ComfyUI installation, startup & updates
-# - SD.Next installation & startup
-# - Automatic1111 WebUI installation & startup
-# - Ollama installation & management
-# - InvokeAI installation & startup
-# - System updates and maintenance
+# AI Tools Suite for AMD GPUs on WSL2 - 2025 (TUI with whiptail)
+# - Always latest ROCm & PyTorch Nightly
+# - Image Gen: ComfyUI, SD.Next, Automatic1111, InvokeAI, Fooocus, SD WebUI Forge
+# - LLMs: Ollama, Text Generation WebUI, llama.cpp, KoboldCpp, FastChat
+# - Utilities: Setup/Updates, GitHub self-update, Removal routines
 # ==============================================================================
 
 # --- Configuration ---
@@ -20,6 +15,13 @@ COMFYUI_DIR="$HOME/ComfyUI"
 SDNEXT_DIR="$HOME/SD.Next"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
 INVOKEAI_DIR="$HOME/InvokeAI"
+FOOOCUS_DIR="$HOME/Fooocus"
+TEXTGEN_DIR="$HOME/text-generation-webui"
+REPO_REMOTE="origin"
+FORGE_DIR="$HOME/stable-diffusion-webui-forge"
+LLAMACPP_DIR="$HOME/llama.cpp"
+KOBOLDCPP_DIR="$HOME/KoboldCpp"
+FASTCHAT_DIR="$HOME/FastChat"
 
 # Colors for menu
 RED='\033[0;31m'
@@ -52,6 +54,57 @@ print_error() {
 
 print_info() {
     echo -e "${PURPLE}[INFO] $1${NC}"
+}
+
+# --- Self-Update (GitHub) ---
+self_update_repo() {
+    print_header "Projekt Selbst-Update (GitHub)"
+    if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        print_info "Aktueller Branch: ${CURRENT_BRANCH}"
+        print_info "Hole Updates vom Remote..."
+        git fetch --all --prune || { print_error "git fetch fehlgeschlagen"; return 1; }
+
+        # Bestmöglicher Upstream ermitteln
+        if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
+            UPSTREAM="@{u}"
+        else
+            # Fallback auf origin/main
+            UPSTREAM="${REPO_REMOTE}/main"
+            print_warning "Kein Upstream gesetzt. Vergleiche gegen ${UPSTREAM}"
+        fi
+
+        LOCAL=$(git rev-parse @)
+        REMOTE=$(git rev-parse "$UPSTREAM" 2>/dev/null || echo "")
+        BASE=$(git merge-base @ "$UPSTREAM" 2>/dev/null || echo "")
+
+        if [ -z "$REMOTE" ] || [ -z "$BASE" ]; then
+            print_warning "Upstream konnte nicht ermittelt werden."
+            read -p "Trotzdem 'git pull' ausführen? (y/N): " -n 1 -r; echo
+            [[ $REPLY =~ ^[Yy]$ ]] || return 0
+            git pull --rebase || git pull || { print_error "git pull fehlgeschlagen"; return 1; }
+            print_success "Repository aktualisiert"
+            return 0
+        fi
+
+        if [ "$LOCAL" = "$REMOTE" ]; then
+            print_success "Bereits auf dem neuesten Stand"
+        elif [ "$LOCAL" = "$BASE" ]; then
+            print_info "Es sind Updates verfügbar. Ziehe Änderungen..."
+            git pull --rebase || git pull || { print_error "git pull fehlgeschlagen"; return 1; }
+            print_success "Repository aktualisiert"
+        elif [ "$REMOTE" = "$BASE" ]; then
+            print_warning "Lokale Commits sind voraus. Kein automatisches Pull."
+            print_info "Bitte manuell mergen/rebasen."
+        else
+            print_warning "Lokale und Remote-Verläufe weichen ab."
+            print_info "Bitte manuell Konflikte lösen."
+        fi
+    else
+        print_warning "Kein Git-Repository erkannt."
+        print_info "Du kannst das Repo klonen: https://github.com/daMustermann/rocm-wsl-ai"
+    fi
+    read -p "Press Enter to continue..."
 }
 
 install_rocm_pytorch() {
@@ -216,6 +269,115 @@ start_invokeai() {
     read -p "Press Enter to continue..."
 }
 
+install_fooocus() {
+    print_header "Installing Fooocus"
+    if [ ! -f "$VENV_PATH/bin/activate" ]; then
+        print_error "Python virtual environment not found! Erst ROCm/PyTorch installieren (Installation → Option)"
+        return 1
+    fi
+    if [ -f "./10_install_fooocus.sh" ]; then
+        chmod +x ./10_install_fooocus.sh && ./10_install_fooocus.sh
+        print_success "Fooocus installiert"
+    else
+        print_error "10_install_fooocus.sh nicht gefunden"
+    fi
+    read -p "Press Enter to continue..."
+}
+
+start_fooocus() {
+    print_header "Starting Fooocus"
+    if [ ! -d "$FOOOCUS_DIR" ]; then
+        print_error "Fooocus nicht installiert"
+        return 1
+    fi
+    source "$VENV_PATH/bin/activate"
+    cd "$FOOOCUS_DIR"
+    python launch.py --listen 0.0.0.0 --port 7865
+    read -p "Press Enter to continue..."
+}
+
+install_textgen() {
+    print_header "Installing Text Generation WebUI"
+    if [ ! -f "$VENV_PATH/bin/activate" ]; then
+        print_error "Python virtual environment not found! Erst ROCm/PyTorch installieren"
+        return 1
+    fi
+    if [ -f "./11_install_textgen_webui.sh" ]; then
+        chmod +x ./11_install_textgen_webui.sh && ./11_install_textgen_webui.sh
+        print_success "Text Generation WebUI installiert"
+    else
+        print_error "11_install_textgen_webui.sh nicht gefunden"
+    fi
+    read -p "Press Enter to continue..."
+}
+
+start_textgen() {
+    print_header "Starting Text Generation WebUI"
+    if [ ! -d "$TEXTGEN_DIR" ]; then
+        print_error "Text Generation WebUI nicht installiert"
+        return 1
+    fi
+    source "$VENV_PATH/bin/activate"
+    cd "$TEXTGEN_DIR"
+    python server.py --listen --api --chat
+    read -p "Press Enter to continue..."
+}
+
+# --- Additional Tools (stubs for installers/starters/removers) ---
+install_forge() { print_header "Installing SD WebUI Forge"; if [ -f "./12_install_forge.sh" ]; then chmod +x ./12_install_forge.sh && ./12_install_forge.sh; else print_error "12_install_forge.sh not found"; fi; read -p "Press Enter to continue..."; }
+start_forge() { [ -d "$FORGE_DIR" ] && cd "$FORGE_DIR" && ./webui.sh --use-rocm || print_error "Forge not installed"; read -p "Press Enter to continue..."; }
+
+install_llamacpp() { print_header "Installing llama.cpp"; if [ -f "./13_install_llama_cpp.sh" ]; then chmod +x ./13_install_llama_cpp.sh && ./13_install_llama_cpp.sh; else print_error "13_install_llama_cpp.sh not found"; fi; read -p "Press Enter to continue..."; }
+start_llamacpp() { [ -d "$LLAMACPP_DIR" ] && cd "$LLAMACPP_DIR" && ./server -c 2048 || print_error "llama.cpp not installed"; read -p "Press Enter to continue..."; }
+
+install_koboldcpp() { print_header "Installing KoboldCpp"; if [ -f "./14_install_koboldcpp.sh" ]; then chmod +x ./14_install_koboldcpp.sh && ./14_install_koboldcpp.sh; else print_error "14_install_koboldcpp.sh not found"; fi; read -p "Press Enter to continue..."; }
+start_koboldcpp() { [ -d "$KOBOLDCPP_DIR" ] && cd "$KOBOLDCPP_DIR" && ./koboldcpp.sh || print_error "KoboldCpp not installed"; read -p "Press Enter to continue..."; }
+
+install_fastchat() { print_header "Installing FastChat"; if [ -f "./15_install_fastchat.sh" ]; then chmod +x ./15_install_fastchat.sh && ./15_install_fastchat.sh; else print_error "15_install_fastchat.sh not found"; fi; read -p "Press Enter to continue..."; }
+start_fastchat() { [ -d "$FASTCHAT_DIR" ] && cd "$FASTCHAT_DIR" && ./start_server.sh || print_error "FastChat not installed"; read -p "Press Enter to continue..."; }
+
+# --- Removal routines ---
+remove_tool_dir() {
+    local dir="$1"; local name="$2"
+    if [ -d "$dir" ]; then
+        print_warning "Removing $name at $dir"
+        read -p "Confirm removal? This deletes the folder. (y/N): " -n 1 -r; echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            rm -rf "$dir" && print_success "$name removed" || print_error "Failed to remove $name"
+        fi
+    else
+        print_warning "$name not found"
+    fi
+}
+
+remove_menu() {
+    local CHOICE
+    CHOICE=$(whiptail --title "Remove Tools" --menu "Select a tool to remove" 20 70 12 \
+        "comfyui" "ComfyUI" \
+        "sdnext" "SD.Next" \
+        "a1111" "Automatic1111" \
+        "invokeai" "InvokeAI" \
+        "fooocus" "Fooocus" \
+        "textgen" "Text Generation WebUI" \
+        "forge" "SD WebUI Forge" \
+        "llamacpp" "llama.cpp" \
+        "koboldcpp" "KoboldCpp" \
+        "fastchat" "FastChat" \
+        3>&1 1>&2 2>&3) || return 0
+    case "$CHOICE" in
+        comfyui) remove_tool_dir "$COMFYUI_DIR" "ComfyUI" ;;
+        sdnext) remove_tool_dir "$SDNEXT_DIR" "SD.Next" ;;
+        a1111) remove_tool_dir "$AUTOMATIC1111_DIR" "Automatic1111" ;;
+        invokeai) remove_tool_dir "$INVOKEAI_DIR" "InvokeAI" ;;
+        fooocus) remove_tool_dir "$FOOOCUS_DIR" "Fooocus" ;;
+        textgen) remove_tool_dir "$TEXTGEN_DIR" "Text Generation WebUI" ;;
+        forge) remove_tool_dir "$FORGE_DIR" "SD WebUI Forge" ;;
+        llamacpp) remove_tool_dir "$LLAMACPP_DIR" "llama.cpp" ;;
+        koboldcpp) remove_tool_dir "$KOBOLDCPP_DIR" "KoboldCpp" ;;
+        fastchat) remove_tool_dir "$FASTCHAT_DIR" "FastChat" ;;
+    esac
+}
+
 update_system() {
     print_header "System Update"
     
@@ -273,6 +435,20 @@ check_status() {
     else
         print_error "✗ InvokeAI not installed"
     fi
+
+    # Check Fooocus
+    if [ -d "$FOOOCUS_DIR" ] && [ -f "$FOOOCUS_DIR/launch.py" ]; then
+        print_success "✓ Fooocus installed"
+    else
+        print_error "✗ Fooocus not installed"
+    fi
+
+    # Check Text Generation WebUI
+    if [ -d "$TEXTGEN_DIR" ] && [ -f "$TEXTGEN_DIR/server.py" ]; then
+        print_success "✓ Text Generation WebUI installed"
+    else
+        print_error "✗ Text Generation WebUI not installed"
+    fi
     
     # Check ROCm system status
     echo ""
@@ -288,85 +464,70 @@ check_status() {
 
 show_installation_menu() {
     while true; do
-        clear
-        print_header "AI Tools Installation Menu"
-        echo -e "1.  ${YELLOW}Install AMD GPU Drivers${NC} (Graphics + ROCm)"
-        echo -e "2.  ${YELLOW}Install ROCm and PyTorch${NC} (Required foundation)"
-        echo -e "3.  Install ComfyUI"
-        echo -e "4.  Install SD.Next" 
-        echo -e "5.  Install Automatic1111 WebUI"
-        echo -e "6.  Install Ollama (Local AI Chat)"
-        echo -e "7.  Install InvokeAI (Professional AI Art)"
-        echo -e "8.  Check Installation Status"
-        echo -e "0.  Back to Main Menu"
-        echo -e "${BLUE}========================================${NC}"
-        
-        read -p "Enter your choice: " choice
-        
-        case $choice in
-            1) 
-                print_info "Starting AMD GPU driver installation..."
-                if [ -f "./9_install_amd_drivers.sh" ]; then
-                    chmod +x ./9_install_amd_drivers.sh
-                    ./9_install_amd_drivers.sh
-                    read -p "Press Enter to continue..."
-                else
-                    print_error "AMD driver installation script not found!"
-                    read -p "Press Enter to continue..."
-                fi
-                ;;
-            2) install_rocm_pytorch ;;
-            3) install_comfyui ;;
-            4) install_sdnext ;;
-            5) install_automatic1111 ;;
-            6) install_ollama ;;
-            7) install_invokeai ;;
-            8) check_status ;;
-            0) return ;;
-            *)
-                print_error "Invalid option!"
-                read -p "Press Enter to continue..."
-                ;;
+        local CHOICE
+        CHOICE=$(whiptail --title "Installation" --menu "Choose what to install" 20 80 12 \
+            "sys" "AMD GPU Drivers / ROCm" \
+            "base" "ROCm & PyTorch Nightly (base)" \
+            "img_comfy" "ComfyUI" \
+            "img_sdnext" "SD.Next" \
+            "img_a1111" "Automatic1111" \
+            "img_invokeai" "InvokeAI" \
+            "img_fooocus" "Fooocus" \
+            "img_forge" "SD WebUI Forge" \
+            "llm_ollama" "Ollama" \
+            "llm_textgen" "Text Generation WebUI" \
+            "llm_llamacpp" "llama.cpp" \
+            "llm_koboldcpp" "KoboldCpp" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$CHOICE" in
+            sys) if [ -f "./9_install_amd_drivers.sh" ]; then chmod +x ./9_install_amd_drivers.sh && ./9_install_amd_drivers.sh; else whiptail --msgbox "9_install_amd_drivers.sh missing" 8 60; fi ;;
+            base) install_rocm_pytorch ;;
+            img_comfy) [ -d "$COMFYUI_DIR" ] && whiptail --msgbox "ComfyUI already installed" 8 50 || install_comfyui ;;
+            img_sdnext) [ -d "$SDNEXT_DIR" ] && whiptail --msgbox "SD.Next already installed" 8 50 || install_sdnext ;;
+            img_a1111) [ -d "$AUTOMATIC1111_DIR" ] && whiptail --msgbox "A1111 already installed" 8 50 || install_automatic1111 ;;
+            img_invokeai) [ -d "$INVOKEAI_DIR" ] && whiptail --msgbox "InvokeAI already installed" 8 50 || install_invokeai ;;
+            img_fooocus) [ -d "$FOOOCUS_DIR" ] && whiptail --msgbox "Fooocus already installed" 8 50 || install_fooocus ;;
+            img_forge) [ -d "$FORGE_DIR" ] && whiptail --msgbox "Forge already installed" 8 50 || install_forge ;;
+            llm_ollama) command -v ollama >/dev/null 2>&1 && whiptail --msgbox "Ollama already installed" 8 50 || install_ollama ;;
+            llm_textgen) [ -d "$TEXTGEN_DIR" ] && whiptail --msgbox "TextGen WebUI already installed" 8 50 || install_textgen ;;
+            llm_llamacpp) [ -d "$LLAMACPP_DIR" ] && whiptail --msgbox "llama.cpp already installed" 8 50 || install_llamacpp ;;
+            llm_koboldcpp) [ -d "$KOBOLDCPP_DIR" ] && whiptail --msgbox "KoboldCpp already installed" 8 50 || install_koboldcpp ;;
         esac
     done
 }
 
 show_startup_menu() {
     while true; do
-        clear
-        print_header "AI Tools Startup Menu"
-        echo -e "1.  Start ComfyUI"
-        echo -e "2.  Start SD.Next"
-        echo -e "3.  Start Automatic1111 WebUI"
-        echo -e "4.  Start Ollama Chat"
-        echo -e "5.  Manage Ollama Models"
-        echo -e "6.  Start InvokeAI"
-        echo -e "7.  Check All Services Status"
-        echo -e "0.  Back to Main Menu"
-        echo -e "${BLUE}========================================${NC}"
-        
-        read -p "Enter your choice: " choice
-        
-        case $choice in
-            1) start_comfyui ;;
-            2) start_sdnext ;;
-            3) start_automatic1111 ;;
-            4) 
-                if command -v ollama &> /dev/null; then
-                    ~/start_ollama_chat.sh
-                else
-                    print_error "Ollama not installed!"
-                fi
-                read -p "Press Enter to continue..."
-                ;;
-            5) manage_ollama ;;
-            6) start_invokeai ;;
-            7) check_status ;;
-            0) return ;;
-            *)
-                print_error "Invalid option!"
-                read -p "Press Enter to continue..."
-                ;;
+        local CHOICE
+        CHOICE=$(whiptail --title "Launch" --menu "Start installed tools" 22 80 14 \
+            "comfyui" "Start ComfyUI" \
+            "sdnext" "Start SD.Next" \
+            "a1111" "Start Automatic1111" \
+            "invokeai" "Start InvokeAI" \
+            "fooocus" "Start Fooocus" \
+            "forge" "Start SD WebUI Forge" \
+            "ollama" "Start Ollama Chat" \
+            "ollama_mgmt" "Manage Ollama Models" \
+            "textgen" "Start Text Generation WebUI" \
+            "llamacpp" "Start llama.cpp server" \
+            "koboldcpp" "Start KoboldCpp" \
+            "fastchat" "Start FastChat" \
+            "status" "Check Status" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$CHOICE" in
+            comfyui) [ -f "$COMFYUI_DIR/main.py" ] && start_comfyui || whiptail --msgbox "ComfyUI not installed" 8 40 ;;
+            sdnext) [ -d "$SDNEXT_DIR" ] && start_sdnext || whiptail --msgbox "SD.Next not installed" 8 40 ;;
+            a1111) [ -d "$AUTOMATIC1111_DIR" ] && start_automatic1111 || whiptail --msgbox "A1111 not installed" 8 40 ;;
+            invokeai) [ -f "$INVOKEAI_DIR/launch_webui.sh" ] && start_invokeai || whiptail --msgbox "InvokeAI not installed" 8 40 ;;
+            fooocus) [ -d "$FOOOCUS_DIR" ] && start_fooocus || whiptail --msgbox "Fooocus not installed" 8 40 ;;
+            forge) [ -d "$FORGE_DIR" ] && start_forge || whiptail --msgbox "Forge not installed" 8 40 ;;
+            ollama) command -v ollama >/dev/null 2>&1 && ~/start_ollama_chat.sh || whiptail --msgbox "Ollama not installed" 8 40 ;;
+            ollama_mgmt) manage_ollama ;;
+            textgen) [ -d "$TEXTGEN_DIR" ] && start_textgen || whiptail --msgbox "TextGen WebUI not installed" 8 50 ;;
+            llamacpp) [ -d "$LLAMACPP_DIR" ] && start_llamacpp || whiptail --msgbox "llama.cpp not installed" 8 50 ;;
+            koboldcpp) [ -d "$KOBOLDCPP_DIR" ] && start_koboldcpp || whiptail --msgbox "KoboldCpp not installed" 8 50 ;;
+            fastchat) [ -d "$FASTCHAT_DIR" ] && start_fastchat || whiptail --msgbox "FastChat not installed" 8 50 ;;
+            status) check_status ;;
         esac
     done
 }
@@ -374,66 +535,23 @@ show_startup_menu() {
 # --- Main Menu ---
 
 while true; do
-    clear
-    print_header "AI Tools Suite for WSL2 - 2025 Edition"
-    echo -e "${CYAN}🚀 Enhanced AMD GPU AI Development Environment${NC}"
-    echo ""
-    echo -e "📦 ${GREEN}Installation${NC}"
-    echo -e "1.  Installation Menu (Install AI Tools)"
-    echo ""
-    echo -e "▶️  ${BLUE}Startup${NC}"
-    echo -e "2.  Startup Menu (Launch AI Tools)"
-    echo ""
-    echo -e "🔄 ${YELLOW}Maintenance${NC}"
-    echo -e "3.  Update System (Update all tools + AMD drivers)"
-    echo -e "4.  Check Installation Status"
-    echo ""
-    echo -e "📊 ${PURPLE}Quick Actions${NC}"
-    echo -e "5.  Start ComfyUI (Quick)"
-    echo -e "6.  Start Ollama Chat (Quick)"
-    echo ""
-    echo -e "🔧 ${RED}Advanced${NC}"
-    echo -e "7.  AMD Driver Management (Install/Update)"
-    echo ""
-    echo -e "0.  Exit"
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${CYAN}💡 Tip: AMD drivers need complete reinstall for updates!${NC}"
-    
-    read -p "Enter your choice: " choice
-    
-    case $choice in
-        1) show_installation_menu ;;
-        2) show_startup_menu ;;
-        3) update_system ;;
-        4) check_status ;;
-        5) start_comfyui ;;
-        6) 
-            if command -v ollama &> /dev/null; then
-                ~/start_ollama_chat.sh
-            else
-                print_error "Ollama not installed! Use Installation Menu → Option 6 to install."
-            fi
-            read -p "Press Enter to continue..."
-            ;;
-        7)
-            print_info "Starting AMD Driver Management..."
-            if [ -f "./9_install_amd_drivers.sh" ]; then
-                chmod +x ./9_install_amd_drivers.sh
-                ./9_install_amd_drivers.sh
-                read -p "Press Enter to continue..."
-            else
-                print_error "AMD driver script not found!"
-                read -p "Press Enter to continue..."
-            fi
-            ;;
-        0) 
-            print_success "Thank you for using AI Tools Suite!"
-            print_info "Happy AI development! 🎨🤖"
-            exit 0
-            ;;
-        *)
-            print_error "Invalid option!"
-            read -p "Press Enter to continue..."
-            ;;
+    CHOICE=$(whiptail --title "AI Tools Suite (WSL2, AMD ROCm)" --menu "Select an action" 20 80 10 \
+        "install" "Install tools (categorized)" \
+        "launch" "Launch installed tools" \
+        "update" "Updates (drivers, ROCm, PyTorch Nightly, tools)" \
+        "status" "Check installation status" \
+        "selfupdate" "Self-update (GitHub)" \
+        "remove" "Uninstall tools" \
+        "drivers" "AMD driver management" \
+        3>&1 1>&2 2>&3) || { clear; exit 0; }
+    case "$CHOICE" in
+        install) show_installation_menu ;;
+        launch) show_startup_menu ;;
+        update) update_system ;;
+        status) check_status ;;
+        selfupdate) self_update_repo ;;
+        remove) remove_menu ;;
+        drivers)
+            if [ -f "./9_install_amd_drivers.sh" ]; then chmod +x ./9_install_amd_drivers.sh && ./9_install_amd_drivers.sh; else whiptail --msgbox "9_install_amd_drivers.sh missing" 8 50; fi ;;
     esac
 done
