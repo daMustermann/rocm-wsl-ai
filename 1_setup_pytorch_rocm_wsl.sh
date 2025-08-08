@@ -19,13 +19,11 @@
 VENV_NAME="genai_env"
 
 # --- GPU Detection and Configuration ---
-# Updated for 2025 - ROCm 6.4.1 (latest stable)
-# Supports RDNA4 (RX 9000 series), RDNA3, RDNA2, RDNA1, Vega, and Polaris
-# Check the AMD docs link above for the latest installer URL/version if needed.
-ROCM_INSTALLER_DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.1/ubuntu/noble/amdgpu-install_6.4.60401-1_all.deb"
-# Define the ROCm version string used for the PyTorch install URL
-PYTORCH_ROCM_VERSION="6.4"
-PYTORCH_VERSION="2.8.0"
+# Updated for 2025 - Always track latest ROCm & PyTorch Nightly
+# Supports RDNA4, RDNA3, RDNA2, RDNA1, Vega, and Polaris
+
+# NOTE: We install ROCm via the 'latest' apt repo and then match PyTorch Nightly
+# to the installed ROCm series (e.g., 6.5 → rocm6.5 nightly wheels).
 
 # Default HSA_OVERRIDE_GFX_VERSION (will be set based on detected GPU)
 HSA_OVERRIDE_GFX_VERSION=""
@@ -197,31 +195,28 @@ echo "[TASK 1/6] System update and prerequisites installation complete."
 echo "--------------------------------------------------"
 
 # --- 2. Install AMD GPU Drivers and ROCm for WSL ---
-echo "[TASK 2/6] Installing AMD GPU drivers and ROCm stack for WSL..."
+echo "[TASK 2/6] Installing AMD graphics stack and ROCm via 'latest' repository..."
 
-# Download the amdgpu-install script package
-ROCM_INSTALLER_DEB_FILE=$(basename ${ROCM_INSTALLER_DEB_URL})
-echo "Downloading ROCm installer script package: ${ROCM_INSTALLER_DEB_FILE}..."
-wget -nv --show-progress ${ROCM_INSTALLER_DEB_URL}
+# Add ROCm 'latest' repository (AMD publishes packages under jammy path for Ubuntu 22.04/24.04)
+if [ ! -f /etc/apt/sources.list.d/rocm.list ]; then
+    echo "Adding ROCm 'latest' apt repository..."
+    wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
+    echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/latest jammy main' | sudo tee /etc/apt/sources.list.d/rocm.list
+fi
 
-# Install the package
-echo "Installing ROCm installer script package..."
-sudo apt install -y ./${ROCM_INSTALLER_DEB_FILE}
+sudo apt update
 
-# Clean up downloaded deb file
-rm ${ROCM_INSTALLER_DEB_FILE}
+# Install graphics (Mesa) & tools
+sudo apt install -y \
+    mesa-utils mesa-vulkan-drivers vulkan-tools mesa-opencl-icd clinfo \
+    linux-firmware firmware-amd-graphics || true
 
-# Install AMD GPU drivers and ROCm packages using the WSL usecase (no kernel modules)
-# This includes both graphics drivers and compute drivers
-# This step can take a significant amount of time.
-echo "Running amdgpu-install for WSL usecase with graphics and ROCm support (this may take several minutes)..."
-sudo amdgpu-install -y --usecase=wsl,graphics,rocm --no-dkms
+# Install ROCm compute stack (no DKMS in WSL)
+sudo apt install -y \
+    rocm-dev rocm-libs rocm-utils rocminfo rocm-smi hip-dev hipcc \
+    miopen-hip rocblas rocsolver rocfft rocsparse rccl
 
-# Install additional AMD driver firmware if available
-echo "Installing AMD GPU firmware packages..."
-sudo apt install -y amdgpu-dkms-firmware || echo "Firmware package not available or already installed"
-
-echo "[TASK 2/6] AMD GPU drivers and ROCm stack installation complete."
+echo "[TASK 2/6] AMD graphics & ROCm installation via apt completed."
 echo "--------------------------------------------------"
 
 # --- 3. User Group Configuration ---
@@ -256,15 +251,26 @@ echo "[TASK 4/6] Python virtual environment setup complete. Environment activate
 echo "--------------------------------------------------"
 
 # --- 5. Install PyTorch with ROCm Support & Triton ---
-echo "[TASK 5/6] Installing PyTorch ${PYTORCH_VERSION} for ROCm ${PYTORCH_ROCM_VERSION} and Triton..."
+echo "[TASK 5/6] Installing PyTorch Nightly for matching ROCm series + Triton..."
 
-# Construct the PyTorch installation command (Updated 2025)
-# Check https://pytorch.org/get-started/locally/ for the latest stable command if needed.
-PYTORCH_PIP_COMMAND="pip install torch==${PYTORCH_VERSION} torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm${PYTORCH_ROCM_VERSION}"
+# Detect ROCm version series (e.g., 6.5) for PyTorch Nightly index
+ROCM_VERSION_FILE="/opt/rocm/.info/version"
+ROCM_SERIES="6.4"
+if [ -f "$ROCM_VERSION_FILE" ]; then
+    ROCM_FULL=$(cat "$ROCM_VERSION_FILE" 2>/dev/null | head -1 | tr -cd '0-9\n.' | head -1)
+    ROCM_MAJOR=$(echo "$ROCM_FULL" | cut -d'.' -f1)
+    ROCM_MINOR=$(echo "$ROCM_FULL" | cut -d'.' -f2)
+    if [ -n "$ROCM_MAJOR" ] && [ -n "$ROCM_MINOR" ]; then
+        ROCM_SERIES="${ROCM_MAJOR}.${ROCM_MINOR}"
+    fi
+fi
+echo "Detected ROCm series: $ROCM_SERIES"
 
-echo "Running PyTorch installation command (this may take a while):"
-echo "${PYTORCH_PIP_COMMAND}"
-${PYTORCH_PIP_COMMAND}
+PYTORCH_INDEX_URL="https://download.pytorch.org/whl/nightly/rocm${ROCM_SERIES}"
+echo "Using PyTorch Nightly index: ${PYTORCH_INDEX_URL}"
+
+pip install --upgrade pip wheel
+pip install --pre torch torchvision torchaudio --index-url "${PYTORCH_INDEX_URL}"
 
 # Set HSA_OVERRIDE_GFX_VERSION in the environment
 if [ ! -z "$HSA_OVERRIDE_GFX_VERSION" ]; then
@@ -295,8 +301,8 @@ else
 fi
 
 # Install Triton (pre-release often needed for latest ROCm compatibility)
-echo "Installing Triton (using pre-release flag)..."
-pip install -U --pre triton
+echo "Installing Triton (pre-release, may be required)..."
+pip install -U --pre triton || echo "[WARN] Triton nightly not available; continuing"
 
 echo "[TASK 5/6] PyTorch and Triton installation complete."
 echo "--------------------------------------------------"
@@ -364,7 +370,7 @@ echo "--------------------------------------------------"
 
 # --- Script End ---
 echo ""
-echo "[SUCCESS] ROCm + PyTorch + Triton installation script finished!"
+echo "[SUCCESS] ROCm + PyTorch Nightly + Triton installation finished!"
 echo ""
 echo "[IMPORTANT REMINDER] If you haven't already, restart WSL ('wsl --shutdown' in Windows, then restart Ubuntu) for group changes ('render', 'video') to apply."
 echo ""

@@ -1,14 +1,12 @@
 # 🔥 ROCm-WSL-AI 2025 🚀
 
-> **Supercharge your AMD GPU for AI in Windows Subsystem for Linux - 2025 Edition!**
-
-This repository provides a streamlined setup for running AI workloads (like Stable Diffusion, Large Language Models, and more) on AMD GPUs using ROCm within Windows Subsystem for Linux (WSL2). **Updated for July 2025 with the latest tools and versions!**
+Supercharge your AMD GPU for AI in Windows Subsystem for Linux. This edition ships with a modern terminal UI, always uses the latest ROCm packages and PyTorch Nightly, and includes popular local AI tools for image generation and LLMs.
 
 ## 🎯 Features
 
-- ✅ **Latest ROCm 6.4.1** with PyTorch 2.8.0 support
-- ✅ **RDNA4 Support** - Full support for RX 9000 series GPUs 🆕
-- ✅ **Enhanced Installation System** with intelligent update capabilities
+- ✅ **Always latest ROCm** (apt latest repo) + **PyTorch Nightly** (matched to installed ROCm)
+- ✅ **RDNA4 support** and earlier AMD generations
+- ✅ **Modern TUI (whiptail)** – keyboard-navigable, clear categories
 - ✅ **ComfyUI** with Manager for easy extension management
 - ✅ **SD.Next** - Advanced Stable Diffusion WebUI
 - ✅ **Automatic1111 WebUI** - Popular Stable Diffusion interface
@@ -22,16 +20,14 @@ This repository provides a streamlined setup for running AI workloads (like Stab
 
 ## 🛠️ Scripts Overview
 
-### 0️⃣ `0_ai_tools_menu.sh` - **Enhanced Main Menu** 🆕
+### 0️⃣ `0_ai_tools_menu.sh` - Modern TUI (whiptail)
 
 The completely redesigned menu system provides an intuitive interface for all operations:
 
-- **📦 Installation Menu** - Install any AI tool with dependency checking
-- **▶️ Startup Menu** - Quick launch for all installed tools
-- **🔄 Update System** - Comprehensive update management
-- **📊 Status Dashboard** - Check installation and system status
-- **🎨 Modern Interface** - Color-coded, user-friendly design
-- **🔗 Dependency Management** - Automatic prerequisite checking
+- Categories: Installation, Launch, Updates, Status, Remove
+- Self-update from GitHub
+- Clean, colorized UI; prevents duplicate installs (only Start/Remove if found)
+- Adds Fooocus, Text Generation WebUI, SD WebUI Forge, llama.cpp, KoboldCpp, FastChat
 
 ### 1️⃣ `1_setup_pytorch_rocm_wsl.sh` - **Updated Foundation** ⬆️
 
@@ -56,18 +52,16 @@ Quick launcher for ComfyUI with proper environment setup.
 
 Installs SD.Next with ROCm optimization.
 
-### 5️⃣ `5_update_ai_setup.sh` - **🆕 Comprehensive Update System**
+### 5️⃣ `5_update_ai_setup.sh` - Comprehensive Update System
 
 **NEW!** Intelligent update system that handles:
 
-- **ROCm Driver Updates** - Latest drivers and libraries
-- **PyTorch Updates** - Latest ROCm-compatible versions
-- **AI Tool Updates** - ComfyUI, SD.Next, extensions, and custom nodes
-- **Dependency Management** - Ensures compatibility
-- **Cache Cleanup** - Maintains system performance
-- **Verification Testing** - Confirms everything works after updates
+- Reinstall AMD GPU drivers (when needed), ROCm libraries update
+- PyTorch Nightly + Triton updates (matched to installed ROCm)
+- Tool updates: ComfyUI, SD.Next, Automatic1111, InvokeAI, Ollama, Fooocus, Text Generation WebUI
+- Cache cleanup and verification
 
-### 6️⃣ `6_install_automatic1111.sh` - **🆕 Automatic1111 WebUI**
+### 6️⃣ `6_install_automatic1111.sh` - Automatic1111 WebUI
 
 **NEW!** Professional Stable Diffusion WebUI with:
 
@@ -76,7 +70,7 @@ Installs SD.Next with ROCm optimization.
 - **Memory Optimization** - Efficient VRAM usage
 - **Easy Launch Scripts** - One-click startup
 
-### 7️⃣ `7_install_ollama.sh` - **🆕 Local AI Chat Models**
+### 7️⃣ `7_install_ollama.sh` - Local LLMs (Ollama)
 
 **NEW!** Run large language models locally:
 
@@ -87,7 +81,7 @@ Installs SD.Next with ROCm optimization.
 - **Web UI Option** - Optional ChatGPT-like interface
 - **Service Management** - Automatic startup and management
 
-### 8️⃣ `8_install_invokeai.sh` - **🆕 Professional AI Art**
+### 8️⃣ `8_install_invokeai.sh` - InvokeAI
 
 **NEW!** Professional-grade AI image generation:
 
@@ -112,7 +106,7 @@ Installs SD.Next with ROCm optimization.
   - **Polaris (RX 400/500 series)** - Basic compatibility
 - Latest AMD drivers installed in Windows
 
-### Quick Installation
+### Quick Start (PowerShell/WSL)
 
 1. **Clone this repository:**
    ```bash
@@ -137,7 +131,7 @@ Installs SD.Next with ROCm optimization.
    - Restart your Ubuntu terminal and run the menu again
    - Install your preferred AI tools (ComfyUI, Automatic1111, etc.)
 
-### Alternative: Manual Installation
+### Alternative: Manual Steps
 
 If you prefer manual installation:
 
@@ -184,7 +178,7 @@ If you prefer manual installation:
 - **Models:** Llama 3.2, Mistral, CodeLlama, and more
 - **Features:** Local LLM inference, model management, chat interface
 
-## � Updating Your Installation
+## 🔄 Updates
 
 Keep your AI tools up-to-date with the comprehensive update system:
 
@@ -192,7 +186,7 @@ Keep your AI tools up-to-date with the comprehensive update system:
 ./5_update_ai_setup.sh
 ```
 
-**Or use the menu:** Main Menu → Option 3
+Or use the menu: Main Menu → Updates
 
 The update system handles:
 - ROCm driver updates
@@ -202,9 +196,9 @@ The update system handles:
 - Cache cleanup
 - Installation verification
 
-## 📊 Monitoring and Status
+## 📊 Monitoring & Status
 
-### Check Installation Status
+### Verify Installation
 ```bash
 # Via menu
 ./0_ai_tools_menu.sh → Option 4
@@ -321,7 +315,7 @@ Contributions are welcome! Please:
 3. Test your changes thoroughly
 4. Submit a pull request with clear description
 
-## � License
+## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
