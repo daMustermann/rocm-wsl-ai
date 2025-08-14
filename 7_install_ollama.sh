@@ -58,7 +58,8 @@ RestartSec=3
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="OLLAMA_HOST=0.0.0.0"
 Environment="OLLAMA_ORIGINS=*"
-Environment="HSA_OVERRIDE_GFX_VERSION=11.0.0"
+EnvironmentFile=-%h/.config/rocm-wsl-ai/gpu.env
+Environment="HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-11.0.0}"
 Environment="HIP_VISIBLE_DEVICES=0"
 Environment="ROCM_PATH=/opt/rocm"
 

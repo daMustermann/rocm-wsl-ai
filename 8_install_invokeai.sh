@@ -93,23 +93,18 @@ EOF
 cat > "$INVOKEAI_DIR/setup_env.sh" << 'EOF'
 #!/bin/bash
 
-# ROCm environment variables for InvokeAI
-export HSA_OVERRIDE_GFX_VERSION="12.0.0"  # Adjust based on your GPU (e.g., 12.0.0 for RDNA4, 11.0.0 for RDNA3)
-export PYTORCH_ROCM_ARCH="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102"
-export HIP_VISIBLE_DEVICES=0
-export ROCM_PATH=/opt/rocm
-export INVOKEAI_ROOT="$HOME/InvokeAI"
-
-# Memory optimizations
-export PYTORCH_ROCM_ALLOW_UNALIGNED_ACCESS=1
+# InvokeAI ROCm environment (auto-detected GPU settings)
+export INVOKEAI_HOME=~/invokeai
+[ -f "$HOME/.config/rocm-wsl-ai/gpu.env" ] && source "$HOME/.config/rocm-wsl-ai/gpu.env"
+: "${HSA_OVERRIDE_GFX_VERSION:=11.0.0}"
+: "${PYTORCH_ROCM_ARCH:=gfx1200;gfx1201;gfx1100;gfx1101;gfx1102}"
 export GPU_FORCE_64BIT_PTR=1
 export GPU_MAX_HEAP_SIZE="100%"
 export GPU_MAX_ALLOC_PERCENT="100%"
-
-# Activate virtual environment
+export GPU_USE_SYNC_OBJECTS=1
+export PYTORCH_ROCM_ALLOW_UNALIGNED_ACCESS=1
+export TORCH_COMMAND="pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4"
 source ~/genai_env/bin/activate
-
-echo "Environment configured for InvokeAI with ROCm support"
 EOF
 
 chmod +x "$INVOKEAI_DIR/setup_env.sh"

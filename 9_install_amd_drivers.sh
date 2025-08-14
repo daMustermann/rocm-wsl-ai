@@ -302,7 +302,9 @@ export HIP_PATH=$ROCM_PATH
 export ROCM_VERSION=6.4.1
 
 # GPU Configuration
-export HSA_OVERRIDE_GFX_VERSION=11.0.0
+# Source auto-detected GPU environment if available (fallback keeps previous default)
+[ -f "$HOME/.config/rocm-wsl-ai/gpu.env" ] && source "$HOME/.config/rocm-wsl-ai/gpu.env"
+: "${HSA_OVERRIDE_GFX_VERSION:=11.0.0}"
 export HCC_AMDGPU_TARGET=gfx1100,gfx1101,gfx1102,gfx1103
 export HIP_VISIBLE_DEVICES=0
 
