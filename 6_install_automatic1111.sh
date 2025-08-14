@@ -1,95 +1,19 @@
 #!/bin/bash
+set -e
+SCRIPT_DIR="$(dirname "$0")"
+COMMON="$SCRIPT_DIR/common.sh"
+[ -f "$COMMON" ] && source "$COMMON" || { echo "common.sh not found"; exit 1; }
 
-# ==============================================================================
-# Script to install Automatic1111 Stable Diffusion WebUI with ROCm support
-# Compatible with Ubuntu 24.04 LTS and WSL2
-# ==============================================================================
-
-# --- Configuration ---
 VENV_NAME="genai_env"
-VENV_PATH="$HOME/$VENV_NAME"
 WEBUI_DIR="$HOME/stable-diffusion-webui"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-NC='\033[0m' # No Color
+standard_header "Automatic1111 Stable Diffusion WebUI"
+ensure_venv "$VENV_NAME" || { err "Run 1_setup_pytorch_rocm_wsl.sh first"; exit 1; }
 
-# --- Functions ---
-print_header() {
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}========================================${NC}"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS] $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING] $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR] $1${NC}"
-}
-
-print_info() {
-    echo -e "${PURPLE}[INFO] $1${NC}"
-}
-
-# --- Script Start ---
-print_header "Installing Automatic1111 Stable Diffusion WebUI"
-
-# Exit immediately if a command exits with a non-zero status
-set -e
-
-# --- 1. Check Prerequisites ---
-print_info "Checking prerequisites..."
-
-if [ ! -f "$VENV_PATH/bin/activate" ]; then
-    print_error "Python virtual environment not found at $VENV_PATH"
-    print_error "Please run the ROCm/PyTorch setup script first (1_setup_pytorch_rocm_wsl.sh)"
-    exit 1
-fi
-
-print_success "Prerequisites check passed"
-
-# --- 2. Activate Virtual Environment ---
-print_info "Activating Python virtual environment..."
-source "$VENV_PATH/bin/activate"
-print_success "Virtual environment activated"
-
-# --- 3. Clone Automatic1111 Repository ---
-print_info "Cloning Automatic1111 Stable Diffusion WebUI..."
-
-if [ ! -d "$WEBUI_DIR" ]; then
-    git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git "$WEBUI_DIR"
-    print_success "Repository cloned successfully"
-else
-    print_warning "Directory already exists at $WEBUI_DIR"
-    print_info "Updating existing installation..."
-    cd "$WEBUI_DIR"
-    git pull
-    cd "$HOME"
-fi
-
-# --- 4. Install Dependencies ---
-print_info "Installing additional dependencies for ROCm..."
-
-# Install required system packages
-sudo apt update
-sudo apt install -y wget git python3-pip python3-venv libgl1 libglib2.0-0
-
-# --- 5. Configure for ROCm ---
-print_info "Configuring WebUI for ROCm support..."
+ensure_apt_packages wget git python3-pip python3-venv libgl1 libglib2.0-0
+git_clone_or_update https://github.com/AUTOMATIC1111/stable-diffusion-webui.git "$WEBUI_DIR"
 
 cd "$WEBUI_DIR"
-
-# Create or update webui-user.sh for ROCm
 cat > webui-user.sh << 'EOF'
 #!/bin/bash
 
@@ -114,41 +38,24 @@ export PYTORCH_CUDA_ALLOC_CONF=""
 export PYTORCH_ROCM_ALLOW_UNALIGNED_ACCESS=1
 EOF
 
-chmod +x webui-user.sh
+chmod +x webui-user.sh || warn "chmod webui-user.sh failed"
 
-# --- 6. Install Essential Extensions ---
-print_info "Installing useful extensions..."
+declare -a EXT_LIST=( \
+    "sd-webui-controlnet|https://github.com/Mikubill/sd-webui-controlnet.git" \
+    "openpose-editor|https://github.com/fkunn1326/openpose-editor.git" \
+    "stable-diffusion-webui-images-browser|https://github.com/AlUlkesh/stable-diffusion-webui-images-browser.git" \
+    "sd-webui-additional-networks|https://github.com/kohya-ss/sd-webui-additional-networks.git" )
 
-cd extensions
-
-# ControlNet extension (very popular)
-if [ ! -d "sd-webui-controlnet" ]; then
-    git clone https://github.com/Mikubill/sd-webui-controlnet.git sd-webui-controlnet
-    print_success "ControlNet extension installed"
-fi
-
-# OpenPose Editor
-if [ ! -d "openpose-editor" ]; then
-    git clone https://github.com/fkunn1326/openpose-editor.git openpose-editor
-    print_success "OpenPose Editor extension installed"
-fi
-
-# Image Browser
-if [ ! -d "stable-diffusion-webui-images-browser" ]; then
-    git clone https://github.com/AlUlkesh/stable-diffusion-webui-images-browser.git stable-diffusion-webui-images-browser
-    print_success "Image Browser extension installed"
-fi
-
-# Additional Networks (for LoRA support)
-if [ ! -d "sd-webui-additional-networks" ]; then
-    git clone https://github.com/kohya-ss/sd-webui-additional-networks.git sd-webui-additional-networks
-    print_success "Additional Networks extension installed"
-fi
-
-cd "$WEBUI_DIR"
-
-# --- 7. Create Launch Script ---
-print_info "Creating launch script..."
+mkdir -p extensions
+for entry in "${EXT_LIST[@]}"; do
+    name="${entry%%|*}"; repo="${entry##*|}";
+    if [ ! -d "extensions/$name" ]; then
+        log "Adding extension $name"
+        git clone --depth=1 "$repo" "extensions/$name" || warn "Failed to clone $name"
+    else
+        git -C "extensions/$name" pull --rebase --autostash >/dev/null 2>&1 || true
+    fi
+done
 
 cat > launch_webui_rocm.sh << 'EOF'
 #!/bin/bash
@@ -174,12 +81,9 @@ echo "Use Ctrl+C to stop the server"
 ./webui.sh --listen --enable-insecure-extension-access
 EOF
 
-chmod +x launch_webui_rocm.sh
+chmod +x launch_webui_rocm.sh || warn "chmod launch_webui_rocm.sh failed"
 
-# --- 8. Create Desktop Shortcut (if in GUI environment) ---
-if [ ! -z "$DISPLAY" ] || [ ! -z "$WAYLAND_DISPLAY" ]; then
-    print_info "Creating desktop shortcut..."
-    
+if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
     cat > "$HOME/Desktop/Automatic1111_WebUI.desktop" << EOF
 [Desktop Entry]
 Version=1.0
@@ -191,39 +95,17 @@ Icon=applications-graphics
 Terminal=true
 Categories=Graphics;Photography;
 EOF
-    
     chmod +x "$HOME/Desktop/Automatic1111_WebUI.desktop"
-    print_success "Desktop shortcut created"
 fi
-
 cd "$HOME"
+success "Automatic1111 install/update complete"
+cat <<EOF
+Launch: $WEBUI_DIR/launch_webui_rocm.sh
+Open:   http://127.0.0.1:7860
+Models: $WEBUI_DIR/models/Stable-diffusion/
+ControlNet models: $WEBUI_DIR/extensions/sd-webui-controlnet/models/
+Check ROCm: rocminfo | grep Agent
+Torch ROCm avail: python -c 'import torch; print(torch.cuda.is_available())'
+EOF
 
-# --- 9. Final Configuration ---
-print_info "Performing final setup..."
-
-# Ensure correct permissions
-chmod +x "$WEBUI_DIR/webui.sh"
-chmod +x "$WEBUI_DIR/launch_webui_rocm.sh"
-
-print_header "Installation Complete!"
-
-echo -e "${GREEN}Automatic1111 Stable Diffusion WebUI has been installed successfully!${NC}"
-echo ""
-echo -e "${YELLOW}To start the WebUI:${NC}"
-echo -e "1. Run: ${BLUE}cd $WEBUI_DIR && ./launch_webui_rocm.sh${NC}"
-echo -e "2. Or run: ${BLUE}$WEBUI_DIR/launch_webui_rocm.sh${NC}"
-echo -e "3. Open your browser and go to: ${BLUE}http://127.0.0.1:7860${NC}"
-echo ""
-echo -e "${YELLOW}Important Notes:${NC}"
-echo -e "• First startup will take longer as it downloads the base model"
-echo -e "• Download additional models to: ${BLUE}$WEBUI_DIR/models/Stable-diffusion/${NC}"
-echo -e "• ControlNet models go to: ${BLUE}$WEBUI_DIR/extensions/sd-webui-controlnet/models/${NC}"
-echo -e "• If you experience memory issues, try reducing image resolution"
-echo -e "• The WebUI includes ControlNet, OpenPose Editor, and other useful extensions"
-echo ""
-echo -e "${YELLOW}For troubleshooting:${NC}"
-echo -e "• Check that ROCm is working: ${BLUE}rocminfo${NC}"
-echo -e "• Verify PyTorch ROCm support: ${BLUE}python3 -c 'import torch; print(torch.cuda.is_available())'${NC}"
-echo -e "• Adjust HSA_OVERRIDE_GFX_VERSION in webui-user.sh for your specific GPU"
-echo ""
-print_success "Installation completed successfully!"
+exit 0

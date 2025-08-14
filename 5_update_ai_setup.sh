@@ -1,4 +1,12 @@
 #!/bin/bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/common.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/common.sh"
+else
+    echo "common.sh not found" >&2; exit 1
+fi
 
 # ==============================================================================
 # Update Script for ROCm AI Setup - 2025 Edition (Fixed & Enhanced)
@@ -16,22 +24,13 @@ INVOKEAI_DIR="$HOME/InvokeAI"
 FOOOCUS_DIR="$HOME/Fooocus"
 TEXTGEN_DIR="$HOME/text-generation-webui"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-# --- Helpers ---
-print_header() { echo -e "${BLUE}========================================${NC}\n${BLUE}$1${NC}\n${BLUE}========================================${NC}"; }
-print_section() { echo -e "${CYAN}--- $1 ---${NC}"; }
-print_success() { echo -e "${GREEN}[SUCCESS] $1${NC}"; }
-print_warning() { echo -e "${YELLOW}[WARNING] $1${NC}"; }
-print_error() { echo -e "${RED}[ERROR] $1${NC}"; }
-print_info() { echo -e "${PURPLE}[INFO] $1${NC}"; }
+# Map prior function names
+print_header(){ headline "$@"; }
+print_section(){ headline "$@"; }
+print_success(){ success "$@"; }
+print_warning(){ warn "$@"; }
+print_error(){ err "$@"; }
+print_info(){ log "$@"; }
 
 check_venv() {
     if [ ! -f "$VENV_PATH/bin/activate" ]; then
@@ -221,24 +220,24 @@ show_update_menu() {
     while true; do
         clear
         print_header "AI Tools Update Menu - 2025"
-        echo -e "${CYAN}🔄 Wähle, was aktualisiert werden soll:${NC}\n"
-        echo -e "1.  ${YELLOW}AMD GPU Treiber neu installieren${NC}"
-        echo -e "2.  ROCm Stack aktualisieren"
-        echo -e "3.  PyTorch (ROCm) + Triton aktualisieren"
-        echo -e "4.  ComfyUI aktualisieren"
-        echo -e "5.  SD.Next aktualisieren"
-        echo -e "6.  Automatic1111 aktualisieren"
-        echo -e "7.  Ollama aktualisieren"
-        echo -e "8.  InvokeAI aktualisieren"
-        echo -e "9.  Fooocus aktualisieren"
-        echo -e "10. Text Generation WebUI aktualisieren"
-        echo ""
-        echo -e "11. ${GREEN}Alle AI-Tools aktualisieren (ohne Treiber)${NC}"
-        echo -e "12. Cache bereinigen"
-        echo -e "13. Installation prüfen"
-        echo -e "0.  Zurück"
+    echo -e "${CYAN}🔄 Select what to update:${NC}\n"
+    echo -e "1.  ${YELLOW}Reinstall AMD GPU drivers${NC}"
+    echo -e "2.  Update ROCm stack"
+    echo -e "3.  Update PyTorch (ROCm) + Triton"
+    echo -e "4.  Update ComfyUI"
+    echo -e "5.  Update SD.Next"
+    echo -e "6.  Update Automatic1111"
+    echo -e "7.  Update Ollama"
+    echo -e "8.  Update InvokeAI"
+    echo -e "9.  Update Fooocus"
+    echo -e "10. Update Text Generation WebUI"
+    echo ""
+    echo -e "11. ${GREEN}Update ALL AI tools (excluding drivers)${NC}"
+    echo -e "12. Clean caches"
+    echo -e "13. Verify installation"
+    echo -e "0.  Back"
         echo -e "${BLUE}========================================${NC}"
-        read -p "Eingabe: " choice
+    read -p "Choice: " choice
         case $choice in
             1) update_amdgpu_drivers ;;
             2) update_rocm ;;
@@ -251,23 +250,23 @@ show_update_menu() {
             9) update_fooocus ;;
             10) update_textgen ;;
             11)
-                print_header "Aktualisiere alle AI-Tools"
+                print_header "Updating all AI tools"
                 update_pytorch; update_comfyui; update_sdnext; update_automatic1111; update_ollama; update_invokeai; update_fooocus; update_textgen
                 cleanup_cache; verify_installations
-                print_success "Alle AI-Tools aktualisiert!"
+                print_success "All AI tools updated"
                 ;;
             12) cleanup_cache ;;
             13) verify_installations ;;
             0) return ;;
-            *) print_error "Ungültige Option" ;;
+            *) print_error "Invalid option" ;;
         esac
-        read -p "Weiter mit Enter..." _
+        read -p "Press Enter to continue..." _
     done
 }
 
 # --- Main ---
 echo "Starting AI Tools Update Script..."
 if ! grep -q Microsoft /proc/version; then
-    print_warning "Dieses Skript ist für WSL2 optimiert. Auf nativen Linux-Systemen können Abweichungen auftreten."
+    print_warning "This script is optimized for WSL2; native Linux may differ."
 fi
 show_update_menu
