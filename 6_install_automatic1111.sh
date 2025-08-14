@@ -17,24 +17,21 @@ cd "$WEBUI_DIR"
 cat > webui-user.sh << 'EOF'
 #!/bin/bash
 
-# ROCm Configuration for Automatic1111 WebUI
+# ROCm Configuration for Automatic1111 WebUI (auto GPU detection aware)
 export COMMANDLINE_ARGS="--precision full --no-half --opt-split-attention --use-cpu interrogate"
 
-# ROCm specific environment variables
-export HSA_OVERRIDE_GFX_VERSION="12.0.0"  # Adjust based on your GPU (e.g., 12.0.0 for RDNA4, 11.0.0 for RDNA3)
-export PYTORCH_ROCM_ARCH="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102"  # RDNA4 & RDNA3 support
+# Load auto-detected GPU environment if present
+[ -f "$HOME/.config/rocm-wsl-ai/gpu.env" ] && source "$HOME/.config/rocm-wsl-ai/gpu.env"
+
+# Fallbacks (only set if not already from gpu.env)
+: "${HSA_OVERRIDE_GFX_VERSION:=11.0.0}"
+: "${PYTORCH_ROCM_ARCH:=gfx1200;gfx1201;gfx1100;gfx1101;gfx1102}"
 export GPU_FORCE_64BIT_PTR=1
 export GPU_MAX_HEAP_SIZE="100%"
 export GPU_MAX_ALLOC_PERCENT="100%"
 export GPU_USE_SYNC_OBJECTS=1
-
-# Use system PyTorch instead of downloading CUDA version
 export TORCH_COMMAND="pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4"
-
-# Disable some CUDA-specific optimizations
 export PYTORCH_CUDA_ALLOC_CONF=""
-
-# Memory optimization
 export PYTORCH_ROCM_ALLOW_UNALIGNED_ACCESS=1
 EOF
 
@@ -60,12 +57,10 @@ done
 cat > launch_webui_rocm.sh << 'EOF'
 #!/bin/bash
 
-# Activate the genai_env virtual environment
 source ~/genai_env/bin/activate
-
-# Set ROCm environment variables
-export HSA_OVERRIDE_GFX_VERSION="12.0.0"  # Adjust for your GPU
-export PYTORCH_ROCM_ARCH="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102"
+[ -f "$HOME/.config/rocm-wsl-ai/gpu.env" ] && source "$HOME/.config/rocm-wsl-ai/gpu.env"
+: "${HSA_OVERRIDE_GFX_VERSION:=11.0.0}"
+: "${PYTORCH_ROCM_ARCH:=gfx1200;gfx1201;gfx1100;gfx1101;gfx1102}"
 export GPU_FORCE_64BIT_PTR=1
 export GPU_MAX_HEAP_SIZE="100%"
 export GPU_MAX_ALLOC_PERCENT="100%"

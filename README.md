@@ -36,7 +36,7 @@ System & utilities
 ## Requirements
 - Windows 11 + WSL2
 - Ubuntu 24.04 inside WSL2
- - AMD GPU (WSL passthrough für ROCm aktuell NUR RDNA4 & RDNA3 – RDNA2 und älter werden in WSL nicht als Compute-Gerät durchgereicht; für diese bitte natives Linux verwenden)
+- AMD GPU (WSL passthrough for ROCm currently ONLY RDNA4 & RDNA3 – RDNA2 and older are not exposed as compute devices in WSL; for those use native Linux)
 - whiptail (for the TUI). If the menu doesn’t render as a UI:
    ```bash
    sudo apt update && sudo apt install -y whiptail
@@ -123,17 +123,32 @@ git pull --rebase
 - Ollama’s systemd user service may require systemd in WSL; if it doesn’t start, run it manually via the scripts
 - For ROCm trouble, use the menu’s Driver Management and follow the prompts
 
-## License
-MIT
-rocm-smi
-
-# Memory usage  
-rocm-smi --showmeminfo
-
-# System resources
-htop
 ```
-## 🛠️ Troubleshooting
+## � Automatic GPU Detection
+
+You normally do NOT need to manually set `HSA_OVERRIDE_GFX_VERSION` or `PYTORCH_ROCM_ARCH`.
+
+On first run of any installer/launcher script the system:
+1. Detects your AMD GPU architecture (`gfx*`) via `rocminfo` / `dmesg` hints
+2. Maps it to the correct ROCm triplet (e.g. RDNA3 → `11.0.0`, RDNA4 → `12.0.0`)
+3. Writes the resolved variables to:
+   `~/.config/rocm-wsl-ai/gpu.env`
+4. All subsequent scripts simply source that file
+
+Want to re-detect? Delete the file:
+```bash
+rm ~/.config/rocm-wsl-ai/gpu.env
+```
+Then run the menu again; a fresh detection will occur.
+
+Override manually? Edit the file directly. Example custom override:
+```bash
+echo 'export HSA_OVERRIDE_GFX_VERSION="11.0.0"' >> ~/.config/rocm-wsl-ai/gpu.env
+```
+
+Note: Under WSL only RDNA3/RDNA4 are exposed for compute. If you are on unsupported hardware the detection will fall back to a safe default and PyTorch may operate in reduced / CPU modes.
+
+## �🛠️ Troubleshooting
 
 ### Common Issues
 
@@ -170,40 +185,16 @@ pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pyt
 - Use `rocm-smi` to monitor GPU utilization
 - Check that ROCm drivers are properly loaded
 
-### GPU-Specific Settings
+### GPU-Specific Settings (Manual Override)
 
-**RDNA4 (RX 9000 series):**
-```bash
-export HSA_OVERRIDE_GFX_VERSION="gfx1200"  # For most RX 9000 cards
-# Or gfx1201 for some variants
-```
+Normally handled automatically (see Automatic GPU Detection). Only use this if you are debugging or forcing a different mapping. Add one of these lines to `~/.config/rocm-wsl-ai/gpu.env` and then re-run the menu.
 
-**RDNA3 (RX 7000 series):**
-```bash
-export HSA_OVERRIDE_GFX_VERSION="gfx1100"  # For RX 7900 series
-# Or gfx1101 for RX 7800/7700, gfx1102 for RX 7600
-```
-
-**RDNA2 (RX 6000 series):**
-```bash
-export HSA_OVERRIDE_GFX_VERSION="gfx1030"  # For most RX 6000 cards
-```
-
-**RDNA1 (RX 5000 series):**
-```bash
-export HSA_OVERRIDE_GFX_VERSION="gfx1010"  # For most RX 5000 cards
-```
-
-**Vega:**
-```bash
-export HSA_OVERRIDE_GFX_VERSION="gfx900"  # For Vega 56/64
-# Or gfx906 for Radeon VII
-```
-
-**Polaris (RX 400/500 series):**
-```bash
-export HSA_OVERRIDE_GFX_VERSION="gfx803"  # For most Polaris cards
-```
+RDNA4 (RX 9000): `export HSA_OVERRIDE_GFX_VERSION="gfx1200"` (or `gfx1201`)
+RDNA3 (RX 7000): `export HSA_OVERRIDE_GFX_VERSION="gfx1100"` (7800/7700: `gfx1101`, 7600: `gfx1102`)
+RDNA2 (RX 6000): `export HSA_OVERRIDE_GFX_VERSION="gfx1030"`
+RDNA1 (RX 5000): `export HSA_OVERRIDE_GFX_VERSION="gfx1010"`
+Vega (56/64): `export HSA_OVERRIDE_GFX_VERSION="gfx900"` (Radeon VII: `gfx906`)
+Polaris (RX 400/500): `export HSA_OVERRIDE_GFX_VERSION="gfx803"`
 
 ## 📁 Directory Structure
 
