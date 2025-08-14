@@ -1,4 +1,12 @@
 #!/bin/bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/common.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/common.sh"
+else
+    echo "common.sh not found" >&2; exit 1
+fi
 
 # ==============================================================================
 # AI Tools Suite for AMD GPUs on WSL2 - 2025 (TUI with whiptail)
@@ -23,47 +31,21 @@ LLAMACPP_DIR="$HOME/llama.cpp"
 KOBOLDCPP_DIR="$HOME/KoboldCpp"
 FASTCHAT_DIR="$HOME/FastChat"
 
-# Colors for menu
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-# --- Functions ---
-
-print_header() {
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}========================================${NC}"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS] $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING] $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR] $1${NC}"
-}
-
-print_info() {
-    echo -e "${PURPLE}[INFO] $1${NC}"
-}
+# Map legacy function names to common.sh helpers for minimal diff
+print_header(){ headline "$@"; }
+print_success(){ success "$@"; }
+print_warning(){ warn "$@"; }
+print_error(){ err "$@"; }
+print_info(){ log "$@"; }
 
 # --- Self-Update (GitHub) ---
 self_update_repo() {
-    print_header "Projekt Selbst-Update (GitHub)"
+    print_header "Project Self-Update (GitHub)"
     if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-        print_info "Aktueller Branch: ${CURRENT_BRANCH}"
-        print_info "Hole Updates vom Remote..."
-        git fetch --all --prune || { print_error "git fetch fehlgeschlagen"; return 1; }
+    print_info "Current branch: ${CURRENT_BRANCH}"
+    print_info "Fetching remote updates..."
+    git fetch --all --prune || { print_error "git fetch failed"; return 1; }
 
         # Bestmöglicher Upstream ermitteln
         if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
@@ -71,7 +53,7 @@ self_update_repo() {
         else
             # Fallback auf origin/main
             UPSTREAM="${REPO_REMOTE}/main"
-            print_warning "Kein Upstream gesetzt. Vergleiche gegen ${UPSTREAM}"
+            print_warning "No upstream set. Comparing against ${UPSTREAM}"
         fi
 
         LOCAL=$(git rev-parse @)
@@ -79,30 +61,30 @@ self_update_repo() {
         BASE=$(git merge-base @ "$UPSTREAM" 2>/dev/null || echo "")
 
         if [ -z "$REMOTE" ] || [ -z "$BASE" ]; then
-            print_warning "Upstream konnte nicht ermittelt werden."
-            read -p "Trotzdem 'git pull' ausführen? (y/N): " -n 1 -r; echo
+            print_warning "Unable to determine upstream."
+            read -p "Run 'git pull' anyway? (y/N): " -n 1 -r; echo
             [[ $REPLY =~ ^[Yy]$ ]] || return 0
-            git pull --rebase || git pull || { print_error "git pull fehlgeschlagen"; return 1; }
-            print_success "Repository aktualisiert"
+            git pull --rebase || git pull || { print_error "git pull failed"; return 1; }
+            print_success "Repository updated"
             return 0
         fi
 
         if [ "$LOCAL" = "$REMOTE" ]; then
-            print_success "Bereits auf dem neuesten Stand"
+            print_success "Already up to date"
         elif [ "$LOCAL" = "$BASE" ]; then
-            print_info "Es sind Updates verfügbar. Ziehe Änderungen..."
-            git pull --rebase || git pull || { print_error "git pull fehlgeschlagen"; return 1; }
-            print_success "Repository aktualisiert"
+            print_info "Updates available. Pulling..."
+            git pull --rebase || git pull || { print_error "git pull failed"; return 1; }
+            print_success "Repository updated"
         elif [ "$REMOTE" = "$BASE" ]; then
-            print_warning "Lokale Commits sind voraus. Kein automatisches Pull."
-            print_info "Bitte manuell mergen/rebasen."
+            print_warning "Local commits ahead. Not pulling automatically."
+            print_info "Please merge/rebase manually."
         else
-            print_warning "Lokale und Remote-Verläufe weichen ab."
-            print_info "Bitte manuell Konflikte lösen."
+            print_warning "Local and remote histories diverged."
+            print_info "Resolve conflicts manually."
         fi
     else
-        print_warning "Kein Git-Repository erkannt."
-        print_info "Du kannst das Repo klonen: https://github.com/daMustermann/rocm-wsl-ai"
+        print_warning "No git repository detected."
+        print_info "Clone: https://github.com/daMustermann/rocm-wsl-ai"
     fi
     read -p "Press Enter to continue..."
 }
@@ -272,14 +254,14 @@ start_invokeai() {
 install_fooocus() {
     print_header "Installing Fooocus"
     if [ ! -f "$VENV_PATH/bin/activate" ]; then
-        print_error "Python virtual environment not found! Erst ROCm/PyTorch installieren (Installation → Option)"
+        print_error "Python virtual environment not found! Install ROCm/PyTorch first (Installation → Base)"
         return 1
     fi
     if [ -f "./10_install_fooocus.sh" ]; then
         chmod +x ./10_install_fooocus.sh && ./10_install_fooocus.sh
-        print_success "Fooocus installiert"
+        print_success "Fooocus installed"
     else
-        print_error "10_install_fooocus.sh nicht gefunden"
+        print_error "10_install_fooocus.sh missing"
     fi
     read -p "Press Enter to continue..."
 }
@@ -287,7 +269,7 @@ install_fooocus() {
 start_fooocus() {
     print_header "Starting Fooocus"
     if [ ! -d "$FOOOCUS_DIR" ]; then
-        print_error "Fooocus nicht installiert"
+        print_error "Fooocus not installed"
         return 1
     fi
     source "$VENV_PATH/bin/activate"
@@ -299,14 +281,14 @@ start_fooocus() {
 install_textgen() {
     print_header "Installing Text Generation WebUI"
     if [ ! -f "$VENV_PATH/bin/activate" ]; then
-        print_error "Python virtual environment not found! Erst ROCm/PyTorch installieren"
+        print_error "Python virtual environment not found! Install ROCm/PyTorch first"
         return 1
     fi
     if [ -f "./11_install_textgen_webui.sh" ]; then
         chmod +x ./11_install_textgen_webui.sh && ./11_install_textgen_webui.sh
-        print_success "Text Generation WebUI installiert"
+        print_success "Text Generation WebUI installed"
     else
-        print_error "11_install_textgen_webui.sh nicht gefunden"
+        print_error "11_install_textgen_webui.sh missing"
     fi
     read -p "Press Enter to continue..."
 }
@@ -314,7 +296,7 @@ install_textgen() {
 start_textgen() {
     print_header "Starting Text Generation WebUI"
     if [ ! -d "$TEXTGEN_DIR" ]; then
-        print_error "Text Generation WebUI nicht installiert"
+        print_error "Text Generation WebUI not installed"
         return 1
     fi
     source "$VENV_PATH/bin/activate"

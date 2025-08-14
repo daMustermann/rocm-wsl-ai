@@ -1,79 +1,44 @@
 #!/bin/bash
+set -euo pipefail
 
-# ==============================================================================
-# Script to install Ollama with ROCm support for running local AI models
-# Compatible with Ubuntu 24.04 LTS and WSL2
-# ==============================================================================
+# Install Ollama with (optional) ROCm support
 
-# --- Configuration ---
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$script_dir/common.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$script_dir/common.sh"
+else
+    echo "common.sh not found. Aborting." >&2; exit 1
+fi
+
 VENV_NAME="genai_env"
 VENV_PATH="$HOME/$VENV_NAME"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-NC='\033[0m' # No Color
-
-# --- Functions ---
-print_header() {
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}========================================${NC}"
-}
-
-print_success() {
-    echo -e "${GREEN}[SUCCESS] $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING] $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR] $1${NC}"
-}
-
-print_info() {
-    echo -e "${PURPLE}[INFO] $1${NC}"
-}
-
-# --- Script Start ---
-print_header "Installing Ollama with ROCm Support"
-
-# Exit immediately if a command exits with a non-zero status
-set -e
+standard_header "Installing Ollama (Local LLM Inference)"
 
 # --- 1. Check Prerequisites ---
-print_info "Checking prerequisites..."
+log "Checking prerequisites..."
 
 if [ ! -f "$VENV_PATH/bin/activate" ]; then
-    print_warning "Python virtual environment not found at $VENV_PATH"
-    print_info "Ollama can work independently, but having the ROCm environment is recommended"
+    warn "Python virtual environment not found at $VENV_PATH (optional)."
+    log "Ollama can run standalone; GPU acceleration depends on ROCm + driver + model backend."
 fi
 
-# Check for ROCm
-if ! command -v rocminfo &> /dev/null; then
-    print_warning "ROCm tools not found. Please install ROCm first for GPU acceleration"
-    print_info "You can still install Ollama, but it will run on CPU only"
-    read -p "Continue with installation? (y/N): " continue_install
-    if [[ ! $continue_install =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+if ! has_rocm; then
+    warn "ROCm not detected. Ollama will run CPU-only for most models."
+    confirm "Continue without ROCm?" || { err "Aborted by user"; exit 1; }
 fi
 
 # --- 2. Install Ollama ---
-print_info "Installing Ollama..."
+log "Installing Ollama..."
 
 # Download and install Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
 
-print_success "Ollama installed"
+success "Ollama installed"
 
 # --- 3. Configure for ROCm ---
-print_info "Configuring Ollama for ROCm support..."
+log "Configuring systemd user service..."
 
 # Create systemd user service directory if it doesn't exist
 mkdir -p ~/.config/systemd/user
@@ -102,41 +67,41 @@ WantedBy=default.target
 EOF
 
 # Reload systemd and enable the service
-systemctl --user daemon-reload
-systemctl --user enable ollama.service
-
-print_success "Ollama service configured"
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    systemctl --user daemon-reload
+    systemctl --user enable ollama.service || warn "Could not enable ollama.service"
+    success "Ollama service configured"
+else
+    warn "systemd user instance not available. You must start 'ollama serve' manually."
+fi
 
 # --- 4. Start Ollama Service ---
-print_info "Starting Ollama service..."
-
-systemctl --user start ollama.service
-
-# Wait a moment for the service to start
-sleep 3
-
-# Check if service is running
-if systemctl --user is-active --quiet ollama.service; then
-    print_success "Ollama service is running"
+if command -v systemctl >/dev/null 2>&1 && systemctl --user start ollama.service 2>/dev/null; then
+    log "Starting Ollama service..."
+    sleep 3
+    if systemctl --user is-active --quiet ollama.service; then
+        success "Ollama service is running"
+    else
+        warn "Ollama service may not have started correctly (check: systemctl --user status ollama.service)"
+    fi
 else
-    print_warning "Ollama service may not have started correctly"
-    print_info "You can check status with: systemctl --user status ollama.service"
+    warn "Skipping service start (systemd user not available). Run: ollama serve"
 fi
 
 # --- 5. Test Installation ---
-print_info "Testing Ollama installation..."
+log "Testing Ollama binary..."
 
 # Give the service a moment to fully start
 sleep 2
 
-if ollama list &> /dev/null; then
-    print_success "Ollama is responding correctly"
+if command -v ollama >/dev/null 2>&1 && ollama list &>/dev/null; then
+    success "Ollama responded"
 else
-    print_warning "Ollama may not be responding yet. This is normal on first startup."
+    warn "Ollama not responding yet (may still be starting)."
 fi
 
 # --- 6. Download Popular Models ---
-print_info "Would you like to download some popular AI models?"
+log "Optional: download a starter model"
 echo "Available models:"
 echo "1. Llama 3.2 3B (Smaller, faster)"
 echo "2. Llama 3.2 8B (Balanced)"
@@ -148,35 +113,35 @@ read -p "Enter your choice (1-5): " model_choice
 
 case $model_choice in
     1)
-        print_info "Downloading Llama 3.2 3B..."
+    log "Downloading Llama 3.2 3B..."
         ollama pull llama3.2:3b
-        print_success "Llama 3.2 3B downloaded"
+    success "Llama 3.2 3B downloaded"
         ;;
     2)
-        print_info "Downloading Llama 3.2 8B..."
+    log "Downloading Llama 3.2 8B..."
         ollama pull llama3.2:8b
-        print_success "Llama 3.2 8B downloaded"
+    success "Llama 3.2 8B downloaded"
         ;;
     3)
-        print_info "Downloading Mistral 7B..."
+    log "Downloading Mistral 7B..."
         ollama pull mistral:7b
-        print_success "Mistral 7B downloaded"
+    success "Mistral 7B downloaded"
         ;;
     4)
-        print_info "Downloading CodeLlama 7B..."
+    log "Downloading CodeLlama 7B..."
         ollama pull codellama:7b
-        print_success "CodeLlama 7B downloaded"
+    success "CodeLlama 7B downloaded"
         ;;
     5)
-        print_info "Skipping model download"
+    log "Skipping model download"
         ;;
     *)
-        print_warning "Invalid choice, skipping model download"
+    warn "Invalid choice, skipping model download"
         ;;
 esac
 
 # --- 7. Create Helper Scripts ---
-print_info "Creating helper scripts..."
+log "Creating helper scripts..."
 
 # Create a chat script
 cat > ~/start_ollama_chat.sh << 'EOF'
@@ -316,14 +281,14 @@ EOF
 
 chmod +x ~/manage_ollama_models.sh
 
-print_success "Helper scripts created"
+success "Helper scripts created"
 
 # --- 8. Install Open WebUI (Optional) ---
-print_info "Would you like to install Open WebUI for a ChatGPT-like interface? (y/N)"
+log "Optional: Install Open WebUI (ChatGPT-like UI)"
 read -p "Install Open WebUI? " install_webui
 
 if [[ $install_webui =~ ^[Yy]$ ]]; then
-    print_info "Installing Open WebUI..."
+    log "Installing Open WebUI..."
     
     # Activate virtual environment if available
     if [ -f "$VENV_PATH/bin/activate" ]; then
@@ -356,12 +321,12 @@ open-webui serve --host 0.0.0.0 --port 8080
 EOF
     
     chmod +x ~/start_openwebui.sh
-    print_success "Open WebUI installed. Launch with: ~/start_openwebui.sh"
+    success "Open WebUI installed. Launch with: ~/start_openwebui.sh"
 fi
 
-print_header "Installation Complete!"
+headline "Installation Complete"
 
-echo -e "${GREEN}Ollama has been installed successfully!${NC}"
+echo -e "${GREEN}Ollama has been installed successfully${NC}"
 echo ""
 echo -e "${YELLOW}Quick Start:${NC}"
 echo -e "• Start a chat: ${BLUE}~/start_ollama_chat.sh${NC}"
@@ -371,10 +336,13 @@ if [[ $install_webui =~ ^[Yy]$ ]]; then
 echo -e "• Web interface: ${BLUE}~/start_openwebui.sh${NC}"
 fi
 echo ""
-echo -e "${YELLOW}Service Commands:${NC}"
-echo -e "• Start service: ${BLUE}systemctl --user start ollama.service${NC}"
-echo -e "• Stop service: ${BLUE}systemctl --user stop ollama.service${NC}"
-echo -e "• Service status: ${BLUE}systemctl --user status ollama.service${NC}"
+if command -v systemctl >/dev/null 2>&1; then
+    echo -e "${YELLOW}Service Commands:${NC}"
+    echo -e "• Start service: ${BLUE}systemctl --user start ollama.service${NC}"
+    echo -e "• Stop service: ${BLUE}systemctl --user stop ollama.service${NC}"
+    echo -e "• Service status: ${BLUE}systemctl --user status ollama.service${NC}"
+    echo ""
+fi
 echo ""
 echo -e "${YELLOW}Direct Commands:${NC}"
 echo -e "• List models: ${BLUE}ollama list${NC}"
@@ -382,7 +350,7 @@ echo -e "• Download model: ${BLUE}ollama pull <model-name>${NC}"
 echo -e "• Chat with model: ${BLUE}ollama run <model-name>${NC}"
 echo ""
 echo -e "${YELLOW}ROCm GPU Support:${NC}"
-if command -v rocminfo &> /dev/null; then
+if has_rocm; then
     echo -e "• ROCm detected - GPU acceleration should be available"
     echo -e "• Check GPU usage with: ${BLUE}rocm-smi${NC}"
 else
@@ -390,4 +358,4 @@ else
     echo -e "• Install ROCm first for GPU acceleration"
 fi
 echo ""
-print_success "Installation completed successfully!"
+success "Installation completed successfully"
