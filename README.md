@@ -36,11 +36,31 @@ System & utilities
 ## Requirements
 - Windows 11 + WSL2
 - Ubuntu 24.04 inside WSL2
-- AMD GPU (RDNA4/3/2/1, Vega, Polaris)
+ - AMD GPU (WSL passthrough für ROCm aktuell NUR RDNA4 & RDNA3 – RDNA2 und älter werden in WSL nicht als Compute-Gerät durchgereicht; für diese bitte natives Linux verwenden)
 - whiptail (for the TUI). If the menu doesn’t render as a UI:
    ```bash
    sudo apt update && sudo apt install -y whiptail
    ```
+
+### GPU Compatibility (WSL vs. Native Linux)
+
+| Architecture / Generation | Example Series | WSL GPU Compute (ROCm) | Native Linux ROCm |
+|---------------------------|----------------|------------------------|-------------------|
+| RDNA4 (gfx12xx)          | RX 9000*       | ✅ Supported            | ✅ Supported       |
+| RDNA3 (gfx11xx)          | RX 7000        | ✅ Supported            | ✅ Supported       |
+| RDNA2 (gfx10.3)          | RX 6000        | ❌ Not passed through   | ✅ Supported       |
+| RDNA1 (gfx10.1)          | RX 5000        | ❌ Not passed through   | ✅ Supported       |
+| Vega (gfx9xx)            | Radeon VII     | ❌ Not passed through   | ✅ Supported       |
+| Polaris (gfx803)         | RX 4xx / 5xx   | ❌ Not passed through   | ✅ Supported       |
+| Older (GCN < gfx803)     | Various        | ❌ Not passed through   | ❌ / Partial       |
+
+*Some very new RDNA4 SKUs may appear before AMD updates the official list.
+
+Important:
+- If your GPU is below RDNA3 it will show up inside WSL2 as a generic "Microsoft Basic Render Device" (or similar) and is not exposed for ROCm compute.
+- You can still use the menu (CPU workflows / prep for a future upgrade), but GPU acceleration requires native Linux or RDNA3 / RDNA4 hardware under WSL.
+- AMD reference: https://rocm.docs.amd.com/projects/radeon/en/latest/docs/compatibility/wsl/wsl_compatibility.html
+
 
 ## Install the suite
 ```bash
