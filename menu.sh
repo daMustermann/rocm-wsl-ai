@@ -258,8 +258,9 @@ get_latest_rocm_version() {
 get_latest_rc_version() {
     log "Fetching latest ROCm RC version number from repo.radeon.com..."
     local latest_rc_version
+    # Regex updated to be more flexible for RC versions like '7.0_rc1'
     latest_rc_version=$(curl -s "https://repo.radeon.com/rocm/apt/" | \
-        grep -oE '[0-9]+\.[0-9]+_rc[0-9]+/' | \
+        grep -oE '[0-9]+\.[0-9]+_rc[0-9a-zA-Z.-]+/' | \
         sed 's/\///' | \
         sort -V | \
         tail -n 1)
@@ -303,7 +304,8 @@ manage_gpu_drivers() {
     success "Selected ROCm version for installation: ${rocm_version_to_install}"
 
     local rocm_version_installed
-    rocm_version_installed=$(dpkg -l | grep "rocm-dev" | awk '{print $3}' | head -1 || echo "")
+    # Use dpkg-query for a more robust check that doesn't exit on error
+    rocm_version_installed=$(dpkg-query -W -f='${Version}' rocm-dev 2>/dev/null || echo "")
 
     local prompt_msg
     if [ -n "$rocm_version_installed" ]; then
@@ -325,11 +327,10 @@ manage_gpu_drivers() {
     if [ -n "$rocm_version_installed" ]; then
         (
         echo 0; echo "XXX"; echo "Removing existing AMD/ROCm packages (this may take a moment)..."; echo "XXX"
-        # The combination of purge and autoremove can be slow, but is thorough.
-        sudo apt purge -y 'amdgpu.*' 'rocm.*' 'hip.*' 'miopen.*' 'rocblas.*' 'rocsolver.*' 'rocfft.*' 'rocsparse.*' 'rccl.*' &>/dev/null
-        sudo apt autoremove -y &>/dev/null
+        # Use uninstall procedure from official docs
+        sudo apt autoremove -y rocm rocm-core &>/dev/null
         echo 50; echo "XXX"; echo "Cleaning up old repository files..."; echo "XXX"
-        sudo rm -f /etc/apt/sources.list.d/rocm.list /etc/apt/sources.list.d/amdgpu.list
+        sudo rm -f /etc/apt/sources.list.d/rocm.list /etc/apt/sources.list.d/rocm-graphics.list /etc/apt/preferences.d/rocm-pin-600
         echo 75; echo "XXX"; echo "Updating package lists..."; echo "XXX"
         sudo apt update &>/dev/null
         echo 100
@@ -347,20 +348,24 @@ manage_gpu_drivers() {
         echo 10 "Installing prerequisites (curl, gnupg)..."
         ensure_apt_packages curl gnupg2 &>/dev/null
 
-        echo 20 "Adding AMD repository key..."
-        curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/rocm.gpg
+        echo 20 "Adding AMD repository key (per official docs)..."
+        sudo mkdir --parents --mode=0755 /etc/apt/keyrings
+        curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/rocm.gpg
 
-        echo 30 "Adding ROCm repository for version ${rocm_version_to_install}..."
-        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${rocm_version_to_install} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
+        echo 30 "Adding ROCm repositories for version ${rocm_version_to_install}..."
+        echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${rocm_version_to_install} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
+        # Add graphics repository as per official ROCm 7.0 docs
+        echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/graphics/apt/${rocm_version_to_install} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/rocm-graphics.list > /dev/null
 
-        echo 40 "Updating package lists with new repository..."
+        echo 40 "Setting APT pinning..."
+        echo -e 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' | sudo tee /etc/apt/preferences.d/rocm-pin-600 > /dev/null
+
+        echo 50 "Updating package lists with new repositories..."
         sudo apt-get update -y &>/dev/null
 
-        echo 50 "Installing ROCm core components (rocm-dev, hipcc)..."
-        sudo apt-get install -y --no-install-recommends rocm-dev rocm-libs rocm-utils rocminfo rocm-smi hip-dev hipcc &>/dev/null
-
-        echo 75 "Installing ROCm ML libraries (rocblas, miopen)..."
-        sudo apt-get install -y --no-install-recommends miopen-hip rocblas rocsolver rocfft rocsparse rccl &>/dev/null
+        echo 60 "Installing ROCm meta-package..."
+        # Use the rocm meta-package as per official docs
+        sudo apt-get install -y --no-install-recommends rocm &>/dev/null
 
         echo 90 "Configuring user permissions..."
         sudo usermod -a -G render,video "$USER"
