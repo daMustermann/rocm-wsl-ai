@@ -193,18 +193,23 @@ run_full_update() {
 }
 
 check_status() {
+    local GPU_ENV_FILE="$HOME/.config/rocm-wsl-ai/gpu.env"
     (
     # Check ROCm/PyTorch
     echo "--- System Status ---"
     if [ -f "$VENV_PATH/bin/activate" ]; then
         echo "✓ ROCm/PyTorch Environment: INSTALLED"
         # Source in a subshell to not pollute the main script's env
-        (source "$VENV_PATH/bin/activate" && {
-            PY_VER=$(python3 -c "import torch; print(torch.__version__)")
-            ROCM_OK=$(python3 -c "import torch; print(torch.cuda.is_available())")
+        (
+            source "$VENV_PATH/bin/activate"
+            # Explicitly source the GPU env file inside the venv to ensure it's set.
+            if [ -f "$GPU_ENV_FILE" ]; then source "$GPU_ENV_FILE"; fi
+
+            PY_VER=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || echo "N/A")
+            ROCM_OK=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "N/A")
             echo "  - PyTorch Version: $PY_VER"
             echo "  - ROCm Detected by PyTorch: $ROCM_OK"
-        }) || echo "  - PyTorch verification failed."
+        ) || echo "  - PyTorch verification failed."
     else
         echo "✗ ROCm/PyTorch Environment: NOT INSTALLED"
     fi
@@ -221,6 +226,8 @@ check_status() {
     # Check ROCm system status
     echo -e "\n--- GPU Information ---"
     if command -v rocminfo &> /dev/null; then
+        # Explicitly source the GPU env file to ensure rocminfo has the override if needed
+        if [ -f "$GPU_ENV_FILE" ]; then source "$GPU_ENV_FILE"; fi
         rocminfo | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' | head -3
     else
         echo "rocminfo command not found. Is ROCm installed correctly?"
