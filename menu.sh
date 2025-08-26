@@ -1,18 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/common.sh" ]; then
+if [ -f "$SCRIPT_DIR/lib/common.sh" ]; then
     # shellcheck disable=SC1091
-    source "$SCRIPT_DIR/common.sh"
+    source "$SCRIPT_DIR/lib/common.sh"
 else
-    echo "common.sh not found" >&2; exit 1
+    echo "common.sh not found in lib/" >&2; exit 1
 fi
 
 # ==============================================================================
-# AI Tools Suite for AMD GPUs on WSL2 - 2025 (TUI with whiptail)
+# AI Tools Suite for AMD GPUs on Linux & WSL2 - 2025 (TUI with whiptail)
 # - Always latest ROCm & PyTorch Nightly
 # - Image Gen: ComfyUI, SD.Next, Automatic1111, InvokeAI, Fooocus, SD WebUI Forge
-# - LLMs: Ollama, Text Generation WebUI, llama.cpp, KoboldCpp, FastChat
 # - Utilities: Setup/Updates, GitHub self-update, Removal routines
 # ==============================================================================
 
@@ -24,12 +23,8 @@ SDNEXT_DIR="$HOME/SD.Next"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
 INVOKEAI_DIR="$HOME/InvokeAI"
 FOOOCUS_DIR="$HOME/Fooocus"
-TEXTGEN_DIR="$HOME/text-generation-webui"
 REPO_REMOTE="origin"
 FORGE_DIR="$HOME/stable-diffusion-webui-forge"
-LLAMACPP_DIR="$HOME/llama.cpp"
-KOBOLDCPP_DIR="$HOME/KoboldCpp"
-FASTCHAT_DIR="$HOME/FastChat"
 
 # Map legacy function names to common.sh helpers for minimal diff
 print_header(){ headline "$@"; }
@@ -90,14 +85,20 @@ self_update_repo() {
 }
 
 install_rocm_pytorch() {
-    print_header "Installing ROCm and PyTorch"
-    print_info "This will install ROCm 6.3, PyTorch 2.7.1 and Triton for AMD GPUs"
-    print_warning "This may take a while and requires WSL restart..."
-    
-    # Run the original script
-    ./1_setup_pytorch_rocm_wsl.sh
-    
-    print_success "ROCm and PyTorch installed!"
+    local ROCM_VERSION
+    ROCM_VERSION=$(whiptail --title "ROCm Version Select" --menu "Choose which ROCm version to install" 15 70 2 \
+        "latest" "Latest stable ROCm version (Recommended)" \
+        "7.0-rc1" "ROCm 7.0 RC1 (Experimental, for advanced users)" \
+        3>&1 1>&2 2>&3) || return 0
+
+    print_header "Installing ROCm and PyTorch (${ROCM_VERSION})"
+    print_info "This will install your selected ROCm version, PyTorch Nightly and Triton."
+    print_warning "This may take a while and might require a system restart..."
+
+    # Run the setup script with the selected version as an argument
+    ./scripts/install/setup_pytorch_rocm.sh "${ROCM_VERSION}"
+
+    print_success "ROCm and PyTorch (${ROCM_VERSION}) installation script finished!"
     read -p "Press Enter to continue..."
 }
 
@@ -112,7 +113,7 @@ install_comfyui() {
     fi
     
     # Run the original script
-    ./2_install_comfyui.sh
+    ./scripts/install/comfyui.sh
     
     print_success "ComfyUI installed!"
     read -p "Press Enter to continue..."
@@ -129,7 +130,7 @@ start_comfyui() {
     fi
     
     # Run the original script
-    ./3_start_comfyui.sh
+    ./scripts/start/comfyui.sh
     
     read -p "Press Enter to continue..."
 }
@@ -145,7 +146,7 @@ install_sdnext() {
     fi
     
     # Run the original script
-    ./4_install_sdnext.sh
+    ./scripts/install/sdnext.sh
     
     print_success "SD.Next installed!"
     read -p "Press Enter to continue..."
@@ -153,19 +154,7 @@ install_sdnext() {
 
 start_sdnext() {
     print_header "Starting SD.Next"
-    
-    # Check if SD.Next is installed
-    if [ ! -f "$SDNEXT_DIR/webui.sh" ]; then
-        print_error "SD.Next not found!"
-        print_error "Please install SD.Next first (Installation Menu → Option 4)"
-        return 1
-    fi
-    
-    # Activate environment and start
-    source "$VENV_PATH/bin/activate"
-    cd "$SDNEXT_DIR"
-    ./webui.sh --use-rocm --skip-torch-cuda-test
-    
+    ./scripts/start/sdnext.sh
     read -p "Press Enter to continue..."
 }
 
@@ -179,7 +168,7 @@ install_automatic1111() {
         return 1
     fi
     
-    ./6_install_automatic1111.sh
+    ./scripts/install/automatic1111.sh
     
     print_success "Automatic1111 WebUI installed!"
     read -p "Press Enter to continue..."
@@ -187,23 +176,14 @@ install_automatic1111() {
 
 start_automatic1111() {
     print_header "Starting Automatic1111 WebUI"
-    
-    if [ ! -f "$AUTOMATIC1111_DIR/webui.sh" ]; then
-        print_error "Automatic1111 WebUI not found!"
-        print_error "Please install it first (Installation Menu → Option 5)"
-        return 1
-    fi
-    
-    cd "$AUTOMATIC1111_DIR"
-    ./launch_webui_rocm.sh
-    
+    ./scripts/start/automatic1111.sh
     read -p "Press Enter to continue..."
 }
 
 install_ollama() {
     print_header "Installing Ollama"
     
-    ./7_install_ollama.sh
+    ./scripts/install/ollama.sh
     
     print_success "Ollama installed!"
     read -p "Press Enter to continue..."
@@ -231,7 +211,7 @@ install_invokeai() {
         return 1
     fi
     
-    ./8_install_invokeai.sh
+    ./scripts/install/invokeai.sh
     
     print_success "InvokeAI installed!"
     read -p "Press Enter to continue..."
@@ -239,15 +219,7 @@ install_invokeai() {
 
 start_invokeai() {
     print_header "Starting InvokeAI"
-    
-    if [ ! -f "$INVOKEAI_DIR/launch_webui.sh" ]; then
-        print_error "InvokeAI not found!"
-        print_error "Please install InvokeAI first (Installation Menu → Option 7)"
-        return 1
-    fi
-    
-    "$INVOKEAI_DIR/launch_webui.sh"
-    
+    ./scripts/start/invokeai.sh
     read -p "Press Enter to continue..."
 }
 
@@ -257,66 +229,24 @@ install_fooocus() {
         print_error "Python virtual environment not found! Install ROCm/PyTorch first (Installation → Base)"
         return 1
     fi
-    if [ -f "./10_install_fooocus.sh" ]; then
-        chmod +x ./10_install_fooocus.sh && ./10_install_fooocus.sh
+    if [ -f "./scripts/install/fooocus.sh" ]; then
+        ./scripts/install/fooocus.sh
         print_success "Fooocus installed"
     else
-        print_error "10_install_fooocus.sh missing"
+        print_error "scripts/install/fooocus.sh missing"
     fi
     read -p "Press Enter to continue..."
 }
 
 start_fooocus() {
     print_header "Starting Fooocus"
-    if [ ! -d "$FOOOCUS_DIR" ]; then
-        print_error "Fooocus not installed"
-        return 1
-    fi
-    source "$VENV_PATH/bin/activate"
-    cd "$FOOOCUS_DIR"
-    python launch.py --listen 0.0.0.0 --port 7865
-    read -p "Press Enter to continue..."
-}
-
-install_textgen() {
-    print_header "Installing Text Generation WebUI"
-    if [ ! -f "$VENV_PATH/bin/activate" ]; then
-        print_error "Python virtual environment not found! Install ROCm/PyTorch first"
-        return 1
-    fi
-    if [ -f "./11_install_textgen_webui.sh" ]; then
-        chmod +x ./11_install_textgen_webui.sh && ./11_install_textgen_webui.sh
-        print_success "Text Generation WebUI installed"
-    else
-        print_error "11_install_textgen_webui.sh missing"
-    fi
-    read -p "Press Enter to continue..."
-}
-
-start_textgen() {
-    print_header "Starting Text Generation WebUI"
-    if [ ! -d "$TEXTGEN_DIR" ]; then
-        print_error "Text Generation WebUI not installed"
-        return 1
-    fi
-    source "$VENV_PATH/bin/activate"
-    cd "$TEXTGEN_DIR"
-    python server.py --listen --api --chat
+    ./scripts/start/fooocus.sh
     read -p "Press Enter to continue..."
 }
 
 # --- Additional Tools (stubs for installers/starters/removers) ---
-install_forge() { print_header "Installing SD WebUI Forge"; if [ -f "./12_install_forge.sh" ]; then chmod +x ./12_install_forge.sh && ./12_install_forge.sh; else print_error "12_install_forge.sh not found"; fi; read -p "Press Enter to continue..."; }
-start_forge() { [ -d "$FORGE_DIR" ] && cd "$FORGE_DIR" && ./webui.sh --use-rocm || print_error "Forge not installed"; read -p "Press Enter to continue..."; }
-
-install_llamacpp() { print_header "Installing llama.cpp"; if [ -f "./13_install_llama_cpp.sh" ]; then chmod +x ./13_install_llama_cpp.sh && ./13_install_llama_cpp.sh; else print_error "13_install_llama_cpp.sh not found"; fi; read -p "Press Enter to continue..."; }
-start_llamacpp() { [ -d "$LLAMACPP_DIR" ] && cd "$LLAMACPP_DIR" && ./server -c 2048 || print_error "llama.cpp not installed"; read -p "Press Enter to continue..."; }
-
-install_koboldcpp() { print_header "Installing KoboldCpp"; if [ -f "./14_install_koboldcpp.sh" ]; then chmod +x ./14_install_koboldcpp.sh && ./14_install_koboldcpp.sh; else print_error "14_install_koboldcpp.sh not found"; fi; read -p "Press Enter to continue..."; }
-start_koboldcpp() { [ -d "$KOBOLDCPP_DIR" ] && cd "$KOBOLDCPP_DIR" && ./koboldcpp.sh || print_error "KoboldCpp not installed"; read -p "Press Enter to continue..."; }
-
-install_fastchat() { print_header "Installing FastChat"; if [ -f "./15_install_fastchat.sh" ]; then chmod +x ./15_install_fastchat.sh && ./15_install_fastchat.sh; else print_error "15_install_fastchat.sh not found"; fi; read -p "Press Enter to continue..."; }
-start_fastchat() { [ -d "$FASTCHAT_DIR" ] && cd "$FASTCHAT_DIR" && ./start_server.sh || print_error "FastChat not installed"; read -p "Press Enter to continue..."; }
+install_forge() { print_header "Installing SD WebUI Forge"; if [ -f "./scripts/install/forge.sh" ]; then ./scripts/install/forge.sh; else print_error "scripts/install/forge.sh not found"; fi; read -p "Press Enter to continue..."; }
+start_forge() { print_header "Starting SD WebUI Forge"; ./scripts/start/forge.sh; read -p "Press Enter to continue..."; }
 
 # --- Removal routines ---
 remove_tool_dir() {
@@ -340,11 +270,7 @@ remove_menu() {
         "a1111" "Automatic1111" \
         "invokeai" "InvokeAI" \
         "fooocus" "Fooocus" \
-        "textgen" "Text Generation WebUI" \
         "forge" "SD WebUI Forge" \
-        "llamacpp" "llama.cpp" \
-        "koboldcpp" "KoboldCpp" \
-        "fastchat" "FastChat" \
         3>&1 1>&2 2>&3) || return 0
     case "$CHOICE" in
         comfyui) remove_tool_dir "$COMFYUI_DIR" "ComfyUI" ;;
@@ -352,18 +278,14 @@ remove_menu() {
         a1111) remove_tool_dir "$AUTOMATIC1111_DIR" "Automatic1111" ;;
         invokeai) remove_tool_dir "$INVOKEAI_DIR" "InvokeAI" ;;
         fooocus) remove_tool_dir "$FOOOCUS_DIR" "Fooocus" ;;
-        textgen) remove_tool_dir "$TEXTGEN_DIR" "Text Generation WebUI" ;;
         forge) remove_tool_dir "$FORGE_DIR" "SD WebUI Forge" ;;
-        llamacpp) remove_tool_dir "$LLAMACPP_DIR" "llama.cpp" ;;
-        koboldcpp) remove_tool_dir "$KOBOLDCPP_DIR" "KoboldCpp" ;;
-        fastchat) remove_tool_dir "$FASTCHAT_DIR" "FastChat" ;;
     esac
 }
 
 update_system() {
     print_header "System Update"
     
-    ./5_update_ai_setup.sh
+    ./scripts/utils/update_ai_setup.sh
 }
 
 check_status() {
@@ -424,13 +346,6 @@ check_status() {
     else
         print_error "✗ Fooocus not installed"
     fi
-
-    # Check Text Generation WebUI
-    if [ -d "$TEXTGEN_DIR" ] && [ -f "$TEXTGEN_DIR/server.py" ]; then
-        print_success "✓ Text Generation WebUI installed"
-    else
-        print_error "✗ Text Generation WebUI not installed"
-    fi
     
     # Check ROCm system status
     echo ""
@@ -456,13 +371,9 @@ show_installation_menu() {
             "img_invokeai" "InvokeAI" \
             "img_fooocus" "Fooocus" \
             "img_forge" "SD WebUI Forge" \
-            "llm_ollama" "Ollama" \
-            "llm_textgen" "Text Generation WebUI" \
-            "llm_llamacpp" "llama.cpp" \
-            "llm_koboldcpp" "KoboldCpp" \
             3>&1 1>&2 2>&3) || return 0
         case "$CHOICE" in
-            sys) if [ -f "./9_install_amd_drivers.sh" ]; then chmod +x ./9_install_amd_drivers.sh && ./9_install_amd_drivers.sh; else whiptail --msgbox "9_install_amd_drivers.sh missing" 8 60; fi ;;
+            sys) if [ -f "./scripts/install/amd_drivers.sh" ]; then ./scripts/install/amd_drivers.sh; else whiptail --msgbox "scripts/install/amd_drivers.sh missing" 8 60; fi ;;
             base) install_rocm_pytorch ;;
             img_comfy) [ -d "$COMFYUI_DIR" ] && whiptail --msgbox "ComfyUI already installed" 8 50 || install_comfyui ;;
             img_sdnext) [ -d "$SDNEXT_DIR" ] && whiptail --msgbox "SD.Next already installed" 8 50 || install_sdnext ;;
@@ -470,10 +381,6 @@ show_installation_menu() {
             img_invokeai) [ -d "$INVOKEAI_DIR" ] && whiptail --msgbox "InvokeAI already installed" 8 50 || install_invokeai ;;
             img_fooocus) [ -d "$FOOOCUS_DIR" ] && whiptail --msgbox "Fooocus already installed" 8 50 || install_fooocus ;;
             img_forge) [ -d "$FORGE_DIR" ] && whiptail --msgbox "Forge already installed" 8 50 || install_forge ;;
-            llm_ollama) command -v ollama >/dev/null 2>&1 && whiptail --msgbox "Ollama already installed" 8 50 || install_ollama ;;
-            llm_textgen) [ -d "$TEXTGEN_DIR" ] && whiptail --msgbox "TextGen WebUI already installed" 8 50 || install_textgen ;;
-            llm_llamacpp) [ -d "$LLAMACPP_DIR" ] && whiptail --msgbox "llama.cpp already installed" 8 50 || install_llamacpp ;;
-            llm_koboldcpp) [ -d "$KOBOLDCPP_DIR" ] && whiptail --msgbox "KoboldCpp already installed" 8 50 || install_koboldcpp ;;
         esac
     done
 }
@@ -488,27 +395,15 @@ show_startup_menu() {
             "invokeai" "Start InvokeAI" \
             "fooocus" "Start Fooocus" \
             "forge" "Start SD WebUI Forge" \
-            "ollama" "Start Ollama Chat" \
-            "ollama_mgmt" "Manage Ollama Models" \
-            "textgen" "Start Text Generation WebUI" \
-            "llamacpp" "Start llama.cpp server" \
-            "koboldcpp" "Start KoboldCpp" \
-            "fastchat" "Start FastChat" \
             "status" "Check Status" \
             3>&1 1>&2 2>&3) || return 0
         case "$CHOICE" in
             comfyui) [ -f "$COMFYUI_DIR/main.py" ] && start_comfyui || whiptail --msgbox "ComfyUI not installed" 8 40 ;;
             sdnext) [ -d "$SDNEXT_DIR" ] && start_sdnext || whiptail --msgbox "SD.Next not installed" 8 40 ;;
             a1111) [ -d "$AUTOMATIC1111_DIR" ] && start_automatic1111 || whiptail --msgbox "A1111 not installed" 8 40 ;;
-            invokeai) [ -f "$INVOKEAI_DIR/launch_webui.sh" ] && start_invokeai || whiptail --msgbox "InvokeAI not installed" 8 40 ;;
+            invokeai) [ -f "$INVOKEAI_DIR/invoke.sh" ] || [ -f "$INVOKEAI_DIR/invoke.bat" ] && start_invokeai || whiptail --msgbox "InvokeAI not installed" 8 40 ;;
             fooocus) [ -d "$FOOOCUS_DIR" ] && start_fooocus || whiptail --msgbox "Fooocus not installed" 8 40 ;;
             forge) [ -d "$FORGE_DIR" ] && start_forge || whiptail --msgbox "Forge not installed" 8 40 ;;
-            ollama) command -v ollama >/dev/null 2>&1 && ~/start_ollama_chat.sh || whiptail --msgbox "Ollama not installed" 8 40 ;;
-            ollama_mgmt) manage_ollama ;;
-            textgen) [ -d "$TEXTGEN_DIR" ] && start_textgen || whiptail --msgbox "TextGen WebUI not installed" 8 50 ;;
-            llamacpp) [ -d "$LLAMACPP_DIR" ] && start_llamacpp || whiptail --msgbox "llama.cpp not installed" 8 50 ;;
-            koboldcpp) [ -d "$KOBOLDCPP_DIR" ] && start_koboldcpp || whiptail --msgbox "KoboldCpp not installed" 8 50 ;;
-            fastchat) [ -d "$FASTCHAT_DIR" ] && start_fastchat || whiptail --msgbox "FastChat not installed" 8 50 ;;
             status) check_status ;;
         esac
     done
@@ -517,7 +412,7 @@ show_startup_menu() {
 # --- Main Menu ---
 
 while true; do
-    CHOICE=$(whiptail --title "AI Tools Suite (WSL2, AMD ROCm)" --menu "Select an action" 20 80 10 \
+    CHOICE=$(whiptail --title "AI Tools Suite (Linux / WSL2, AMD ROCm)" --menu "Select an action" 20 80 10 \
         "install" "Install tools (categorized)" \
         "launch" "Launch installed tools" \
         "update" "Updates (drivers, ROCm, PyTorch Nightly, tools)" \
@@ -534,6 +429,6 @@ while true; do
         selfupdate) self_update_repo ;;
         remove) remove_menu ;;
         drivers)
-            if [ -f "./9_install_amd_drivers.sh" ]; then chmod +x ./9_install_amd_drivers.sh && ./9_install_amd_drivers.sh; else whiptail --msgbox "9_install_amd_drivers.sh missing" 8 50; fi ;;
+            if [ -f "./scripts/install/amd_drivers.sh" ]; then ./scripts/install/amd_drivers.sh; else whiptail --msgbox "scripts/install/amd_drivers.sh missing" 8 50; fi ;;
     esac
 done

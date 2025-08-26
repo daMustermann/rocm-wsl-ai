@@ -30,9 +30,9 @@ export -f log warn err success headline confirm ensure_venv git_clone_or_update 
 
 # Optional GPU auto-detection (idempotent)
 GPU_ENV_MARKER="${HOME}/.config/rocm-wsl-ai/gpu.env"
-if [ -f "$(dirname "${BASH_SOURCE[0]}")/gpu_config.sh" ]; then
+if [ -f "$(dirname "${BASH_SOURCE[0]}")/../scripts/utils/gpu_config.sh" ]; then
   # shellcheck disable=SC1091
-  source "$(dirname "${BASH_SOURCE[0]}")/gpu_config.sh"
+  source "$(dirname "${BASH_SOURCE[0]}")/../scripts/utils/gpu_config.sh"
   if [ ! -f "$GPU_ENV_MARKER" ]; then
     detect_and_export_rocm_env || warn "GPU auto-detect failed"
   else

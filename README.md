@@ -1,241 +1,138 @@
+# AI Tools Setup for ROCm on Linux & WSL2
 
-## 🔥 ROCm-WSL-AI 2025
+This repository provides a set of scripts to simplify the setup of a comprehensive AI environment using AMD GPUs with ROCm on both native Linux (Ubuntu) and WSL2. It includes a menu-driven interface to install, manage, and launch popular AI tools for image generation and large language models.
 
-Make your AMD GPU sing inside WSL2. This repo gives you a slick terminal menu for installing, launching, updating, and removing popular local AI tools — and it keeps your stack fresh with the latest ROCm and PyTorch Nightly.
+The scripts are designed to be idempotent and modular, ensuring a consistent and up-to-date installation by using the latest ROCm drivers and corresponding PyTorch nightly builds.
 
-## What you get
-- Always latest ROCm (from AMD’s “latest” apt repo) + PyTorch Nightly matched to your installed ROCm series
-- A modern, keyboard-driven TUI (whiptail) with clear categories and no duplicate installs
-- One place to install, start, update, and remove local AI tools (image gen + LLMs)
-- GitHub self-update for the menu itself
+## Key Features
 
-## Tools included (by category)
-Image generation
-- ComfyUI
-- SD.Next
-- Automatic1111 WebUI
-- InvokeAI
-- Fooocus
-- SD WebUI Forge
+- **Cross-Platform:** Works on both native Ubuntu 22.04/24.04 and WSL2.
+- **Automated GPU Detection:** Automatically detects your AMD GPU (RDNA1/2/3/4, Vega) and configures ROCm accordingly.
+- **Always Up-to-Date:** Installs the latest ROCm stack from AMD's official repositories and fetches the compatible PyTorch nightly build.
+- **Version Selection:** Allows choosing between the latest stable ROCm or experimental pre-releases (like ROCm 7.0 RC1).
+- **Menu-Driven Interface:** A simple terminal UI (`menu.sh`) to guide you through installation, launching, and management of tools.
+- **Comprehensive Tool Support:**
+  - **Image Generation:** ComfyUI, Stable Diffusion WebUI (Automatic1111), SD.Next, InvokeAI, Fooocus, SD WebUI Forge.
+- **Self-Contained:** Manages a dedicated Python virtual environment to avoid conflicts with system packages.
+- **Utilities:** Includes scripts for system updates, status checks, and easy uninstallation of tools.
 
-LLMs
-- Ollama (with a small model manager script)
-- Text Generation WebUI
-- llama.cpp
-- KoboldCpp
-- FastChat
+## Project Structure
 
-System & utilities
-- AMD GPU Drivers / ROCm
-- Base setup: ROCm & PyTorch Nightly
-- Updates (drivers, ROCm libs, PyTorch Nightly, tools)
-- Status checks & basic verification
-- Remove (uninstall) tools
-- Self-update (pull latest from GitHub)
+The project is organized into the following directories:
 
-## Requirements
-- Windows 11 + WSL2
-- Ubuntu 24.04 inside WSL2
-- AMD GPU (WSL passthrough for ROCm currently ONLY RDNA4 & RDNA3 – RDNA2 and older are not exposed as compute devices in WSL; for those use native Linux)
-- whiptail (for the TUI). If the menu doesn’t render as a UI:
-   ```bash
-   sudo apt update && sudo apt install -y whiptail
-   ```
+- `scripts/`: Contains all the operational scripts.
+  - `install/`: Scripts for installing various AI tools and dependencies.
+  - `start/`: Scripts for launching the installed AI applications.
+  - `utils/`: Helper scripts for updates, etc.
 
-### GPU Compatibility (WSL vs. Native Linux)
+### Installation
 
-| Architecture / Generation | Example Series | WSL GPU Compute (ROCm) | Native Linux ROCm |
-|---------------------------|----------------|------------------------|-------------------|
-| RDNA4 (gfx12xx)          | RX 9000*       | ✅ Supported            | ✅ Supported       |
-| RDNA3 (gfx11xx)          | RX 7000        | ✅ Supported            | ✅ Supported       |
-| RDNA2 (gfx10.3)          | RX 6000        | ❌ Not passed through   | ✅ Supported       |
-| RDNA1 (gfx10.1)          | RX 5000        | ❌ Not passed through   | ✅ Supported       |
-| Vega (gfx9xx)            | Radeon VII     | ❌ Not passed through   | ✅ Supported       |
-| Polaris (gfx803)         | RX 4xx / 5xx   | ❌ Not passed through   | ✅ Supported       |
-| Older (GCN < gfx803)     | Various        | ❌ Not passed through   | ❌ / Partial       |
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/daMustermann/rocm-wsl-ai.git
+    cd rocm-wsl-ai
+    ```
 
-*Some very new RDNA4 SKUs may appear before AMD updates the official list.
+2.  **Make scripts executable:**
+    Run this command once to ensure all scripts have the necessary permissions.
+    ```bash
+    find . -name "*.sh" -exec chmod +x {} \;
+    ```
 
-Important:
-- If your GPU is below RDNA3 it will show up inside WSL2 as a generic "Microsoft Basic Render Device" (or similar) and is not exposed for ROCm compute.
-- You can still use the menu (CPU workflows / prep for a future upgrade), but GPU acceleration requires native Linux or RDNA3 / RDNA4 hardware under WSL.
-- AMD reference: https://rocm.docs.amd.com/projects/radeon/en/latest/docs/compatibility/wsl/wsl_compatibility.html
+3.  **Run the menu:**
+    ```bash
+    ./menu.sh
+    ```
 
+4.  **From the main menu, follow these steps:**
+    -   Navigate to **"Install"** using the arrow keys and press Enter.
+    -   Select **"ROCm & PyTorch Nightly (base)"** and press Enter. You will be prompted to choose a ROCm version. For most users, **"latest"** is the recommended, stable choice.
+    -   The script will then:
+        - Install the necessary AMD drivers and the selected ROCm stack.
+        - Create a Python virtual environment (`~/genai_env`).
+        - Install the latest PyTorch nightly build that matches the installed ROCm version, along with Triton.
+    -   **Restart your system or WSL session** when prompted. This is crucial for user group permissions to take effect.
+    -   Relaunch `./menu.sh` after restarting.
 
-## Install the suite
-```bash
-git clone https://github.com/daMustermann/rocm-wsl-ai.git
-cd rocm-wsl-ai
-chmod +x *.sh
-./0_ai_tools_menu.sh
-```
+5.  **Install AI Tools:**
+    -   Go back to the **"Install"** menu.
+    -   Select any AI tool you wish to install (e.g., "ComfyUI", "Ollama"). The scripts will handle the download and setup within the correct environment.
 
-If prompted to restart WSL during base setup (after adding your user to the render/video groups), run this in Windows PowerShell/CMD and reopen Ubuntu:
-```powershell
-wsl --shutdown
-```
+## Updating from a Previous Version
 
-## The menu (how to use)
-Use arrow keys + Enter to select; Esc cancels a dialog.
+If you have been using an older version of this repository with all scripts in the main folder, follow these steps to update to the new, structured version:
 
-- Installation
-   - System → AMD GPU Drivers / ROCm (optional if you already have it)
-   - Base → ROCm & PyTorch Nightly (do this first)
-   - Then pick your favorite tools in Image generation or LLMs
-   - Already installed tools won’t offer a second install
+1.  **Save your local changes:** If you have made any modifications to the scripts, save them first to avoid conflicts:
+    ```bash
+    git stash
+    ```
 
-- Launch
-   - Starts only tools that are detected as installed
+2.  **Pull the latest changes:** Fetch the new version from GitHub.
+    ```bash
+    git pull --rebase
+    ```
 
-- Updates
-   - PyTorch Nightly (matched to your ROCm), ROCm libs, tools (ComfyUI, SD.Next, A1111, InvokeAI, Ollama, Fooocus, TextGen, etc.)
-   - Full driver reinstall flow when needed
+3.  **Re-apply your changes (optional):** If you stashed changes in step 1, you can now re-apply them.
+    ```bash
+    git stash pop
+    ```
+    You might need to resolve some merge conflicts if your changes were made to files that have been moved.
 
-- Status
-   - Quick checks for ROCm, PyTorch, and what’s installed
+4.  **Start using the new structure:** Your old script files have been moved into the `scripts/` directory. The new main entry point is `menu.sh`. Make sure it's executable (`chmod +x menu.sh`) and run it to continue.
 
-- Remove
-   - Safe, confirmed removal of a selected tool’s folder
+## Usage
 
-- Self-update
-   - Pulls latest changes from GitHub and refreshes the menu itself
+-   To start any installed tool, run `./menu.sh` and navigate to the **"Launch"** menu.
+-   Always ensure you are running the tools from within the activated virtual environment. The launch scripts handle this automatically. If you need to run commands manually, first activate the environment:
+    ```bash
+    source ~/genai_env/bin/activate
+    ```
 
-## Typical first run
-1) Installation → Base (ROCm & PyTorch Nightly)
-2) Restart WSL if asked
-3) Installation → Pick your tools (e.g., ComfyUI, A1111, Ollama)
-4) Launch → Start your tools
+## ROCm Version Selection
 
-## Upgrading
-Menu → Updates lets you:
-- Update PyTorch Nightly to match your currently installed ROCm
-- Update tools (ComfyUI, SD.Next, A1111, InvokeAI, Ollama, Fooocus, TextGen, …)
-- Reinstall drivers (when required), and verify everything
+This tool now allows you to choose which version of the ROCm stack to install:
 
-Update the menu/repo itself with Self-update — or manually:
-```bash
-git pull --rebase
-```
+-   **Latest Stable:** This is the default and recommended option. It installs the most recent, officially supported ROCm version, offering the best stability.
+-   **ROCm 7.0 RC1 (Experimental):** This option installs a pre-release version of ROCm 7.0. It should only be used by advanced users who need access to the very latest features or hardware support and are comfortable with potential instability, bugs, or breaking changes.
 
-## Useful tips
-- If the TUI looks very plain, install whiptail (see Requirements)
-- If you changed groups during base install: restart WSL (`wsl --shutdown` from Windows)
-- Ollama’s systemd user service may require systemd in WSL; if it doesn’t start, run it manually via the scripts
-- For ROCm trouble, use the menu’s Driver Management and follow the prompts
+## GPU Compatibility
 
-```
-## � Automatic GPU Detection
+Hardware support for ROCm is continuously updated by AMD. As the compatibility lists change frequently, especially for pre-release versions, the tables have been removed from this README to avoid providing outdated information.
 
-You normally do NOT need to manually set `HSA_OVERRIDE_GFX_VERSION` or `PYTORCH_ROCM_ARCH`.
+I strongly recommend consulting the official AMD documentation to check the most current support status for your specific GPU and the desired ROCm version:
 
-On first run of any installer/launcher script the system:
-1. Detects your AMD GPU architecture (`gfx*`) via `rocminfo` / `dmesg` hints
-2. Maps it to the correct ROCm triplet (e.g. RDNA3 → `11.0.0`, RDNA4 → `12.0.0`)
-3. Writes the resolved variables to:
-   `~/.config/rocm-wsl-ai/gpu.env`
-4. All subsequent scripts simply source that file
+-   **[Official Compatibility Matrix for ROCm (Latest Stable Version)](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)**
+-   **[Release Notes for ROCm 7.0 Pre-Releases (for experimental support)](https://rocm.docs.amd.com/en/docs-7.0-rc1/preview/release.html)**
 
-Want to re-detect? Delete the file:
-```bash
-rm ~/.config/rocm-wsl-ai/gpu.env
-```
-Then run the menu again; a fresh detection will occur.
+These sources provide the most accurate and up-to-date information.
 
-Override manually? Edit the file directly. Example custom override:
-```bash
-echo 'export HSA_OVERRIDE_GFX_VERSION="11.0.0"' >> ~/.config/rocm-wsl-ai/gpu.env
-```
+## Ryzen AI APUs and ROCm Support
 
-Note: Under WSL only RDNA3/RDNA4 are exposed for compute. If you are on unsupported hardware the detection will fall back to a safe default and PyTorch may operate in reduced / CPU modes.
+As of late 2025, the official ROCm support primarily targets AMD's discrete and datacenter GPUs. While modern Ryzen APUs contain powerful integrated graphics (iGPUs), their support within the ROCm ecosystem for general-purpose compute and AI is still evolving.
 
-## �🛠️ Troubleshooting
+-   **Ryzen AI 300 Series (Strix Point, RDNA 3.5):**
+    -   This latest generation, including models like the **Ryzen AI 9 HX 370**, features the new RDNA 3.5 graphics architecture (`gfx1150`/`gfx1151`).
+    -   ROCm support for these APUs is under active development, as indicated by recent code commits in the ROCm repositories.
+    -   However, this support is **highly experimental**. It is not yet officially validated by AMD. While these scripts will attempt to set the correct `HSA_OVERRIDE_GFX_VERSION`, stability and performance are not guaranteed. Users may encounter issues that require manual intervention. **WSL2 support for RDNA 3.5 is particularly unstable and not recommended at this time.**
 
-### Common Issues
+-   **Older APUs (Ryzen 7040/8040 Series, RDNA 3):**
+    -   These APUs have better-established, albeit still unofficial, support within the community. Many users have success running ROCm, but it often requires specific configurations.
 
-**ROCm Installation Issues:**
-```bash
-# Check ROCm installation
-rocminfo
+-   **NPU (Ryzen AI Engine):**
+    -   The Neural Processing Unit (NPU) present in "Ryzen AI" enabled APUs is a separate hardware block from the iGPU. It is designed for low-power AI inference and is accessed through different software stacks (like Microsoft's DirectML with ONNX Runtime), **not ROCm**. The scripts in this repository focus exclusively on GPU acceleration via ROCm.
 
-# Verify group membership (restart WSL if added recently)
-groups
+-   **Recommendation:**
+    -   For a stable and performant AI experience with this script suite, an **officially supported discrete AMD Radeon GPU (RX 6000 series / RDNA2 or newer) is strongly recommended.**
+    -   **For WSL2, official support is limited to RDNA3, and newer discrete GPUs.** Using older architectures or experimental APUs on WSL2 may lead to significant issues.
+    -   Using these scripts with any APU's integrated graphics should be considered experimental.
 
-# Reinstall ROCm if needed
-sudo amdgpu-install -y --usecase=wsl,rocm --no-dkms
-```
+The landscape is changing quickly. For the latest information, always refer to the official [AMD ROCm Documentation](https://rocm.docs.amd.com/) and the [Radeon on WSL guide](https://rocm.docs.amd.com/projects/radeon/en/latest/docs/install/wsl/install-radeon.html).
 
-**PyTorch ROCm Issues:**
-```bash
-# Check PyTorch installation
-source ~/genai_env/bin/activate
-python3 -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+## Updating
 
-# Reinstall PyTorch if needed
-pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4 --force-reinstall
-```
+-   **To update the scripts themselves:** Use the **"Self-update (GitHub)"** option in the main menu.
+-   **To update the entire AI stack** (ROCm, PyTorch, and installed tools): Use the **"Updates"** option in the main menu.
 
-**Memory Issues:**
-- Reduce image resolution in AI tools
-- Close other GPU-intensive applications
-- Adjust VRAM settings in tool configurations
-- Use CPU fallback for problematic operations
+## License
 
-**Performance Issues:**
-- Verify `HSA_OVERRIDE_GFX_VERSION` is set correctly for your GPU
-- Use `rocm-smi` to monitor GPU utilization
-- Check that ROCm drivers are properly loaded
-
-### GPU-Specific Settings (Manual Override)
-
-Normally handled automatically (see Automatic GPU Detection). Only use this if you are debugging or forcing a different mapping. Add one of these lines to `~/.config/rocm-wsl-ai/gpu.env` and then re-run the menu.
-
-RDNA4 (RX 9000): `export HSA_OVERRIDE_GFX_VERSION="gfx1200"` (or `gfx1201`)
-RDNA3 (RX 7000): `export HSA_OVERRIDE_GFX_VERSION="gfx1100"` (7800/7700: `gfx1101`, 7600: `gfx1102`)
-RDNA2 (RX 6000): `export HSA_OVERRIDE_GFX_VERSION="gfx1030"`
-RDNA1 (RX 5000): `export HSA_OVERRIDE_GFX_VERSION="gfx1010"`
-Vega (56/64): `export HSA_OVERRIDE_GFX_VERSION="gfx900"` (Radeon VII: `gfx906`)
-Polaris (RX 400/500): `export HSA_OVERRIDE_GFX_VERSION="gfx803"`
-
-## 📁 Directory Structure
-
-```
-~/genai_env/          # Python virtual environment
-~/ComfyUI/            # ComfyUI installation
-~/SD.Next/            # SD.Next installation  
-~/stable-diffusion-webui/  # Automatic1111 WebUI
-~/InvokeAI/           # InvokeAI installation
-~/.ollama/            # Ollama models and data
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Test your changes thoroughly
-4. Submit a pull request with clear description
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- AMD for ROCm development
-- ComfyUI team for the excellent UI
-- Automatic1111 for the WebUI
-- PyTorch team for ROCm support
-- Ollama team for local LLM inference
-- InvokeAI team for professional AI tools
-- All the amazing open-source AI community
-
-## 📞 Support
-
-- **Issues:** Use GitHub Issues for bug reports
-- **Discussions:** Use GitHub Discussions for questions
-- **Updates:** Watch the repository for updates
-
----
-
-**Happy AI development with your AMD GPU! 🎨🚀**
+This project is open-source and available under the MIT License.

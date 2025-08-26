@@ -2,7 +2,7 @@
 
 # AMD GPU Driver Installation Script for Ubuntu WSL2
 # Installs and configures AMD GPU drivers for optimal ROCm and AI performance
-# Version: 2025.1 - Compatible with ROCm 6.4.1
+# Version: 2025.8 - Compatible with ROCm 7 RC1
 
 # Color codes for output
 RED='\033[0;31m'
