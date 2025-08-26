@@ -58,7 +58,7 @@ This is the most important first step. It sets up the core ROCm and PyTorch envi
 -   Select **`Base Installation (ROCm & PyTorch)`**.
 
 You will be presented with a choice for the ROCm and PyTorch versions:
--   **`Latest stable ROCm (recommended) + PyTorch for ROCm 6.1 Nightly`**: This is the recommended option for most users. It installs the latest stable ROCm drivers from the AMD repository and a matching PyTorch nightly build.
+-   **`Latest stable ROCm (recommended) + PyTorch for ROCm Nightly`**: This is the recommended option for most users. It installs the latest stable ROCm drivers from the AMD repository and a matching PyTorch nightly build.
 
 The script will then handle everything:
 -   Installs the necessary AMD drivers and ROCm stack.
