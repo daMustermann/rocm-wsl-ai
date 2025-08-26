@@ -18,6 +18,9 @@ ERROR="❌"
 INFO="ℹ️"
 ROCKET="🚀"
 
+# --- Script Configuration ---
+ROCM_VERSION_TARGET="6.4.3"
+
 print_header() {
     echo ""
     echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
@@ -233,11 +236,12 @@ install_rocm_drivers() {
     
     # Add repository based on Ubuntu version
     if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
-        echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.4.1/ jammy main' | sudo tee /etc/apt/sources.list.d/rocm.list
+        echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/${ROCM_VERSION_TARGET}/ noble main" | sudo tee /etc/apt/sources.list.d/rocm.list
     elif [[ "$UBUNTU_VERSION" == "22.04" ]]; then
-        echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.4.1/ jammy main' | sudo tee /etc/apt/sources.list.d/rocm.list
+        echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/${ROCM_VERSION_TARGET}/ jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list
     else
-        echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.4.1/ jammy main' | sudo tee /etc/apt/sources.list.d/rocm.list
+        print_warning "Unsupported Ubuntu version for ROCm repository. Defaulting to Jammy. Installation may fail."
+        echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/${ROCM_VERSION_TARGET}/ jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list
     fi
     
     # Update package lists
@@ -299,7 +303,7 @@ export ROCM_PATH=/opt/rocm
 export PATH=$ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
 export LD_LIBRARY_PATH=$ROCM_PATH/lib:$LD_LIBRARY_PATH
 export HIP_PATH=$ROCM_PATH
-export ROCM_VERSION=6.4.1
+export ROCM_VERSION=${ROCM_VERSION_TARGET}
 
 # GPU Configuration
 # Source auto-detected GPU environment if available (fallback keeps previous default)
@@ -386,6 +390,37 @@ test_installation() {
 main() {
     print_header
     
+    check_system
+    detect_amd_gpu
+    # WSL GPU Support Check (only RDNA3/RDNA4 are exposed for compute in WSL currently)
+    if [ "$WSL_ENV" = true ]; then
+        case "$GPU_FAMILY" in
+            RDNA)
+                # Simple heuristic check for RDNA3/4 model naming
+                if echo "$AMD_GPUS" | grep -qiE "RX 9|RX9| 9[0-9]{2}0|RX 7|7900|7800|7700|7600|RX7"; then
+                    print_info "WSL note: Detected RDNA generation looks like RDNA3/4 – ROCm compute should be available."
+                else
+                    print_warning "WSL note: Detected RDNA generation does not look like RDNA3/4. AMD currently supports only RDNA3 & RDNA4 for GPU compute in WSL. GPU acceleration will likely NOT work."
+                    read -p "Continue anyway (installation proceeds, likely CPU-only)? (y/N): " -n 1 -r
+                    echo
+                    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                        print_info "Aborting due to unsupported GPU for WSL compute."
+                        exit 0
+                    fi
+                fi
+                ;;
+            VEGA|POLARIS|UNKNOWN|NONE)
+                print_warning "WSL note: Only RDNA3 & RDNA4 are supported for ROCm compute in WSL. Your GPU generation ($GPU_FAMILY) is not exposed. You can continue but you won't get GPU acceleration."
+                read -p "Continue? (y/N): " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    print_info "Aborting due to unsupported GPU."
+                    exit 0
+                fi
+                ;;
+        esac
+    fi
+
     # Check for existing installation first
     if check_existing_amdgpu_installation; then
         echo ""
@@ -430,37 +465,6 @@ main() {
             print_info "Installation cancelled"
             exit 0
         fi
-    fi
-    
-    check_system
-    detect_amd_gpu
-    # WSL GPU Support Check (only RDNA3/RDNA4 are exposed for compute in WSL currently)
-    if [ "$WSL_ENV" = true ]; then
-        case "$GPU_FAMILY" in
-            RDNA)
-                # Simple heuristic check for RDNA3/4 model naming
-                if echo "$AMD_GPUS" | grep -qiE "RX 9|RX9| 9[0-9]{2}0|RX 7|7900|7800|7700|7600|RX7"; then
-                    print_info "WSL note: Detected RDNA generation looks like RDNA3/4 – ROCm compute should be available."
-                else
-                    print_warning "WSL note: Detected RDNA generation does not look like RDNA3/4. AMD currently supports only RDNA3 & RDNA4 for GPU compute in WSL. GPU acceleration will likely NOT work."
-                    read -p "Continue anyway (installation proceeds, likely CPU-only)? (y/N): " -n 1 -r
-                    echo
-                    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                        print_info "Aborting due to unsupported GPU for WSL compute."
-                        exit 0
-                    fi
-                fi
-                ;;
-            VEGA|POLARIS|UNKNOWN|NONE)
-                print_warning "WSL note: Only RDNA3 & RDNA4 are supported for ROCm compute in WSL. Your GPU generation ($GPU_FAMILY) is not exposed. You can continue but you won't get GPU acceleration."
-                read -p "Continue? (y/N): " -n 1 -r
-                echo
-                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                    print_info "Aborting due to unsupported GPU."
-                    exit 0
-                fi
-                ;;
-        esac
     fi
     install_amd_drivers
     install_rocm_drivers
