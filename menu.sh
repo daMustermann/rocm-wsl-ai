@@ -235,101 +235,101 @@ check_status() {
 
 # --- Menus ---
 show_launch_menu() {
-    while true; do
-        CHOICE=$(whiptail --title "Launch Menu" --menu "Choose a tool to start" 20 78 12 \
-            "comfyui" "Start ComfyUI" \
-            "sdnext" "Start SD.Next" \
-            "a1111" "Start Automatic1111" \
-            "invokeai" "Start InvokeAI" \
-            "fooocus" "Start Fooocus" \
-            "forge" "Start SD WebUI Forge" \
-            3>&1 1>&2 2>&3) || return 0
-        case "$CHOICE" in
-            comfyui) start_tool "ComfyUI" "./scripts/start/comfyui.sh" "$COMFYUI_DIR/main.py" ;;
-            sdnext) start_tool "SD.Next" "./scripts/start/sdnext.sh" "$SDNEXT_DIR/webui.sh" ;;
-            a1111) start_tool "Automatic1111" "./scripts/start/automatic1111.sh" "$AUTOMATIC1111_DIR/webui.sh" ;;
-            invokeai) start_tool "InvokeAI" "./scripts/start/invokeai.sh" "$INVOKEAI_DIR/invoke.sh" ;;
-            fooocus) start_tool "Fooocus" "./scripts/start/fooocus.sh" "$FOOOCUS_DIR/launch.py" ;;
-            forge) start_tool "SD WebUI Forge" "./scripts/start/forge.sh" "$FORGE_DIR/webui.sh" ;;
-        esac
-    done
+    local CHOICE
+    CHOICE=$(whiptail --title "Launch Menu" --menu "Choose a tool to start" 20 78 12 \
+        "comfyui" "Start ComfyUI" \
+        "sdnext" "Start SD.Next" \
+        "a1111" "Start Automatic1111" \
+        "invokeai" "Start InvokeAI" \
+        "fooocus" "Start Fooocus" \
+        "forge" "Start SD WebUI Forge" \
+        3>&1 1>&2 2>&3) || return 0
+
+    case "$CHOICE" in
+        comfyui) start_tool "ComfyUI" "./scripts/start/comfyui.sh" "$COMFYUI_DIR/main.py" ;;
+        sdnext) start_tool "SD.Next" "./scripts/start/sdnext.sh" "$SDNEXT_DIR/webui.sh" ;;
+        a1111) start_tool "Automatic1111" "./scripts/start/automatic1111.sh" "$AUTOMATIC1111_DIR/webui.sh" ;;
+        invokeai) start_tool "InvokeAI" "./scripts/start/invokeai.sh" "$INVOKEAI_DIR/invoke.sh" ;;
+        fooocus) start_tool "Fooocus" "./scripts/start/fooocus.sh" "$FOOOCUS_DIR/launch.py" ;;
+        forge) start_tool "SD WebUI Forge" "./scripts/start/forge.sh" "$FORGE_DIR/webui.sh" ;;
+    esac
 }
 
 show_install_menu() {
-    while true; do
-        CHOICE=$(whiptail --title "Install Menu" --menu "Choose what to install" 20 78 12 \
-            "base" "Base Installation (ROCm & PyTorch)" \
-            "---" "--- IMAGE GENERATION ---" \
-            "comfyui" "Install ComfyUI" \
-            "sdnext" "Install SD.Next" \
-            "a1111" "Install Automatic1111" \
-            "invokeai" "Install InvokeAI" \
-            "fooocus" "Install Fooocus" \
-            "forge" "Install SD WebUI Forge" \
-            3>&1 1>&2 2>&3) || return 0
-        case "$CHOICE" in
-            base) install_rocm_pytorch ;;
-            comfyui) install_tool "ComfyUI" "./scripts/install/comfyui.sh" "$COMFYUI_DIR" ;;
-            sdnext) install_tool "SD.Next" "./scripts/install/sdnext.sh" "$SDNEXT_DIR" ;;
-            a1111) install_tool "Automatic1111" "./scripts/install/automatic1111.sh" "$AUTOMATIC1111_DIR" ;;
-            invokeai) install_tool "InvokeAI" "./scripts/install/invokeai.sh" "$INVOKEAI_DIR" ;;
-            fooocus) install_tool "Fooocus" "./scripts/install/fooocus.sh" "$FOOOCUS_DIR" ;;
-            forge) install_tool "SD WebUI Forge" "./scripts/install/forge.sh" "$FORGE_DIR" ;;
-        esac
-    done
+    local CHOICE
+    CHOICE=$(whiptail --title "Install Menu" --menu "Choose what to install. Use UP/DOWN arrows, press Enter to select." 20 78 12 \
+        "base" "Base Installation (ROCm & PyTorch)" \
+        "" "" \
+        "comfyui" "Install ComfyUI" \
+        "sdnext" "Install SD.Next" \
+        "a1111" "Install Automatic1111" \
+        "invokeai" "Install InvokeAI" \
+        "fooocus" "Install Fooocus" \
+        "forge" "Install SD WebUI Forge" \
+        3>&1 1>&2 2>&3) || return 0
+
+    case "$CHOICE" in
+        base) install_rocm_pytorch ;;
+        comfyui) install_tool "ComfyUI" "./scripts/install/comfyui.sh" "$COMFYUI_DIR" ;;
+        sdnext) install_tool "SD.Next" "./scripts/install/sdnext.sh" "$SDNEXT_DIR" ;;
+        a1111) install_tool "Automatic1111" "./scripts/install/automatic1111.sh" "$AUTOMATIC1111_DIR" ;;
+        invokeai) install_tool "InvokeAI" "./scripts/install/invokeai.sh" "$INVOKEAI_DIR" ;;
+        fooocus) install_tool "Fooocus" "./scripts/install/fooocus.sh" "$FOOOCUS_DIR" ;;
+        forge) install_tool "SD WebUI Forge" "./scripts/install/forge.sh" "$FORGE_DIR" ;;
+    esac
 }
 
 show_remove_menu() {
-    while true; do
-        CHOICE=$(whiptail --title "Uninstall Menu" --menu "Choose a tool to remove" 20 78 12 \
-            "comfyui" "Uninstall ComfyUI" \
-            "sdnext" "Uninstall SD.Next" \
-            "a1111" "Uninstall Automatic1111" \
-            "invokeai" "Uninstall InvokeAI" \
-            "fooocus" "Uninstall Fooocus" \
-            "forge" "Uninstall SD WebUI Forge" \
-            3>&1 1>&2 2>&3) || return 0
-        case "$CHOICE" in
-            comfyui) remove_tool_dir "$COMFYUI_DIR" "ComfyUI" ;;
-            sdnext) remove_tool_dir "$SDNEXT_DIR" "SD.Next" ;;
-            a1111) remove_tool_dir "$AUTOMATIC1111_DIR" "Automatic1111" ;;
-            invokeai) remove_tool_dir "$INVOKEAI_DIR" "InvokeAI" ;;
-            fooocus) remove_tool_dir "$FOOOCUS_DIR" "Fooocus" ;;
-            forge) remove_tool_dir "$FORGE_DIR" "SD WebUI Forge" ;;
-        esac
-    done
+    local CHOICE
+    CHOICE=$(whiptail --title "Uninstall Menu" --menu "Choose a tool to remove" 20 78 12 \
+        "comfyui" "Uninstall ComfyUI" \
+        "sdnext" "Uninstall SD.Next" \
+        "a1111" "Uninstall Automatic1111" \
+        "invokeai" "Uninstall InvokeAI" \
+        "fooocus" "Uninstall Fooocus" \
+        "forge" "Uninstall SD WebUI Forge" \
+        3>&1 1>&2 2>&3) || return 0
+
+    case "$CHOICE" in
+        comfyui) remove_tool_dir "$COMFYUI_DIR" "ComfyUI" ;;
+        sdnext) remove_tool_dir "$SDNEXT_DIR" "SD.Next" ;;
+        a1111) remove_tool_dir "$AUTOMATIC1111_DIR" "Automatic1111" ;;
+        invokeai) remove_tool_dir "$INVOKEAI_DIR" "InvokeAI" ;;
+        fooocus) remove_tool_dir "$FOOOCUS_DIR" "Fooocus" ;;
+        forge) remove_tool_dir "$FORGE_DIR" "SD WebUI Forge" ;;
+    esac
 }
 
 show_manage_menu() {
-    while true; do
-        CHOICE=$(whiptail --title "Manage Tools" --menu "Install or uninstall tools." 15 78 4 \
-            "install" "Install a new tool" \
-            "uninstall" "Uninstall an existing tool" \
-            3>&1 1>&2 2>&3) || return 0
-        case "$CHOICE" in
-            install) show_install_menu ;;
-            uninstall) show_remove_menu ;;
-        esac
-    done
+    local CHOICE
+    CHOICE=$(whiptail --title "Manage Tools" --menu "Install or uninstall tools." 15 78 4 \
+        "install" "Install a new tool" \
+        "uninstall" "Uninstall an existing tool" \
+        3>&1 1>&2 2>&3) || return 0
+
+    case "$CHOICE" in
+        install) show_install_menu ;;
+        uninstall) show_remove_menu ;;
+    esac
 }
 
 show_system_menu() {
-    while true; do
-        CHOICE=$(whiptail --title "System & Updates" --menu "Manage system components and updates." 15 78 4 \
-            "update" "Update Everything (Script & AI Stack)" \
-            "drivers" "Manage AMD GPU Drivers" \
-            3>&1 1>&2 2>&3) || return 0
-        case "$CHOICE" in
-            update) run_full_update ;;
-            drivers)
-                if [ -f "./scripts/install/amd_drivers.sh" ]; then
-                    ./scripts/install/amd_drivers.sh
-                else
-                     whiptail --msgbox "Driver script not found:\n./scripts/install/amd_drivers.sh" 8 78
-                fi
-                ;;
-        esac
-    done
+    local CHOICE
+    CHOICE=$(whiptail --title "System & Updates" --menu "Manage system components and updates." 15 78 4 \
+        "update" "Update Everything (Script & AI Stack)" \
+        "drivers" "Manage AMD GPU Drivers" \
+        3>&1 1>&2 2>&3) || return 0
+
+    case "$CHOICE" in
+        update) run_full_update ;;
+        drivers)
+            if [ -f "./scripts/install/amd_drivers.sh" ]; then
+                ./scripts/install/amd_drivers.sh
+            else
+                 whiptail --msgbox "Driver script not found:\n./scripts/install/amd_drivers.sh" 8 78
+            fi
+            ;;
+    esac
 }
 
 
