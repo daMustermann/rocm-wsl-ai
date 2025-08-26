@@ -4,11 +4,11 @@ set -o pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; MAGENTA='\033[0;35m'; CYAN='\033[0;36m'; NC='\033[0m'
 
-log(){ echo -e "${BLUE}[INFO]${NC} $*"; }
-warn(){ echo -e "${YELLOW}[WARN]${NC} $*"; }
-err(){ echo -e "${RED}[ERROR]${NC} $*"; }
-success(){ echo -e "${GREEN}[OK]${NC} $*"; }
-headline(){ echo -e "${MAGENTA}==== $* ====${NC}"; }
+log(){ echo -e "${BLUE}[INFO]${NC} $*" >&2; }
+warn(){ echo -e "${YELLOW}[WARN]${NC} $*" >&2; }
+err(){ echo -e "${RED}[ERROR]${NC} $*" >&2; }
+success(){ echo -e "${GREEN}[OK]${NC} $*" >&2; }
+headline(){ echo -e "${MAGENTA}==== $* ====${NC}" >&2; }
 
 confirm(){ local m="$1"; read -p "${m} (y/N): " -r r; [[ $r =~ ^[Yy]$ ]]; }
 

@@ -255,27 +255,65 @@ get_latest_rocm_version() {
     return 0
 }
 
+get_latest_rc_version() {
+    log "Fetching latest ROCm RC version number from repo.radeon.com..."
+    local latest_rc_version
+    latest_rc_version=$(curl -s "https://repo.radeon.com/rocm/apt/" | \
+        grep -oE '[0-9]+\.[0-9]+_rc[0-9]+/' | \
+        sed 's/\///' | \
+        sort -V | \
+        tail -n 1)
+
+    if [ -z "$latest_rc_version" ]; then
+        echo ""
+        return 1
+    fi
+    echo "$latest_rc_version"
+    return 0
+}
+
 manage_gpu_drivers() {
     headline "AMD GPU Driver Management"
-    local latest_rocm_version
+    local latest_rocm_version rocm_rc_version
     if ! latest_rocm_version=$(get_latest_rocm_version); then
-        whiptail --title "Error" --msgbox "Failed to fetch the latest ROCm version. Please check the logs and your internet connection." 8 78
+        whiptail --title "Error" --msgbox "Failed to fetch the latest stable ROCm version. Please check the logs and your internet connection." 10 78
         return
     fi
     success "Latest stable ROCm version found: ${latest_rocm_version}"
+
+    rocm_rc_version=$(get_latest_rc_version)
+    if [ -n "$rocm_rc_version" ]; then
+        success "Latest RC ROCm version found: ${rocm_rc_version}"
+    fi
+
+    local menu_options=()
+    menu_options+=("${latest_rocm_version}" "Latest stable version (recommended)")
+    if [ -n "$rocm_rc_version" ]; then
+        menu_options+=("${rocm_rc_version}" "Latest Release Candidate (experimental)")
+    fi
+
+    local rocm_version_to_install
+    rocm_version_to_install=$(whiptail --title "Select ROCm Version" --menu "Choose which ROCm version to install." 16 78 2 "${menu_options[@]}" 3>&1 1>&2 2>&3)
+
+    if [ -z "$rocm_version_to_install" ]; then
+        whiptail --msgbox "Installation cancelled." 8 78
+        return
+    fi
+
+    success "Selected ROCm version for installation: ${rocm_version_to_install}"
 
     local rocm_version_installed
     rocm_version_installed=$(dpkg -l | grep "rocm-dev" | awk '{print $3}' | head -1 || echo "")
 
     local prompt_msg
     if [ -n "$rocm_version_installed" ]; then
-        if [ "$rocm_version_installed" == "$latest_rocm_version" ]; then
-            prompt_msg="You already have the latest ROCm version (${latest_rocm_version}) installed.\n\nDo you want to force a reinstallation?"
+        if [ "$rocm_version_installed" == "$rocm_version_to_install" ]; then
+            prompt_msg="You already have the selected ROCm version (${rocm_version_to_install}) installed.\n\nDo you want to force a reinstallation?"
         else
-            prompt_msg="An existing ROCm installation was found (v${rocm_version_installed}).\nThe latest available version is v${latest_rocm_version}.\n\nThis will REMOVE the old version and install the new one. Your AI tools may need updates afterwards.\n\nProceed with update?"
+            prompt_msg="An existing ROCm installation was found (v${rocm_version_installed}).\nYou have chosen to install v${rocm_version_to_install}.\n\nThis will REMOVE the old version and install the new one. Your AI tools may need updates afterwards.\n\nProceed with update?"
         fi
     else
-        prompt_msg="No existing ROCm installation was found.\n\nThis will install the latest stable ROCm version (${latest_rocm_version}).\n\nDo you want to proceed with the installation?"
+        prompt_msg="No existing ROCm installation was found.\n\nThis will install the selected ROCm version (${rocm_version_to_install}).\n\nDo you want to proceed with the installation?"
     fi
 
     if !(whiptail --title "Confirm Installation" --yesno "$prompt_msg" 18 78); then
@@ -312,8 +350,8 @@ manage_gpu_drivers() {
         echo 20 "Adding AMD repository key..."
         curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/rocm.gpg
 
-        echo 30 "Adding ROCm repository for version ${latest_rocm_version}..."
-        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${latest_rocm_version} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
+        echo 30 "Adding ROCm repository for version ${rocm_version_to_install}..."
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${rocm_version_to_install} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
 
         echo 40 "Updating package lists with new repository..."
         sudo apt-get update -y &>/dev/null
@@ -333,7 +371,7 @@ manage_gpu_drivers() {
 
         echo 100 "Installation script finished."
         sleep 1
-    ) | whiptail --title "Installing ROCm ${latest_rocm_version}" --gauge "Please wait, this will take several minutes..." 10 78 0
+    ) | whiptail --title "Installing ROCm ${rocm_version_to_install}" --gauge "Please wait, this will take several minutes..." 10 78 0
 
     # --- Environment Setup ---
     headline "Configuring Environment"
@@ -345,7 +383,7 @@ export ROCM_PATH=/opt/rocm
 export PATH=\$ROCM_PATH/bin:\$ROCM_PATH/llvm/bin:\$PATH
 export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
 export HIP_PATH=\$ROCM_PATH
-export ROCM_VERSION=${latest_rocm_version}
+export ROCM_VERSION=${rocm_version_to_install}
 
 # Source auto-detected GPU environment if available
 [ -f "\$HOME/.config/rocm-wsl-ai/gpu.env" ] && source "\$HOME/.config/rocm-wsl-ai/gpu.env"
@@ -389,7 +427,7 @@ EOF
         fi
     fi
 
-    whiptail --title "Installation Complete" --msgbox "ROCm ${latest_rocm_version} installation is complete.\n\n${test_results}\n\nA system restart is highly recommended for all changes to take effect." 24 78
+    whiptail --title "Installation Complete" --msgbox "ROCm ${rocm_version_to_install} installation is complete.\n\n${test_results}\n\nA system restart is highly recommended for all changes to take effect." 24 78
 }
 
 show_launch_menu() {
