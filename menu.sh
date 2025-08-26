@@ -193,41 +193,44 @@ run_full_update() {
 }
 
 check_status() {
-    (
-    # Check ROCm/PyTorch
-    echo "--- System Status ---"
-    if [ -f "$VENV_PATH/bin/activate" ]; then
-        echo "✓ ROCm/PyTorch Environment: INSTALLED"
-        # Source in a subshell to not pollute the main script's env
-        (
-            source "$VENV_PATH/bin/activate"
+    local status_text
+    status_text=$(
+        # Check ROCm/PyTorch
+        echo "--- System Status ---"
+        if [ -f "$VENV_PATH/bin/activate" ]; then
+            echo "✓ ROCm/PyTorch Environment: INSTALLED"
+            # Source in a subshell to not pollute the main script's env
+            (
+                # shellcheck disable=SC1091
+                source "$VENV_PATH/bin/activate"
 
-            PY_VER=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || echo "N/A")
-            ROCM_OK=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "N/A")
-            echo "  - PyTorch Version: $PY_VER"
-            echo "  - ROCm Detected by PyTorch: $ROCM_OK"
-        ) || echo "  - PyTorch verification failed."
-    else
-        echo "✗ ROCm/PyTorch Environment: NOT INSTALLED"
-    fi
+                PY_VER=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || echo "N/A")
+                ROCM_OK=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "N/A")
+                echo "  - PyTorch Version: $PY_VER"
+                echo "  - ROCm Detected by PyTorch: $ROCM_OK"
+            ) || echo "  - PyTorch verification failed."
+        else
+            echo "✗ ROCm/PyTorch Environment: NOT INSTALLED"
+        fi
 
-    # Check Tools
-    echo -e "\n--- Tool Status ---"
-    [ -f "$COMFYUI_DIR/main.py" ] && echo "✓ ComfyUI: INSTALLED" || echo "✗ ComfyUI: NOT INSTALLED"
-    [ -f "$SDNEXT_DIR/webui.sh" ] && echo "✓ SD.Next: INSTALLED" || echo "✗ SD.Next: NOT INSTALLED"
-    [ -f "$AUTOMATIC1111_DIR/webui.sh" ] && echo "✓ Automatic1111: INSTALLED" || echo "✗ Automatic1111: NOT INSTALLED"
-    [ -f "$INVOKEAI_DIR/invoke.sh" ] && echo "✓ InvokeAI: INSTALLED" || echo "✗ InvokeAI: NOT INSTALLED"
-    [ -d "$FOOOCUS_DIR" ] && echo "✓ Fooocus: INSTALLED" || echo "✗ Fooocus: NOT INSTALLED"
-    [ -d "$FORGE_DIR" ] && echo "✓ SD WebUI Forge: INSTALLED" || echo "✗ SD WebUI Forge: NOT INSTALLED"
+        # Check Tools
+        echo -e "\n--- Tool Status ---"
+        [ -f "$COMFYUI_DIR/main.py" ] && echo "✓ ComfyUI: INSTALLED" || echo "✗ ComfyUI: NOT INSTALLED"
+        [ -f "$SDNEXT_DIR/webui.sh" ] && echo "✓ SD.Next: INSTALLED" || echo "✗ SD.Next: NOT INSTALLED"
+        [ -f "$AUTOMATIC1111_DIR/webui.sh" ] && echo "✓ Automatic1111: INSTALLED" || echo "✗ Automatic1111: NOT INSTALLED"
+        [ -f "$INVOKEAI_DIR/invoke.sh" ] && echo "✓ InvokeAI: INSTALLED" || echo "✗ InvokeAI: NOT INSTALLED"
+        [ -d "$FOOOCUS_DIR" ] && echo "✓ Fooocus: INSTALLED" || echo "✗ Fooocus: NOT INSTALLED"
+        [ -d "$FORGE_DIR" ] && echo "✓ SD WebUI Forge: INSTALLED" || echo "✗ SD WebUI Forge: NOT INSTALLED"
 
-    # Check ROCm system status
-    echo -e "\n--- GPU Information ---"
-    if command -v rocminfo &> /dev/null; then
-        rocminfo | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' | head -3
-    else
-        echo "rocminfo command not found. Is ROCm installed correctly?"
-    fi
-    ) | whiptail --title "Installation Status" --textbox - 24 78
+        # Check ROCm system status
+        echo -e "\n--- GPU Information ---"
+        if command -v rocminfo &> /dev/null; then
+            rocminfo | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' | head -3
+        else
+            echo "rocminfo command not found. Is ROCm installed correctly?"
+        fi
+    )
+    whiptail --title "Installation Status" --msgbox "$status_text" 24 78
 }
 
 # --- Menus ---
