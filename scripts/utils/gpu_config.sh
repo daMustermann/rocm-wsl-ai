@@ -34,8 +34,8 @@ detect_and_export_rocm_env(){
   {
     echo "# Auto-generated GPU environment ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
     echo "# Detected arch: $arch"
-    echo "PYTORCH_ROCM_ARCH=$PYTORCH_ROCM_ARCH"
-    [ -n "$hsa" ] && echo "HSA_OVERRIDE_GFX_VERSION=$hsa"
+    echo "export PYTORCH_ROCM_ARCH=\"$PYTORCH_ROCM_ARCH\""
+    [ -n "$hsa" ] && echo "export HSA_OVERRIDE_GFX_VERSION=\"$hsa\""
   } >"$GPU_ENV_FILE.tmp" && mv "$GPU_ENV_FILE.tmp" "$GPU_ENV_FILE"
   success "GPU env written: $GPU_ENV_FILE (arch=$arch hsa=$hsa)"
 }
