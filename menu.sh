@@ -143,6 +143,9 @@ self_update_repo() {
     git fetch --all --prune || { whiptail --msgbox "git fetch failed. Check your connection." 8 78; return 1; }
 
     UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "${REPO_REMOTE}/main")
+    if [[ "$UPSTREAM" == "${REPO_REMOTE}/main" ]]; then
+        print_warning "No upstream branch is set. Defaulting to '${UPSTREAM}' for update comparison."
+    fi
     LOCAL=$(git rev-parse @)
     REMOTE=$(git rev-parse "$UPSTREAM" 2>/dev/null || echo "")
     BASE=$(git merge-base @ "$UPSTREAM" 2>/dev/null || echo "")

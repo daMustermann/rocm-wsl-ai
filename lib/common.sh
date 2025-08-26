@@ -33,10 +33,8 @@ GPU_ENV_MARKER="${HOME}/.config/rocm-wsl-ai/gpu.env"
 if [ -f "$(dirname "${BASH_SOURCE[0]}")/../scripts/utils/gpu_config.sh" ]; then
   # shellcheck disable=SC1091
   source "$(dirname "${BASH_SOURCE[0]}")/../scripts/utils/gpu_config.sh"
-  if [ ! -f "$GPU_ENV_MARKER" ]; then
-    detect_and_export_rocm_env || warn "GPU auto-detect failed"
-  else
-    # shellcheck disable=SC1090
-    source "$GPU_ENV_MARKER" || true
-  fi
+
+  # Always run detection to set env vars and regenerate the env file.
+  # This fixes issues with stale or malformed gpu.env files from previous versions.
+  detect_and_export_rocm_env || warn "GPU auto-detection failed"
 fi
