@@ -11,8 +11,7 @@ fi
 # ==============================================================================
 # AI Tools Suite for AMD GPUs on Linux & WSL2 - 2025 (TUI with whiptail)
 # - Always latest ROCm & PyTorch Nightly
-# - Image Gen: ComfyUI, SD.Next, Automatic1111, InvokeAI, Fooocus, SD WebUI Forge
-# - LLM: Ollama
+# - Image & Video Generation: ComfyUI, SD.Next, Automatic1111, InvokeAI, Fooocus, SD WebUI Forge
 # - Utilities: Setup/Updates, GitHub self-update, Removal routines
 # ==============================================================================
 
@@ -91,20 +90,6 @@ install_tool() {
     fi
 }
 
-install_ollama() {
-    if command -v ollama &>/dev/null; then
-        whiptail --msgbox "Ollama is already installed." 8 78
-        return
-    fi
-    if [ -f "./scripts/install/ollama.sh" ]; then
-        print_header "Installing Ollama"
-        ./scripts/install/ollama.sh
-        whiptail --title "Success" --msgbox "Ollama has been installed." 8 78
-    else
-        whiptail --title "Error" --msgbox "Installation script not found:\n./scripts/install/ollama.sh" 8 78
-    fi
-}
-
 start_tool() {
     local tool_name="$1"
     local start_script="$2"
@@ -132,18 +117,6 @@ remove_tool_dir() {
         fi
     else
         whiptail --msgbox "$name is not installed (directory not found)." 8 78
-    fi
-}
-
-remove_ollama() {
-    if ! command -v ollama &>/dev/null; then
-        whiptail --msgbox "Ollama is not installed." 8 78
-        return
-    fi
-    if (whiptail --title "Confirm Removal" --yesno "This will attempt to remove the Ollama service and binary. Are you sure?" 10 78); then
-        print_header "Removing Ollama"
-        ./scripts/install/ollama.sh --uninstall
-        whiptail --msgbox "Ollama removal script finished." 8 78
     fi
 }
 
@@ -241,16 +214,6 @@ check_status() {
     [ -f "$INVOKEAI_DIR/invoke.sh" ] && echo "✓ InvokeAI: INSTALLED" || echo "✗ InvokeAI: NOT INSTALLED"
     [ -d "$FOOOCUS_DIR" ] && echo "✓ Fooocus: INSTALLED" || echo "✗ Fooocus: NOT INSTALLED"
     [ -d "$FORGE_DIR" ] && echo "✓ SD WebUI Forge: INSTALLED" || echo "✗ SD WebUI Forge: NOT INSTALLED"
-    if command -v ollama &> /dev/null; then
-        echo "✓ Ollama: INSTALLED"
-        if systemctl --user is-active --quiet ollama.service 2>/dev/null; then
-            echo "  - Service: running"
-        else
-            echo "  - Service: not running"
-        fi
-    else
-        echo "✗ Ollama: NOT INSTALLED"
-    fi
 
     # Check ROCm system status
     echo -e "\n--- GPU Information ---"
@@ -272,7 +235,6 @@ show_launch_menu() {
             "invokeai" "Start InvokeAI" \
             "fooocus" "Start Fooocus" \
             "forge" "Start SD WebUI Forge" \
-            "ollama" "Manage Ollama (Models, etc.)" \
             3>&1 1>&2 2>&3) || return 0
         case "$CHOICE" in
             comfyui) start_tool "ComfyUI" "./scripts/start/comfyui.sh" "$COMFYUI_DIR/main.py" ;;
@@ -281,18 +243,6 @@ show_launch_menu() {
             invokeai) start_tool "InvokeAI" "./scripts/start/invokeai.sh" "$INVOKEAI_DIR/invoke.sh" ;;
             fooocus) start_tool "Fooocus" "./scripts/start/fooocus.sh" "$FOOOCUS_DIR/launch.py" ;;
             forge) start_tool "SD WebUI Forge" "./scripts/start/forge.sh" "$FORGE_DIR/webui.sh" ;;
-            ollama)
-                if command -v ollama &>/dev/null; then
-                    # This script is not part of the repo, assumed to be user-provided
-                    if [ -f "$HOME/manage_ollama_models.sh" ]; then
-                        "$HOME/manage_ollama_models.sh"
-                    else
-                        whiptail --msgbox "Ollama is installed, but the management script (~/manage_ollama_models.sh) was not found." 10 78
-                    fi
-                else
-                    whiptail --msgbox "Ollama is not installed." 8 78
-                fi
-                ;;
         esac
     done
 }
@@ -308,8 +258,6 @@ show_install_menu() {
             "invokeai" "Install InvokeAI" \
             "fooocus" "Install Fooocus" \
             "forge" "Install SD WebUI Forge" \
-            "---" "--- LANGUAGE MODELS ---" \
-            "ollama" "Install Ollama" \
             3>&1 1>&2 2>&3) || return 0
         case "$CHOICE" in
             base) install_rocm_pytorch ;;
@@ -319,7 +267,6 @@ show_install_menu() {
             invokeai) install_tool "InvokeAI" "./scripts/install/invokeai.sh" "$INVOKEAI_DIR" ;;
             fooocus) install_tool "Fooocus" "./scripts/install/fooocus.sh" "$FOOOCUS_DIR" ;;
             forge) install_tool "SD WebUI Forge" "./scripts/install/forge.sh" "$FORGE_DIR" ;;
-            ollama) install_ollama ;;
         esac
     done
 }
@@ -333,7 +280,6 @@ show_remove_menu() {
             "invokeai" "Uninstall InvokeAI" \
             "fooocus" "Uninstall Fooocus" \
             "forge" "Uninstall SD WebUI Forge" \
-            "ollama" "Uninstall Ollama" \
             3>&1 1>&2 2>&3) || return 0
         case "$CHOICE" in
             comfyui) remove_tool_dir "$COMFYUI_DIR" "ComfyUI" ;;
@@ -342,7 +288,6 @@ show_remove_menu() {
             invokeai) remove_tool_dir "$INVOKEAI_DIR" "InvokeAI" ;;
             fooocus) remove_tool_dir "$FOOOCUS_DIR" "Fooocus" ;;
             forge) remove_tool_dir "$FORGE_DIR" "SD WebUI Forge" ;;
-            ollama) remove_ollama ;;
         esac
     done
 }
