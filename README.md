@@ -38,6 +38,11 @@ cd rocm-wsl-ai
 
 ### 2. Run the Menu
 
+First, make the menu.sh executable:
+```bash
+chmod +x menu.sh
+```
+
 Next, launch the main menu script:
 ```bash
 ./menu.sh
