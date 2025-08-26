@@ -18,6 +18,23 @@ _map_arch_to_hsa(){
 }
 
 detect_and_export_rocm_env(){
+  # If user has already set HSA_OVERRIDE_GFX_VERSION, respect it.
+  if [ -n "${HSA_OVERRIDE_GFX_VERSION-}" ]; then
+    local arch_list="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1010"
+    export PYTORCH_ROCM_ARCH="$arch_list"
+
+    mkdir -p "$(dirname "$GPU_ENV_FILE")"
+    {
+      echo "# Auto-generated GPU environment ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+      echo "# Using user-defined HSA_OVERRIDE_GFX_VERSION: $HSA_OVERRIDE_GFX_VERSION"
+      echo "export PYTORCH_ROCM_ARCH=\"$PYTORCH_ROCM_ARCH\""
+      echo "export HSA_OVERRIDE_GFX_VERSION=\"$HSA_OVERRIDE_GFX_VERSION\""
+    } >"$GPU_ENV_FILE.tmp" && mv "$GPU_ENV_FILE.tmp" "$GPU_ENV_FILE"
+    success "GPU env written: $GPU_ENV_FILE (using user-defined HSA_OVERRIDE_GFX_VERSION=$HSA_OVERRIDE_GFX_VERSION)"
+    return 0
+  fi
+
+  # --- Auto-detection logic ---
   local arch=""; local hsa="";
   if command -v rocminfo >/dev/null 2>&1; then
     arch=$(rocminfo 2>/dev/null | grep -Eo 'gfx[0-9]+' | head -1 | tr -d '\r')

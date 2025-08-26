@@ -225,7 +225,7 @@ check_status() {
         # Check ROCm system status
         echo -e "\n--- GPU Information ---"
         if command -v rocminfo &> /dev/null; then
-            rocminfo 2>/dev/null | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' | head -3
+            rocminfo | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' | head -3
         else
             echo "rocminfo command not found. Is ROCm installed correctly?"
         fi
