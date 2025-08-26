@@ -55,10 +55,12 @@ check_venv() {
 # --- Tool-specific Functions ---
 install_rocm_pytorch() {
     local ROCM_VERSION
-    ROCM_VERSION=$(whiptail --title "ROCm Version Select" --menu "Choose which ROCm version to install for the base environment." 16 78 2 \
+    ROCM_VERSION=$(whiptail --title "ROCm Version Select" --menu "Choose which ROCm version to install for the base environment." 15 78 1 \
         "latest" "Latest stable ROCm (recommended) + PyTorch for ROCm 6.1 Nightly" \
-        "7.0-rc1" "Experimental ROCm 7.0-rc1 + PyTorch for ROCm 7.0 Nightly" \
         3>&1 1>&2 2>&3) || return 0
+
+    # Default to 'latest' if user cancels
+    ROCM_VERSION=${ROCM_VERSION:-latest}
 
     print_header "Installing ROCm and PyTorch (${ROCM_VERSION})"
     print_info "This will install the selected ROCm version, PyTorch Nightly, and Triton."
@@ -255,23 +257,6 @@ get_latest_rocm_version() {
     return 0
 }
 
-get_latest_rc_version() {
-    log "Fetching latest ROCm RC version number from repo.radeon.com..."
-    local latest_rc_version
-    # Regex updated to be more flexible for RC versions like '7.0_rc1'
-    latest_rc_version=$(curl -s "https://repo.radeon.com/rocm/apt/" | \
-        grep -oE '[0-9]+\.[0-9]+_rc[0-9a-zA-Z.-]+/' | \
-        sed 's/\///' | \
-        sort -V | \
-        tail -n 1)
-
-    if [ -z "$latest_rc_version" ]; then
-        echo ""
-        return 1
-    fi
-    echo "$latest_rc_version"
-    return 0
-}
 
 manage_gpu_drivers() {
     headline "AMD GPU Driver Management"
@@ -282,19 +267,11 @@ manage_gpu_drivers() {
     fi
     success "Latest stable ROCm version found: ${latest_rocm_version}"
 
-    rocm_rc_version=$(get_latest_rc_version)
-    if [ -n "$rocm_rc_version" ]; then
-        success "Latest RC ROCm version found: ${rocm_rc_version}"
-    fi
-
     local menu_options=()
     menu_options+=("${latest_rocm_version}" "Latest stable version (recommended)")
-    if [ -n "$rocm_rc_version" ]; then
-        menu_options+=("${rocm_rc_version}" "Latest Release Candidate (experimental)")
-    fi
 
     local rocm_version_to_install
-    rocm_version_to_install=$(whiptail --title "Select ROCm Version" --menu "Choose which ROCm version to install." 16 78 2 "${menu_options[@]}" 3>&1 1>&2 2>&3)
+    rocm_version_to_install=$(whiptail --title "Select ROCm Version" --menu "Choose which ROCm version to install." 16 78 1 "${menu_options[@]}" 3>&1 1>&2 2>&3)
 
     if [ -z "$rocm_version_to_install" ]; then
         whiptail --msgbox "Installation cancelled." 8 78
@@ -354,7 +331,6 @@ manage_gpu_drivers() {
 
         echo 30 "Adding ROCm repositories for version ${rocm_version_to_install}..."
         echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${rocm_version_to_install} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/rocm.list > /dev/null
-        # Add graphics repository as per official ROCm 7.0 docs
         echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/graphics/apt/${rocm_version_to_install} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/rocm-graphics.list > /dev/null
 
         echo 40 "Setting APT pinning..."
