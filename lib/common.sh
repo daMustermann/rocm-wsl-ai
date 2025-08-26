@@ -36,5 +36,6 @@ if [ -f "$(dirname "${BASH_SOURCE[0]}")/../scripts/utils/gpu_config.sh" ]; then
 
   # Always run detection to set env vars and regenerate the env file.
   # This fixes issues with stale or malformed gpu.env files from previous versions.
-  detect_and_export_rocm_env || warn "GPU auto-detection failed"
+  # Redirecting to stderr to avoid polluting stdout for scripts that source this.
+  detect_and_export_rocm_env >&2 || warn "GPU auto-detection failed"
 fi
