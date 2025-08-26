@@ -19,7 +19,6 @@ fi
 
 # --- Configuration ---
 VENV_NAME="genai_env"
-HSA_OVERRIDE_GFX_VERSION=""
 ROCM_VERSION_CHOICE="${1:-latest}" # Default to 'latest' if no argument is provided
 
 # --- Script Start ---
@@ -28,95 +27,13 @@ headline "ROCm + PyTorch Setup for Linux & WSL2 (${ROCM_VERSION_CHOICE})"
 # Exit immediately if a command exits with a non-zero status
 # set -e is inherited from common.sh via pipefail
 
-# --- GPU Detection ---
-log "Detecting environment and AMD GPU..."
-
-if is_wsl; then
-    log "Running in Windows Subsystem for Linux (WSL)"
-    # In WSL, get GPU info from Windows via PowerShell
-    if ! command -v pwsh &> /dev/null; then
-        log "Installing PowerShell to detect Windows GPU..."
-        ensure_apt_packages wget apt-transport-https software-properties-common
-        wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb" -O /tmp/packages-microsoft-prod.deb
-        sudo dpkg -i /tmp/packages-microsoft-prod.deb
-        rm /tmp/packages-microsoft-prod.deb
-        ensure_apt_packages powershell
-    fi
-    GPU_INFO=$(pwsh -Command "Get-CimInstance -ClassName Win32_VideoController | Where-Object { \$_.Name -like '*Radeon*' -or \$_.Name -like '*AMD*' } | Select-Object -ExpandProperty Name")
-else
-    log "Running on native Linux"
-    # Direct Linux detection
-    if command -v lspci &> /dev/null; then
-        GPU_INFO=$(lspci | grep -i 'vga\|3d\|display' | grep -i 'amd\|radeon\|ati')
-    else
-        warn "lspci command not found. Cannot detect GPU directly."
-    fi
-fi
-
-if [ -z "$GPU_INFO" ]; then
-    warn "No AMD GPU detected. This script is for AMD GPUs."
-    warn "Continuing with default settings, but ROCm may not work correctly."
-else
-    log "Detected AMD GPU: $GPU_INFO"
-fi
-
-# --- GPU Architecture Detection and Configuration ---
-if [ -n "$GPU_INFO" ]; then
-    # RDNA 3.5 (Strix Point / Strix Halo APUs, e.g., Ryzen AI 300 series)
-    if [[ "$GPU_INFO" =~ 1150 || "$GPU_INFO" =~ 1151 ]] || [[ "$GPU_INFO" =~ "Ryzen AI 3" ]]; then
-        warn "Detected RDNA 3.5 / Ryzen AI 300 Series APU. ROCm support is EXPERIMENTAL."
-        if [[ "$GPU_INFO" =~ Halo || "$GPU_INFO" =~ HX[[:space:]]3[79] ]]; then # Strix Halo (e.g. 375HX, 395HX)
-             HSA_OVERRIDE_GFX_VERSION="gfx1151"; log "Setting EXPERIMENTAL HSA_OVERRIDE_GFX_VERSION=gfx1151 for Strix Halo APU";
-        else # Standard Strix Point
-             HSA_OVERRIDE_GFX_VERSION="gfx1150"; log "Setting EXPERIMENTAL HSA_OVERRIDE_GFX_VERSION=gfx1150 for Strix Point APU";
-        fi
-    # RDNA4 (Navi 4x, e.g., RX 9000 series) - Future-proofing
-    elif [[ "$GPU_INFO" =~ 1200 || "$GPU_INFO" =~ 1201 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*9[0-9]{3} ]]; then
-        warn "Detected RDNA4 GPU (e.g., RX 9000 series). ROCm support is EXPERIMENTAL/PRELIMINARY."
-        if [[ "$GPU_INFO" =~ 99[0-9]{2} || "$GPU_INFO" =~ 1200 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1200"; log "Setting EXPERIMENTAL HSA_OVERRIDE_GFX_VERSION=gfx1200 for Navi41-based GPU";
-        elif [[ "$GPU_INFO" =~ 98[0-9]{2} || "$GPU_INFO" =~ 97[0-9]{2} || "$GPU_INFO" =~ 1201 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1201"; log "Setting EXPERIMENTAL HSA_OVERRIDE_GFX_VERSION=gfx1201 for Navi42-based GPU";
-        else HSA_OVERRIDE_GFX_VERSION="gfx1200"; log "Setting EXPERIMENTAL HSA_OVERRIDE_GFX_VERSION=gfx1200 for unknown RDNA4 GPU"; fi
-    # RDNA3 (Navi 3x, RX 7000 series & APUs)
-    elif [[ "$GPU_INFO" =~ 1100 || "$GPU_INFO" =~ 1101 || "$GPU_INFO" =~ 1102 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*7[0-9]{3} ]] || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]] || [[ "$GPU_INFO" =~ "Radeon 7" ]]; then
-        log "Detected RDNA3 GPU (RX 7000 series or APU)"
-        if [[ "$GPU_INFO" =~ 79[0-9]{2} || "$GPU_INFO" =~ 1100 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1100"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1100 for Navi31 GPU";
-        elif [[ "$GPU_INFO" =~ 78[0-9]{2} || "$GPU_INFO" =~ 77[0-9]{2} || "$GPU_INFO" =~ 1101 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1101"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1101 for Navi32 GPU";
-        elif [[ "$GPU_INFO" =~ 76[0-9]{2} || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]] || "$GPU_INFO" =~ 1102 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1102"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1102 for Navi33/APU GPU";
-        else HSA_OVERRIDE_GFX_VERSION="gfx1100"; log "Setting default HSA_OVERRIDE_GFX_VERSION=gfx1100 for RDNA3 GPU"; fi
-    # RDNA2 (Navi 2x, RX 6000 series)
-    elif [[ "$GPU_INFO" =~ 1030 || "$GPU_INFO" =~ 1031 || "$GPU_INFO" =~ 1032 || "$GPU_INFO" =~ 1034 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*6[0-9]{3} ]]; then
-        log "Detected RDNA2 GPU (RX 6000 series)"
-        if [[ "$GPU_INFO" =~ 69[0-9]{2} || "$GPU_INFO" =~ 68[0-9]{2} || "$GPU_INFO" =~ 1030 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1030"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1030 for Navi21 GPU";
-        elif [[ "$GPU_INFO" =~ 67[0-9]{2} || "$GPU_INFO" =~ 1031 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1031"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1031 for Navi22 GPU";
-        elif [[ "$GPU_INFO" =~ 66[0-9]{2} || "$GPU_INFO" =~ 1032 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1032"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1032 for Navi23 GPU";
-        elif [[ "$GPU_INFO" =~ 65[0-9]{2} || "$GPU_INFO" =~ 64[0-9]{2} || "$GPU_INFO" =~ 1034 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1034"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1034 for Navi24 GPU";
-        else HSA_OVERRIDE_GFX_VERSION="gfx1030"; log "Setting default HSA_OVERRIDE_GFX_VERSION=gfx1030 for RDNA2 GPU"; fi
-    # RDNA1 (Navi 1x, RX 5000 series)
-    elif [[ "$GPU_INFO" =~ 1010 || "$GPU_INFO" =~ 1012 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*5[0-9]{3} ]]; then
-        log "Detected RDNA1 GPU (RX 5000 series)"
-        if [[ "$GPU_INFO" =~ 57[0-9]{2} || "$GPU_INFO" =~ 56[0-9]{2} || "$GPU_INFO" =~ 1010 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1010"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1010 for Navi10 GPU";
-        elif [[ "$GPU_INFO" =~ 55[0-9]{2} || "$GPU_INFO" =~ 54[0-9]{2} || "$GPU_INFO" =~ 1012 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx1012"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx1012 for Navi14 GPU";
-        else HSA_OVERRIDE_GFX_VERSION="gfx1010"; log "Setting default HSA_OVERRIDE_GFX_VERSION=gfx1010 for RDNA1 GPU"; fi
-    # Vega / GCN 5
-    elif [[ "$GPU_INFO" =~ Vega || "$GPU_INFO" =~ Radeon[[:space:]]VII || "$GPU_INFO" =~ 90[0-9] ]]; then
-        log "Detected Vega GPU"
-        if [[ "$GPU_INFO" =~ Radeon[[:space:]]VII || "$GPU_INFO" =~ 906 ]]; then HSA_OVERRIDE_GFX_VERSION="gfx906"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx906 for Radeon VII";
-        else HSA_OVERRIDE_GFX_VERSION="gfx900"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx900 for Vega GPU"; fi
-    # Polaris / GCN 4 (RX 500/400 series)
-    elif [[ "$GPU_INFO" =~ Polaris || "$GPU_INFO" =~ RX[[:space:]]*[54][0-9]{2} || "$GPU_INFO" =~ 803 ]]; then
-        log "Detected Polaris GPU (RX 500/400 series)"
-        HSA_OVERRIDE_GFX_VERSION="gfx803"; log "Setting HSA_OVERRIDE_GFX_VERSION=gfx803 for Polaris GPU";
-    else
-        warn "Could not determine specific AMD GPU architecture. Using default for RDNA3."
-        HSA_OVERRIDE_GFX_VERSION="gfx1100"; log "Setting default HSA_OVERRIDE_GFX_VERSION=gfx1100";
-    fi
-else
-    warn "No AMD GPU detected, using default configuration for RDNA3 GPUs."
-    HSA_OVERRIDE_GFX_VERSION="gfx1100"; log "Setting default HSA_OVERRIDE_GFX_VERSION=gfx1100";
-fi
-
-export HSA_OVERRIDE_GFX_VERSION
-log "GPU detection complete. Proceeding with installation..."
+# GPU detection is now handled by 'lib/common.sh' sourcing 'scripts/utils/gpu_config.sh'.
+# This ensures detection is centralized and runs before this script.
+# The necessary environment variables (HSA_OVERRIDE_GFX_VERSION, PYTORCH_ROCM_ARCH)
+# are automatically exported and available to this script.
+log "GPU auto-detection is handled by lib/common.sh"
+if is_wsl; then log "Running in Windows Subsystem for Linux (WSL)"; else log "Running on native Linux"; fi
+log "Using detected HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-Not Set}"
 
 # --- 1. System Update and Prerequisites ---
 headline "TASK 1/6: System Update and Prerequisites"
@@ -137,9 +54,9 @@ else
     if [ "$ROCM_VERSION_CHOICE" = "7.0-rc1" ]; then
         warn "Using experimental ROCm 7.0 RC1 repository."
         ROCM_REPO_PATH="7.0"
-    else # Default to "latest", which is specified as 6.4.3
-        log "Using stable ROCm 6.4 series repository."
-        ROCM_REPO_PATH="6.4"
+    else # Default to "latest"
+        log "Using latest stable ROCm repository."
+        ROCM_REPO_PATH="latest"
     fi
 
     # Add ROCm repository
@@ -198,12 +115,19 @@ success "Python virtual environment setup complete. Environment activated."
 headline "TASK 5/6: Installing PyTorch Nightly for matching ROCm series + Triton"
 
 # Determine PyTorch index based on ROCm choice
+# NOTE: These might need updating as new ROCm versions are released and supported by PyTorch.
+# As of mid-2024, 6.1 is the latest stable series with nightly wheels. 7.0 is experimental.
+PYTORCH_ROCM_STABLE_SERIES="6.1"
+PYTORCH_ROCM_EXPERIMENTAL_SERIES="7.0"
+
 PYTORCH_ROCM_SERIES=""
 if [ "$ROCM_VERSION_CHOICE" = "7.0-rc1" ]; then
-    PYTORCH_ROCM_SERIES="7.0"
+    PYTORCH_ROCM_SERIES="$PYTORCH_ROCM_EXPERIMENTAL_SERIES"
+    log "Selected experimental ROCm, targeting PyTorch for ROCm ${PYTORCH_ROCM_SERIES}"
 else
-    # For stable, we target 6.4 specifically
-    PYTORCH_ROCM_SERIES="6.4"
+    # For "latest", we target the latest known stable PyTorch series
+    PYTORCH_ROCM_SERIES="$PYTORCH_ROCM_STABLE_SERIES"
+    log "Selected latest stable ROCm, targeting PyTorch for ROCm ${PYTORCH_ROCM_SERIES}"
 fi
 log "Targeting ROCm series: ${PYTORCH_ROCM_SERIES}"
 

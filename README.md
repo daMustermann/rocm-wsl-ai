@@ -7,6 +7,7 @@ The toolkit automates the entire process, from driver installation to applicatio
 ## Why Use This Toolkit?
 
 -   **Automated & Simple:** Gone are the days of manual dependency hell. A user-friendly terminal menu guides you through every step.
+-   **Smart GPU Detection:** Automatically detects your AMD GPU and configures the environment with the correct settings (`HSA_OVERRIDE_GFX_VERSION`), simplifying setup for a wide range of RDNA, Vega, and Polaris cards.
 -   **Always Up-to-Date:** The scripts automatically fetch the latest stable ROCm drivers and the correct PyTorch nightly builds, so you're always on the cutting edge.
 -   **Robust & Isolated:** Manages a dedicated Python virtual environment to prevent conflicts with your system packages.
 -   **Cross-Platform:** Works consistently on both native Ubuntu 22.04/24.04 and WSL2.
@@ -51,10 +52,14 @@ This is the most important first step. It sets up the core ROCm and PyTorch envi
 -   Choose `Install a new tool`.
 -   Select **`Base Installation (ROCm & PyTorch)`**.
 
-You will be asked to choose a ROCm version (the "latest" stable version is recommended). The script will then handle everything:
+You will be presented with a choice for the ROCm and PyTorch versions:
+-   **`Latest stable ROCm (recommended) + PyTorch for ROCm 6.1 Nightly`**: This is the recommended option for most users. It installs the latest stable ROCm drivers from the AMD repository and a matching PyTorch nightly build.
+-   **`Experimental ROCm 7.0-rc1 + PyTorch for ROCm 7.0 Nightly`**: For advanced users who want to test the latest experimental features.
+
+The script will then handle everything:
 -   Installs the necessary AMD drivers and ROCm stack.
 -   Creates a self-contained Python virtual environment at `~/genai_env`.
--   Installs the latest compatible PyTorch nightly build and Triton.
+-   Installs the chosen compatible PyTorch nightly build and Triton.
 
 **A system restart is required** after this step is complete to ensure all driver and user-group changes take effect.
 
@@ -87,7 +92,9 @@ This ensures you're always using the latest, most stable update procedures.
 
 ### GPU Compatibility
 
-ROCm hardware support is constantly evolving. To get the most accurate information, please consult the official AMD documentation instead of relying on potentially outdated lists here.
+The script automatically detects the GPU architecture and sets the appropriate `HSA_OVERRIDE_GFX_VERSION` environment variable. This works for most modern AMD GPUs (RDNA 1/2/3, Vega, Polaris). The detection works even on a fresh system before ROCm is installed.
+
+If you have a very new or unsupported GPU, you might need to set this variable manually. For the most accurate information, please consult the official AMD documentation.
 
 -   **[Official Compatibility Matrix for ROCm (Latest Stable)](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)**
 -   **[Release Notes for ROCm Pre-Releases](https://rocm.docs.amd.com/en/docs-7.0-rc1/preview/release.html)** (For experimental support)
@@ -96,8 +103,7 @@ ROCm hardware support is constantly evolving. To get the most accurate informati
 
 As of late 2025, ROCm support primarily targets discrete GPUs. While modern Ryzen APUs (like the 7040/8040 and AI 300 series) have powerful integrated graphics, their support in the ROCm ecosystem is still **highly experimental**.
 
--   For the most stable and performant experience, an **officially supported discrete AMD Radeon GPU (RX 6000 series / RDNA2 or newer) is strongly recommended.**
--   Using these scripts with any APU's integrated graphics may work but can lead to instability.
+This toolkit will attempt to detect APUs and apply experimental settings, but stability is not guaranteed. For the most stable and performant experience, an **officially supported discrete AMD Radeon GPU (RX 6000 series / RDNA2 or newer) is strongly recommended.**
 
 The Neural Processing Unit (NPU) in "Ryzen AI" APUs is not used by this toolkit, as it is accessed via different software stacks and does not use ROCm.
 

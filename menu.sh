@@ -55,9 +55,9 @@ check_venv() {
 # --- Tool-specific Functions ---
 install_rocm_pytorch() {
     local ROCM_VERSION
-    ROCM_VERSION=$(whiptail --title "ROCm Version Select" --menu "Choose which ROCm version to install for the base environment." 15 78 2 \
-        "latest" "Latest stable ROCm version (Recommended)" \
-        "7.0-rc1" "ROCm 7.0 RC1 (Experimental, for advanced users)" \
+    ROCM_VERSION=$(whiptail --title "ROCm Version Select" --menu "Choose which ROCm version to install for the base environment." 16 78 2 \
+        "latest" "Latest stable ROCm (recommended) + PyTorch for ROCm 6.1 Nightly" \
+        "7.0-rc1" "Experimental ROCm 7.0-rc1 + PyTorch for ROCm 7.0 Nightly" \
         3>&1 1>&2 2>&3) || return 0
 
     print_header "Installing ROCm and PyTorch (${ROCM_VERSION})"
