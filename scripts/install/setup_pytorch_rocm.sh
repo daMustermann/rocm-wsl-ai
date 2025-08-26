@@ -126,37 +126,44 @@ success "System update and prerequisites installation complete."
 # --- 2. Install AMD GPU Drivers and ROCm ---
 headline "TASK 2/6: Installing AMD graphics stack and ROCm (${ROCM_VERSION_CHOICE}) via repository"
 
-# Determine repository path based on user choice
-ROCM_REPO_PATH=""
-if [ "$ROCM_VERSION_CHOICE" = "7.0-rc1" ]; then
-    warn "Using experimental ROCm 7.0 RC1 repository."
-    ROCM_REPO_PATH="7.0"
-else # Default to "latest", which is specified as 6.4.3
-    log "Using stable ROCm 6.4 series repository."
-    ROCM_REPO_PATH="6.4"
-fi
-
-# Add ROCm repository
-if [ ! -f /etc/apt/sources.list.d/rocm.list ]; then
-    log "Adding ROCm '${ROCM_REPO_PATH}' apt repository..."
-    wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
-    echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/${ROCM_REPO_PATH} jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list
+if [ -f "/opt/rocm/bin/rocminfo" ]; then
+    warn "ROCm appears to be already installed (found /opt/rocm/bin/rocminfo)."
+    warn "Skipping ROCm system package installation to protect your existing setup."
+    warn "If you want to force a re-installation, please remove ROCm first."
+    success "ROCm system package installation skipped."
 else
-    log "ROCm repository file already exists. Ensure it matches your selection."
-    # Optional: could add logic here to switch the repo if it's different
-fi
-sudo apt update
+    # Determine repository path based on user choice
+    ROCM_REPO_PATH=""
+    if [ "$ROCM_VERSION_CHOICE" = "7.0-rc1" ]; then
+        warn "Using experimental ROCm 7.0 RC1 repository."
+        ROCM_REPO_PATH="7.0"
+    else # Default to "latest", which is specified as 6.4.3
+        log "Using stable ROCm 6.4 series repository."
+        ROCM_REPO_PATH="6.4"
+    fi
 
-if is_wsl; then
-    log "Installing WSL-specific packages (no DKMS)..."
-    ensure_apt_packages mesa-utils mesa-vulkan-drivers vulkan-tools mesa-opencl-icd clinfo firmware-amd-graphics
-    ensure_apt_packages rocm-dev rocm-libs rocm-utils rocminfo rocm-smi hip-dev hipcc miopen-hip rocblas rocsolver rocfft rocsparse rccl
-else
-    log "Installing native Linux packages (with DKMS)..."
-    ensure_apt_packages amdgpu-dkms
-    ensure_apt_packages rocm
+    # Add ROCm repository
+    if [ ! -f /etc/apt/sources.list.d/rocm.list ]; then
+        log "Adding ROCm '${ROCM_REPO_PATH}' apt repository..."
+        wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
+        echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/${ROCM_REPO_PATH} jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list
+    else
+        log "ROCm repository file already exists. Ensure it matches your selection."
+        # Optional: could add logic here to switch the repo if it's different
+    fi
+    sudo apt update
+
+    if is_wsl; then
+        log "Installing WSL-specific packages (no DKMS)..."
+        ensure_apt_packages mesa-utils mesa-vulkan-drivers vulkan-tools mesa-opencl-icd clinfo firmware-amd-graphics
+        ensure_apt_packages rocm-dev rocm-libs rocm-utils rocminfo rocm-smi hip-dev hipcc miopen-hip rocblas rocsolver rocfft rocsparse rccl
+    else
+        log "Installing native Linux packages (with DKMS)..."
+        ensure_apt_packages amdgpu-dkms
+        ensure_apt_packages rocm
+    fi
+    success "AMD graphics & ROCm installation via apt completed."
 fi
-success "AMD graphics & ROCm installation via apt completed."
 
 # --- 3. User Group Configuration ---
 headline "TASK 3/6: Configuring user groups"
