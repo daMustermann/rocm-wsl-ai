@@ -51,13 +51,9 @@ if [ -f "/opt/rocm/bin/rocminfo" ]; then
 else
     # Determine repository path based on user choice
     ROCM_REPO_PATH=""
-    if [ "$ROCM_VERSION_CHOICE" = "7.0-rc1" ]; then
-        warn "Using experimental ROCm 7.0 RC1 repository."
-        ROCM_REPO_PATH="7.0"
-    else # Default to "latest"
-        log "Using latest stable ROCm repository."
-        ROCM_REPO_PATH="latest"
-    fi
+    # Default to "latest"
+    log "Using latest stable ROCm repository."
+    ROCM_REPO_PATH="latest"
 
     # Add ROCm repository
     if [ ! -f /etc/apt/sources.list.d/rocm.list ]; then
@@ -116,19 +112,13 @@ headline "TASK 5/6: Installing PyTorch Nightly for matching ROCm series + Triton
 
 # Determine PyTorch index based on ROCm choice
 # NOTE: These might need updating as new ROCm versions are released and supported by PyTorch.
-# As of mid-2024, 6.1 is the latest stable series with nightly wheels. 7.0 is experimental.
+# As of mid-2024, 6.1 is the latest stable series with nightly wheels.
 PYTORCH_ROCM_STABLE_SERIES="6.1"
-PYTORCH_ROCM_EXPERIMENTAL_SERIES="7.0"
 
 PYTORCH_ROCM_SERIES=""
-if [ "$ROCM_VERSION_CHOICE" = "7.0-rc1" ]; then
-    PYTORCH_ROCM_SERIES="$PYTORCH_ROCM_EXPERIMENTAL_SERIES"
-    log "Selected experimental ROCm, targeting PyTorch for ROCm ${PYTORCH_ROCM_SERIES}"
-else
-    # For "latest", we target the latest known stable PyTorch series
-    PYTORCH_ROCM_SERIES="$PYTORCH_ROCM_STABLE_SERIES"
-    log "Selected latest stable ROCm, targeting PyTorch for ROCm ${PYTORCH_ROCM_SERIES}"
-fi
+# For "latest", we target the latest known stable PyTorch series
+PYTORCH_ROCM_SERIES="$PYTORCH_ROCM_STABLE_SERIES"
+log "Selected latest stable ROCm, targeting PyTorch for ROCm ${PYTORCH_ROCM_SERIES}"
 log "Targeting ROCm series: ${PYTORCH_ROCM_SERIES}"
 
 PYTORCH_INDEX_URL="https://download.pytorch.org/whl/nightly/rocm${PYTORCH_ROCM_SERIES}"

@@ -59,7 +59,6 @@ This is the most important first step. It sets up the core ROCm and PyTorch envi
 
 You will be presented with a choice for the ROCm and PyTorch versions:
 -   **`Latest stable ROCm (recommended) + PyTorch for ROCm 6.1 Nightly`**: This is the recommended option for most users. It installs the latest stable ROCm drivers from the AMD repository and a matching PyTorch nightly build.
--   **`Experimental ROCm 7.0-rc1 + PyTorch for ROCm 7.0 Nightly`**: For advanced users who want to test the latest experimental features.
 
 The script will then handle everything:
 -   Installs the necessary AMD drivers and ROCm stack.
@@ -102,7 +101,6 @@ The script automatically detects the GPU architecture and sets the appropriate `
 If you have a very new or unsupported GPU, you might need to set this variable manually. For the most accurate information, please consult the official AMD documentation.
 
 -   **[Official Compatibility Matrix for ROCm (Latest Stable)](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)**
--   **[Release Notes for ROCm Pre-Releases](https://rocm.docs.amd.com/en/docs-7.0-rc1/preview/release.html)** (For experimental support)
 
 ### A Note on APUs (Ryzen AI)
 
