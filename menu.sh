@@ -12,6 +12,7 @@ fi
 # AI Tools Suite for AMD GPUs on Linux & WSL2 - 2025 (TUI with whiptail)
 # - Always latest ROCm & PyTorch Nightly
 # - Image Gen: ComfyUI, SD.Next, Automatic1111, InvokeAI, Fooocus, SD WebUI Forge
+# - LLM: Ollama
 # - Utilities: Setup/Updates, GitHub self-update, Removal routines
 # ==============================================================================
 
@@ -23,9 +24,11 @@ SDNEXT_DIR="$HOME/SD.Next"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
 INVOKEAI_DIR="$HOME/InvokeAI"
 FOOOCUS_DIR="$HOME/Fooocus"
-REPO_REMOTE="origin"
 FORGE_DIR="$HOME/stable-diffusion-webui-forge"
+REPO_REMOTE="origin"
+POST_UPDATE_FLAG="/tmp/.ai_suite_post_update_flag"
 
+# --- Helpers ---
 # Map legacy function names to common.sh helpers for minimal diff
 print_header(){ headline "$@"; }
 print_success(){ success "$@"; }
@@ -33,402 +36,373 @@ print_warning(){ warn "$@"; }
 print_error(){ err "$@"; }
 print_info(){ log "$@"; }
 
-# --- Self-Update (GitHub) ---
-self_update_repo() {
-    print_header "Project Self-Update (GitHub)"
-    if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-    print_info "Current branch: ${CURRENT_BRANCH}"
-    print_info "Fetching remote updates..."
-    git fetch --all --prune || { print_error "git fetch failed"; return 1; }
-
-        # Bestmöglicher Upstream ermitteln
-        if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
-            UPSTREAM="@{u}"
-        else
-            # Fallback auf origin/main
-            UPSTREAM="${REPO_REMOTE}/main"
-            print_warning "No upstream set. Comparing against ${UPSTREAM}"
-        fi
-
-        LOCAL=$(git rev-parse @)
-        REMOTE=$(git rev-parse "$UPSTREAM" 2>/dev/null || echo "")
-        BASE=$(git merge-base @ "$UPSTREAM" 2>/dev/null || echo "")
-
-        if [ -z "$REMOTE" ] || [ -z "$BASE" ]; then
-            print_warning "Unable to determine upstream."
-            read -p "Run 'git pull' anyway? (y/N): " -n 1 -r; echo
-            [[ $REPLY =~ ^[Yy]$ ]] || return 0
-            git pull --rebase || git pull || { print_error "git pull failed"; return 1; }
-            print_success "Repository updated"
-            return 0
-        fi
-
-        if [ "$LOCAL" = "$REMOTE" ]; then
-            print_success "Already up to date"
-        elif [ "$LOCAL" = "$BASE" ]; then
-            print_info "Updates available. Pulling..."
-            git pull --rebase || git pull || { print_error "git pull failed"; return 1; }
-            print_success "Repository updated"
-        elif [ "$REMOTE" = "$BASE" ]; then
-            print_warning "Local commits ahead. Not pulling automatically."
-            print_info "Please merge/rebase manually."
-        else
-            print_warning "Local and remote histories diverged."
-            print_info "Resolve conflicts manually."
-        fi
-    else
-        print_warning "No git repository detected."
-        print_info "Clone: https://github.com/daMustermann/rocm-wsl-ai"
+ensure_scripts_executable() {
+    if find "$SCRIPT_DIR/scripts" -type f -name "*.sh" -not -executable -print -quit | grep -q '.'; then
+        print_info "Making scripts executable..."
+        find "$SCRIPT_DIR/scripts" -type f -name "*.sh" -exec chmod +x {} +
+        print_success "Scripts are now executable."
     fi
-    read -p "Press Enter to continue..."
 }
 
+# --- Prerequisite Checks ---
+check_venv() {
+    if [ ! -f "$VENV_PATH/bin/activate" ]; then
+        whiptail --title "Environment Not Found" --msgbox "The Python virtual environment was not found.\n\nPlease run the 'Base Installation' first:\nManage Tools -> Install -> Base Installation (ROCm & PyTorch)" 12 78
+        return 1
+    fi
+    return 0
+}
+
+# --- Tool-specific Functions ---
 install_rocm_pytorch() {
     local ROCM_VERSION
-    ROCM_VERSION=$(whiptail --title "ROCm Version Select" --menu "Choose which ROCm version to install" 15 70 2 \
+    ROCM_VERSION=$(whiptail --title "ROCm Version Select" --menu "Choose which ROCm version to install for the base environment." 15 78 2 \
         "latest" "Latest stable ROCm version (Recommended)" \
         "7.0-rc1" "ROCm 7.0 RC1 (Experimental, for advanced users)" \
         3>&1 1>&2 2>&3) || return 0
 
     print_header "Installing ROCm and PyTorch (${ROCM_VERSION})"
-    print_info "This will install your selected ROCm version, PyTorch Nightly and Triton."
+    print_info "This will install the selected ROCm version, PyTorch Nightly, and Triton."
     print_warning "This may take a while and might require a system restart..."
 
-    # Run the setup script with the selected version as an argument
     ./scripts/install/setup_pytorch_rocm.sh "${ROCM_VERSION}"
 
-    print_success "ROCm and PyTorch (${ROCM_VERSION}) installation script finished!"
-    read -p "Press Enter to continue..."
+    whiptail --title "Installation Finished" --msgbox "ROCm and PyTorch (${ROCM_VERSION}) installation script has finished.\n\nA system restart is highly recommended." 10 78
 }
 
-install_comfyui() {
-    print_header "Installing ComfyUI"
-    
-    # Check if ROCm/PyTorch is installed
-    if [ ! -f "$VENV_PATH/bin/activate" ]; then
-        print_error "Python virtual environment not found!"
-        print_error "Please install ROCm and PyTorch first (Option 1)"
-        return 1
+install_tool() {
+    local tool_name="$1"
+    local install_script="$2"
+    local install_dir="$3"
+
+    if [ -n "$install_dir" ] && [ -d "$install_dir" ]; then
+        whiptail --msgbox "$tool_name is already installed at: $install_dir" 8 78
+        return
     fi
-    
-    # Run the original script
-    ./scripts/install/comfyui.sh
-    
-    print_success "ComfyUI installed!"
-    read -p "Press Enter to continue..."
-}
 
-start_comfyui() {
-    print_header "Starting ComfyUI"
-    
-    # Check if ComfyUI is installed
-    if [ ! -f "$COMFYUI_DIR/main.py" ]; then
-        print_error "ComfyUI not found!"
-        print_error "Please install ComfyUI first (Installation Menu → Option 2)"
-        return 1
+    if ! check_venv; then return; fi
+
+    if [ -f "$install_script" ]; then
+        print_header "Installing $tool_name"
+        "$install_script"
+        whiptail --title "Success" --msgbox "$tool_name has been installed." 8 78
+    else
+        whiptail --title "Error" --msgbox "Installation script not found:\n$install_script" 8 78
     fi
-    
-    # Run the original script
-    ./scripts/start/comfyui.sh
-    
-    read -p "Press Enter to continue..."
-}
-
-install_sdnext() {
-    print_header "Installing SD.Next"
-    
-    # Check if ROCm/PyTorch is installed
-    if [ ! -f "$VENV_PATH/bin/activate" ]; then
-        print_error "Python virtual environment not found!"
-        print_error "Please install ROCm and PyTorch first (Option 1)"
-        return 1
-    fi
-    
-    # Run the original script
-    ./scripts/install/sdnext.sh
-    
-    print_success "SD.Next installed!"
-    read -p "Press Enter to continue..."
-}
-
-start_sdnext() {
-    print_header "Starting SD.Next"
-    ./scripts/start/sdnext.sh
-    read -p "Press Enter to continue..."
-}
-
-install_automatic1111() {
-    print_header "Installing Automatic1111 WebUI"
-    
-    # Check if ROCm/PyTorch is installed
-    if [ ! -f "$VENV_PATH/bin/activate" ]; then
-        print_error "Python virtual environment not found!"
-        print_error "Please install ROCm and PyTorch first (Option 1)"
-        return 1
-    fi
-    
-    ./scripts/install/automatic1111.sh
-    
-    print_success "Automatic1111 WebUI installed!"
-    read -p "Press Enter to continue..."
-}
-
-start_automatic1111() {
-    print_header "Starting Automatic1111 WebUI"
-    ./scripts/start/automatic1111.sh
-    read -p "Press Enter to continue..."
 }
 
 install_ollama() {
-    print_header "Installing Ollama"
-    
-    ./scripts/install/ollama.sh
-    
-    print_success "Ollama installed!"
-    read -p "Press Enter to continue..."
-}
-
-manage_ollama() {
-    print_header "Managing Ollama"
-    
-    if ! command -v ollama &> /dev/null; then
-        print_error "Ollama not found!"
-        print_error "Please install Ollama first (Installation Menu → Option 6)"
-        return 1
+    if command -v ollama &>/dev/null; then
+        whiptail --msgbox "Ollama is already installed." 8 78
+        return
     fi
-    
-    ~/manage_ollama_models.sh
-}
-
-install_invokeai() {
-    print_header "Installing InvokeAI"
-    
-    # Check if ROCm/PyTorch is installed
-    if [ ! -f "$VENV_PATH/bin/activate" ]; then
-        print_error "Python virtual environment not found!"
-        print_error "Please install ROCm and PyTorch first (Option 1)"
-        return 1
-    fi
-    
-    ./scripts/install/invokeai.sh
-    
-    print_success "InvokeAI installed!"
-    read -p "Press Enter to continue..."
-}
-
-start_invokeai() {
-    print_header "Starting InvokeAI"
-    ./scripts/start/invokeai.sh
-    read -p "Press Enter to continue..."
-}
-
-install_fooocus() {
-    print_header "Installing Fooocus"
-    if [ ! -f "$VENV_PATH/bin/activate" ]; then
-        print_error "Python virtual environment not found! Install ROCm/PyTorch first (Installation → Base)"
-        return 1
-    fi
-    if [ -f "./scripts/install/fooocus.sh" ]; then
-        ./scripts/install/fooocus.sh
-        print_success "Fooocus installed"
+    if [ -f "./scripts/install/ollama.sh" ]; then
+        print_header "Installing Ollama"
+        ./scripts/install/ollama.sh
+        whiptail --title "Success" --msgbox "Ollama has been installed." 8 78
     else
-        print_error "scripts/install/fooocus.sh missing"
+        whiptail --title "Error" --msgbox "Installation script not found:\n./scripts/install/ollama.sh" 8 78
     fi
-    read -p "Press Enter to continue..."
 }
 
-start_fooocus() {
-    print_header "Starting Fooocus"
-    ./scripts/start/fooocus.sh
-    read -p "Press Enter to continue..."
+start_tool() {
+    local tool_name="$1"
+    local start_script="$2"
+    local install_check_path="$3"
+
+    if [ ! -e "$install_check_path" ]; then
+        whiptail --title "Not Found" --msgbox "$tool_name does not appear to be installed.\nCannot find: $install_check_path" 10 78
+        return
+    fi
+
+    if [ -f "$start_script" ]; then
+        print_header "Starting $tool_name"
+        "$start_script"
+    else
+        whiptail --title "Error" --msgbox "Start script not found:\n$start_script" 8 78
+    fi
+    read -p "Press Enter to return to the menu..."
 }
 
-# --- Additional Tools (stubs for installers/starters/removers) ---
-install_forge() { print_header "Installing SD WebUI Forge"; if [ -f "./scripts/install/forge.sh" ]; then ./scripts/install/forge.sh; else print_error "scripts/install/forge.sh not found"; fi; read -p "Press Enter to continue..."; }
-start_forge() { print_header "Starting SD WebUI Forge"; ./scripts/start/forge.sh; read -p "Press Enter to continue..."; }
-
-# --- Removal routines ---
 remove_tool_dir() {
     local dir="$1"; local name="$2"
     if [ -d "$dir" ]; then
-        print_warning "Removing $name at $dir"
-        read -p "Confirm removal? This deletes the folder. (y/N): " -n 1 -r; echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            rm -rf "$dir" && print_success "$name removed" || print_error "Failed to remove $name"
+        if (whiptail --title "Confirm Removal" --yesno "Are you sure you want to remove $name?\n\nThis will permanently delete the directory:\n$dir" 12 78); then
+            rm -rf "$dir" && whiptail --msgbox "$name has been removed." 8 78 || whiptail --msgbox "Error: Failed to remove $name." 8 78
         fi
     else
-        print_warning "$name not found"
+        whiptail --msgbox "$name is not installed (directory not found)." 8 78
     fi
 }
 
-remove_menu() {
-    local CHOICE
-    CHOICE=$(whiptail --title "Remove Tools" --menu "Select a tool to remove" 20 70 12 \
-        "comfyui" "ComfyUI" \
-        "sdnext" "SD.Next" \
-        "a1111" "Automatic1111" \
-        "invokeai" "InvokeAI" \
-        "fooocus" "Fooocus" \
-        "forge" "SD WebUI Forge" \
-        3>&1 1>&2 2>&3) || return 0
-    case "$CHOICE" in
-        comfyui) remove_tool_dir "$COMFYUI_DIR" "ComfyUI" ;;
-        sdnext) remove_tool_dir "$SDNEXT_DIR" "SD.Next" ;;
-        a1111) remove_tool_dir "$AUTOMATIC1111_DIR" "Automatic1111" ;;
-        invokeai) remove_tool_dir "$INVOKEAI_DIR" "InvokeAI" ;;
-        fooocus) remove_tool_dir "$FOOOCUS_DIR" "Fooocus" ;;
-        forge) remove_tool_dir "$FORGE_DIR" "SD WebUI Forge" ;;
-    esac
+remove_ollama() {
+    if ! command -v ollama &>/dev/null; then
+        whiptail --msgbox "Ollama is not installed." 8 78
+        return
+    fi
+    if (whiptail --title "Confirm Removal" --yesno "This will attempt to remove the Ollama service and binary. Are you sure?" 10 78); then
+        print_header "Removing Ollama"
+        ./scripts/install/ollama.sh --uninstall
+        whiptail --msgbox "Ollama removal script finished." 8 78
+    fi
 }
 
-update_system() {
-    print_header "System Update"
-    
-    ./scripts/utils/update_ai_setup.sh
+# --- System & Update Functions ---
+update_ai_stack() {
+    print_header "Updating AI Stack"
+    print_info "This will update ROCm, PyTorch, and all installed AI tools."
+    if [ -f "./scripts/utils/update_ai_setup.sh" ]; then
+        ./scripts/utils/update_ai_setup.sh
+        whiptail --title "Finished" --msgbox "AI Stack update process has finished." 8 78
+    else
+        whiptail --title "Error" --msgbox "Update script not found:\n./scripts/utils/update_ai_setup.sh" 8 78
+    fi
+}
+
+self_update_repo() {
+    print_header "Checking for script updates..."
+    if ! command -v git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        whiptail --title "Not a Git Repository" --msgbox "This installation was not cloned from Git. Cannot self-update." 8 78
+        return 1
+    fi
+
+    print_info "Fetching remote updates..."
+    git fetch --all --prune || { whiptail --msgbox "git fetch failed. Check your connection." 8 78; return 1; }
+
+    UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "${REPO_REMOTE}/main")
+    LOCAL=$(git rev-parse @)
+    REMOTE=$(git rev-parse "$UPSTREAM" 2>/dev/null || echo "")
+    BASE=$(git merge-base @ "$UPSTREAM" 2>/dev/null || echo "")
+
+    if [ -z "$REMOTE" ] || [ -z "$BASE" ]; then
+        whiptail --title "Update Warning" --msgbox "Could not determine remote version. A manual 'git pull' may be required." 8 78
+        return 1
+    fi
+
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        return 0 # 0 signifies up-to-date
+    elif [ "$LOCAL" = "$BASE" ]; then
+        print_info "Updates available for the menu script. Pulling..."
+        git pull --rebase || git pull || { whiptail --msgbox "git pull failed. Please resolve conflicts manually." 8 78; return 1; }
+
+        touch "$POST_UPDATE_FLAG"
+
+        whiptail --msgbox "Update successful! The script will now restart to continue the process." 8 78
+        exec "$0" "$@" # Restart the script
+    elif [ "$REMOTE" = "$BASE" ]; then
+        whiptail --title "Local Commits" --msgbox "You have local commits. A manual 'git pull' is recommended before updating." 8 78
+        return 1
+    else
+        whiptail --title "Diverged History" --msgbox "Local and remote histories have diverged. Please resolve manually." 8 78
+        return 1
+    fi
+}
+
+run_full_update() {
+    print_header "Starting Full Update Process"
+
+    # self_update_repo will restart if it finds an update, or return 0 if up-to-date, 1 on other conditions.
+    if self_update_repo; then
+        # This code is reached only if the script was already up-to-date.
+        print_info "Menu script is already up-to-date."
+        if (whiptail --title "Update AI Stack" --yesno "Do you want to proceed with updating the full AI stack (ROCm, PyTorch, Tools)?" 12 78); then
+            update_ai_stack
+        else
+            whiptail --msgbox "AI Stack update cancelled." 8 78
+        fi
+    else
+        # This is reached if self_update_repo returned 1 (e.g. local commits, error)
+        whiptail --msgbox "Script update could not proceed. Aborting AI stack update." 10 78
+    fi
 }
 
 check_status() {
-    print_header "Installation Status"
-    
+    (
     # Check ROCm/PyTorch
+    echo "--- System Status ---"
     if [ -f "$VENV_PATH/bin/activate" ]; then
-        print_success "✓ ROCm/PyTorch installed"
-        source "$VENV_PATH/bin/activate"
-        python3 -c "import torch; print(f'  - PyTorch: {torch.__version__}'); print(f'  - ROCm available: {torch.cuda.is_available()}')" 2>/dev/null || print_warning "  - PyTorch verification failed"
+        echo "✓ ROCm/PyTorch Environment: INSTALLED"
+        # Source in a subshell to not pollute the main script's env
+        (source "$VENV_PATH/bin/activate" && {
+            PY_VER=$(python3 -c "import torch; print(torch.__version__)")
+            ROCM_OK=$(python3 -c "import torch; print(torch.cuda.is_available())")
+            echo "  - PyTorch Version: $PY_VER"
+            echo "  - ROCm Detected by PyTorch: $ROCM_OK"
+        }) || echo "  - PyTorch verification failed."
     else
-        print_error "✗ ROCm/PyTorch not installed"
-    fi
-    
-    # Check ComfyUI
-    if [ -f "$COMFYUI_DIR/main.py" ]; then
-        print_success "✓ ComfyUI installed"
-    else
-        print_error "✗ ComfyUI not installed"
-    fi
-    
-    # Check SD.Next
-    if [ -f "$SDNEXT_DIR/webui.sh" ]; then
-        print_success "✓ SD.Next installed"
-    else
-        print_error "✗ SD.Next not installed"
-    fi
-    
-    # Check Automatic1111
-    if [ -f "$AUTOMATIC1111_DIR/webui.sh" ]; then
-        print_success "✓ Automatic1111 WebUI installed"
-    else
-        print_error "✗ Automatic1111 WebUI not installed"
-    fi
-    
-    # Check Ollama
-    if command -v ollama &> /dev/null; then
-        print_success "✓ Ollama installed"
-        if systemctl --user is-active --quiet ollama.service 2>/dev/null; then
-            print_success "  - Service running"
-        else
-            print_warning "  - Service not running"
-        fi
-    else
-        print_error "✗ Ollama not installed"
-    fi
-    
-    # Check InvokeAI
-    if [ -f "$INVOKEAI_DIR/launch_webui.sh" ]; then
-        print_success "✓ InvokeAI installed"
-    else
-        print_error "✗ InvokeAI not installed"
+        echo "✗ ROCm/PyTorch Environment: NOT INSTALLED"
     fi
 
-    # Check Fooocus
-    if [ -d "$FOOOCUS_DIR" ] && [ -f "$FOOOCUS_DIR/launch.py" ]; then
-        print_success "✓ Fooocus installed"
+    # Check Tools
+    echo -e "\n--- Tool Status ---"
+    [ -f "$COMFYUI_DIR/main.py" ] && echo "✓ ComfyUI: INSTALLED" || echo "✗ ComfyUI: NOT INSTALLED"
+    [ -f "$SDNEXT_DIR/webui.sh" ] && echo "✓ SD.Next: INSTALLED" || echo "✗ SD.Next: NOT INSTALLED"
+    [ -f "$AUTOMATIC1111_DIR/webui.sh" ] && echo "✓ Automatic1111: INSTALLED" || echo "✗ Automatic1111: NOT INSTALLED"
+    [ -f "$INVOKEAI_DIR/invoke.sh" ] && echo "✓ InvokeAI: INSTALLED" || echo "✗ InvokeAI: NOT INSTALLED"
+    [ -d "$FOOOCUS_DIR" ] && echo "✓ Fooocus: INSTALLED" || echo "✗ Fooocus: NOT INSTALLED"
+    [ -d "$FORGE_DIR" ] && echo "✓ SD WebUI Forge: INSTALLED" || echo "✗ SD WebUI Forge: NOT INSTALLED"
+    if command -v ollama &> /dev/null; then
+        echo "✓ Ollama: INSTALLED"
+        if systemctl --user is-active --quiet ollama.service 2>/dev/null; then
+            echo "  - Service: running"
+        else
+            echo "  - Service: not running"
+        fi
     else
-        print_error "✗ Fooocus not installed"
+        echo "✗ Ollama: NOT INSTALLED"
     fi
-    
+
     # Check ROCm system status
-    echo ""
-    print_info "ROCm System Status:"
+    echo -e "\n--- GPU Information ---"
     if command -v rocminfo &> /dev/null; then
         rocminfo | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' | head -3
     else
-        print_warning "rocminfo not available"
+        echo "rocminfo command not found. Is ROCm installed correctly?"
     fi
-    
-    read -p "Press Enter to continue..."
+    ) | whiptail --title "Installation Status" --textbox - 24 78
 }
 
-show_installation_menu() {
+# --- Menus ---
+show_launch_menu() {
     while true; do
-        local CHOICE
-        CHOICE=$(whiptail --title "Installation" --menu "Choose what to install" 20 80 12 \
-            "sys" "AMD GPU Drivers / ROCm" \
-            "base" "ROCm & PyTorch Nightly (base)" \
-            "img_comfy" "ComfyUI" \
-            "img_sdnext" "SD.Next" \
-            "img_a1111" "Automatic1111" \
-            "img_invokeai" "InvokeAI" \
-            "img_fooocus" "Fooocus" \
-            "img_forge" "SD WebUI Forge" \
-            3>&1 1>&2 2>&3) || return 0
-        case "$CHOICE" in
-            sys) if [ -f "./scripts/install/amd_drivers.sh" ]; then ./scripts/install/amd_drivers.sh; else whiptail --msgbox "scripts/install/amd_drivers.sh missing" 8 60; fi ;;
-            base) install_rocm_pytorch ;;
-            img_comfy) [ -d "$COMFYUI_DIR" ] && whiptail --msgbox "ComfyUI already installed" 8 50 || install_comfyui ;;
-            img_sdnext) [ -d "$SDNEXT_DIR" ] && whiptail --msgbox "SD.Next already installed" 8 50 || install_sdnext ;;
-            img_a1111) [ -d "$AUTOMATIC1111_DIR" ] && whiptail --msgbox "A1111 already installed" 8 50 || install_automatic1111 ;;
-            img_invokeai) [ -d "$INVOKEAI_DIR" ] && whiptail --msgbox "InvokeAI already installed" 8 50 || install_invokeai ;;
-            img_fooocus) [ -d "$FOOOCUS_DIR" ] && whiptail --msgbox "Fooocus already installed" 8 50 || install_fooocus ;;
-            img_forge) [ -d "$FORGE_DIR" ] && whiptail --msgbox "Forge already installed" 8 50 || install_forge ;;
-        esac
-    done
-}
-
-show_startup_menu() {
-    while true; do
-        local CHOICE
-        CHOICE=$(whiptail --title "Launch" --menu "Start installed tools" 22 80 14 \
+        CHOICE=$(whiptail --title "Launch Menu" --menu "Choose a tool to start" 20 78 12 \
             "comfyui" "Start ComfyUI" \
             "sdnext" "Start SD.Next" \
             "a1111" "Start Automatic1111" \
             "invokeai" "Start InvokeAI" \
             "fooocus" "Start Fooocus" \
             "forge" "Start SD WebUI Forge" \
-            "status" "Check Status" \
+            "ollama" "Manage Ollama (Models, etc.)" \
             3>&1 1>&2 2>&3) || return 0
         case "$CHOICE" in
-            comfyui) [ -f "$COMFYUI_DIR/main.py" ] && start_comfyui || whiptail --msgbox "ComfyUI not installed" 8 40 ;;
-            sdnext) [ -d "$SDNEXT_DIR" ] && start_sdnext || whiptail --msgbox "SD.Next not installed" 8 40 ;;
-            a1111) [ -d "$AUTOMATIC1111_DIR" ] && start_automatic1111 || whiptail --msgbox "A1111 not installed" 8 40 ;;
-            invokeai) [ -f "$INVOKEAI_DIR/invoke.sh" ] || [ -f "$INVOKEAI_DIR/invoke.bat" ] && start_invokeai || whiptail --msgbox "InvokeAI not installed" 8 40 ;;
-            fooocus) [ -d "$FOOOCUS_DIR" ] && start_fooocus || whiptail --msgbox "Fooocus not installed" 8 40 ;;
-            forge) [ -d "$FORGE_DIR" ] && start_forge || whiptail --msgbox "Forge not installed" 8 40 ;;
-            status) check_status ;;
+            comfyui) start_tool "ComfyUI" "./scripts/start/comfyui.sh" "$COMFYUI_DIR/main.py" ;;
+            sdnext) start_tool "SD.Next" "./scripts/start/sdnext.sh" "$SDNEXT_DIR/webui.sh" ;;
+            a1111) start_tool "Automatic1111" "./scripts/start/automatic1111.sh" "$AUTOMATIC1111_DIR/webui.sh" ;;
+            invokeai) start_tool "InvokeAI" "./scripts/start/invokeai.sh" "$INVOKEAI_DIR/invoke.sh" ;;
+            fooocus) start_tool "Fooocus" "./scripts/start/fooocus.sh" "$FOOOCUS_DIR/launch.py" ;;
+            forge) start_tool "SD WebUI Forge" "./scripts/start/forge.sh" "$FORGE_DIR/webui.sh" ;;
+            ollama)
+                if command -v ollama &>/dev/null; then
+                    # This script is not part of the repo, assumed to be user-provided
+                    if [ -f "$HOME/manage_ollama_models.sh" ]; then
+                        "$HOME/manage_ollama_models.sh"
+                    else
+                        whiptail --msgbox "Ollama is installed, but the management script (~/manage_ollama_models.sh) was not found." 10 78
+                    fi
+                else
+                    whiptail --msgbox "Ollama is not installed." 8 78
+                fi
+                ;;
         esac
     done
 }
 
-# --- Main Menu ---
+show_install_menu() {
+    while true; do
+        CHOICE=$(whiptail --title "Install Menu" --menu "Choose what to install" 20 78 12 \
+            "base" "Base Installation (ROCm & PyTorch)" \
+            "---" "--- IMAGE GENERATION ---" \
+            "comfyui" "Install ComfyUI" \
+            "sdnext" "Install SD.Next" \
+            "a1111" "Install Automatic1111" \
+            "invokeai" "Install InvokeAI" \
+            "fooocus" "Install Fooocus" \
+            "forge" "Install SD WebUI Forge" \
+            "---" "--- LANGUAGE MODELS ---" \
+            "ollama" "Install Ollama" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$CHOICE" in
+            base) install_rocm_pytorch ;;
+            comfyui) install_tool "ComfyUI" "./scripts/install/comfyui.sh" "$COMFYUI_DIR" ;;
+            sdnext) install_tool "SD.Next" "./scripts/install/sdnext.sh" "$SDNEXT_DIR" ;;
+            a1111) install_tool "Automatic1111" "./scripts/install/automatic1111.sh" "$AUTOMATIC1111_DIR" ;;
+            invokeai) install_tool "InvokeAI" "./scripts/install/invokeai.sh" "$INVOKEAI_DIR" ;;
+            fooocus) install_tool "Fooocus" "./scripts/install/fooocus.sh" "$FOOOCUS_DIR" ;;
+            forge) install_tool "SD WebUI Forge" "./scripts/install/forge.sh" "$FORGE_DIR" ;;
+            ollama) install_ollama ;;
+        esac
+    done
+}
+
+show_remove_menu() {
+    while true; do
+        CHOICE=$(whiptail --title "Uninstall Menu" --menu "Choose a tool to remove" 20 78 12 \
+            "comfyui" "Uninstall ComfyUI" \
+            "sdnext" "Uninstall SD.Next" \
+            "a1111" "Uninstall Automatic1111" \
+            "invokeai" "Uninstall InvokeAI" \
+            "fooocus" "Uninstall Fooocus" \
+            "forge" "Uninstall SD WebUI Forge" \
+            "ollama" "Uninstall Ollama" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$CHOICE" in
+            comfyui) remove_tool_dir "$COMFYUI_DIR" "ComfyUI" ;;
+            sdnext) remove_tool_dir "$SDNEXT_DIR" "SD.Next" ;;
+            a1111) remove_tool_dir "$AUTOMATIC1111_DIR" "Automatic1111" ;;
+            invokeai) remove_tool_dir "$INVOKEAI_DIR" "InvokeAI" ;;
+            fooocus) remove_tool_dir "$FOOOCUS_DIR" "Fooocus" ;;
+            forge) remove_tool_dir "$FORGE_DIR" "SD WebUI Forge" ;;
+            ollama) remove_ollama ;;
+        esac
+    done
+}
+
+show_manage_menu() {
+    while true; do
+        CHOICE=$(whiptail --title "Manage Tools" --menu "Install or uninstall tools." 15 78 4 \
+            "install" "Install a new tool" \
+            "uninstall" "Uninstall an existing tool" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$CHOICE" in
+            install) show_install_menu ;;
+            uninstall) show_remove_menu ;;
+        esac
+    done
+}
+
+show_system_menu() {
+    while true; do
+        CHOICE=$(whiptail --title "System & Updates" --menu "Manage system components and updates." 15 78 4 \
+            "update" "Update Everything (Script & AI Stack)" \
+            "drivers" "Manage AMD GPU Drivers" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$CHOICE" in
+            update) run_full_update ;;
+            drivers)
+                if [ -f "./scripts/install/amd_drivers.sh" ]; then
+                    ./scripts/install/amd_drivers.sh
+                else
+                     whiptail --msgbox "Driver script not found:\n./scripts/install/amd_drivers.sh" 8 78
+                fi
+                ;;
+        esac
+    done
+}
+
+
+# --- Main ---
+ensure_scripts_executable
+
+# Check if we need to run stack update after a self-update
+if [ -f "$POST_UPDATE_FLAG" ]; then
+    rm "$POST_UPDATE_FLAG"
+    if (whiptail --title "Update Step 2: AI Stack" --yesno "The menu script has been updated.\n\nDo you want to proceed with updating the AI Stack (ROCm, PyTorch, Tools) now?" 12 78); then
+        update_ai_stack
+    fi
+fi
 
 while true; do
-    CHOICE=$(whiptail --title "AI Tools Suite (Linux / WSL2, AMD ROCm)" --menu "Select an action" 20 80 10 \
-        "install" "Install tools (categorized)" \
-        "launch" "Launch installed tools" \
-        "update" "Updates (drivers, ROCm, PyTorch Nightly, tools)" \
-        "status" "Check installation status" \
-        "selfupdate" "Self-update (GitHub)" \
-        "remove" "Uninstall tools" \
-        "drivers" "AMD driver management" \
+    CHOICE=$(whiptail --title "AI Tools Suite (Linux / WSL2, AMD ROCm)" --menu "Main Menu" 20 78 10 \
+        "launch" "Launch an AI tool" \
+        "manage" "Manage Tools (Install / Uninstall)" \
+        "system" "System & Updates" \
+        "status" "Check Installation Status" \
         3>&1 1>&2 2>&3) || { clear; exit 0; }
+
     case "$CHOICE" in
-        install) show_installation_menu ;;
-        launch) show_startup_menu ;;
-        update) update_system ;;
+        launch) show_launch_menu ;;
+        manage) show_manage_menu ;;
+        system) show_system_menu ;;
         status) check_status ;;
-        selfupdate) self_update_repo ;;
-        remove) remove_menu ;;
-        drivers)
-            if [ -f "./scripts/install/amd_drivers.sh" ]; then ./scripts/install/amd_drivers.sh; else whiptail --msgbox "scripts/install/amd_drivers.sh missing" 8 50; fi ;;
     esac
 done

@@ -10,11 +10,12 @@ The scripts are designed to be idempotent and modular, ensuring a consistent and
 - **Automated GPU Detection:** Automatically detects your AMD GPU (RDNA1/2/3/4, Vega) and configures ROCm accordingly.
 - **Always Up-to-Date:** Installs the latest ROCm stack from AMD's official repositories and fetches the compatible PyTorch nightly build.
 - **Version Selection:** Allows choosing between the latest stable ROCm or experimental pre-releases (like ROCm 7.0 RC1).
-- **Menu-Driven Interface:** A simple terminal UI (`menu.sh`) to guide you through installation, launching, and management of tools.
+- **Menu-Driven Interface:** A simple, intuitive terminal UI (`menu.sh`) guides you through every step.
 - **Comprehensive Tool Support:**
   - **Image Generation:** ComfyUI, Stable Diffusion WebUI (Automatic1111), SD.Next, InvokeAI, Fooocus, SD WebUI Forge.
-- **Self-Contained:** Manages a dedicated Python virtual environment to avoid conflicts with system packages.
-- **Utilities:** Includes scripts for system updates, status checks, and easy uninstallation of tools.
+  - **Language Models:** Ollama.
+- **Self-Contained:** Manages a dedicated Python virtual environment (`~/genai_env`) to avoid conflicts with system packages.
+- **System Management:** Includes options for updating the entire stack, the scripts themselves, managing drivers, and checking the status of all components.
 
 ## Project Structure
 
@@ -25,7 +26,9 @@ The project is organized into the following directories:
   - `start/`: Scripts for launching the installed AI applications.
   - `utils/`: Helper scripts for updates, etc.
 
-### Installation
+## Installation
+
+The process is designed to be as simple as possible.
 
 1.  **Clone the repository:**
     ```bash
@@ -33,60 +36,45 @@ The project is organized into the following directories:
     cd rocm-wsl-ai
     ```
 
-2.  **Make scripts executable:**
-    Run this command once to ensure all scripts have the necessary permissions.
-    ```bash
-    find . -name "*.sh" -exec chmod +x {} \;
-    ```
-
-3.  **Run the menu:**
+2.  **Run the menu:**
     ```bash
     ./menu.sh
     ```
+    The script will automatically ensure all necessary helper scripts are executable.
 
-4.  **From the main menu, follow these steps:**
-    -   Navigate to **"Install"** using the arrow keys and press Enter.
-    -   Select **"ROCm & PyTorch Nightly (base)"** and press Enter. You will be prompted to choose a ROCm version. For most users, **"latest"** is the recommended, stable choice.
-    -   The script will then:
-        - Install the necessary AMD drivers and the selected ROCm stack.
-        - Create a Python virtual environment (`~/genai_env`).
-        - Install the latest PyTorch nightly build that matches the installed ROCm version, along with Triton.
-    -   **Restart your system or WSL session** when prompted. This is crucial for user group permissions to take effect.
-    -   Relaunch `./menu.sh` after restarting.
+3.  **Perform the Base Installation:**
+    This is the most important first step.
+    -   From the main menu, navigate to `Manage Tools`.
+    -   Select `Install a new tool`.
+    -   Choose **`Base Installation (ROCm & PyTorch)`**.
+    -   You will be prompted to select a ROCm version. For most users, **"latest"** is the recommended, stable choice.
+    -   The script will then install the required AMD drivers, the full ROCm stack, and create the Python virtual environment with PyTorch and Triton.
+    -   **Restart your system or WSL session** when the script completes. This is crucial for system changes to take effect.
 
-5.  **Install AI Tools:**
-    -   Go back to the **"Install"** menu.
-    -   Select any AI tool you wish to install (e.g., "ComfyUI", "Ollama"). The scripts will handle the download and setup within the correct environment.
-
-## Updating from a Previous Version
-
-If you have been using an older version of this repository with all scripts in the main folder, follow these steps to update to the new, structured version:
-
-1.  **Save your local changes:** If you have made any modifications to the scripts, save them first to avoid conflicts:
-    ```bash
-    git stash
-    ```
-
-2.  **Pull the latest changes:** Fetch the new version from GitHub.
-    ```bash
-    git pull --rebase
-    ```
-
-3.  **Re-apply your changes (optional):** If you stashed changes in step 1, you can now re-apply them.
-    ```bash
-    git stash pop
-    ```
-    You might need to resolve some merge conflicts if your changes were made to files that have been moved.
-
-4.  **Start using the new structure:** Your old script files have been moved into the `scripts/` directory. The new main entry point is `menu.sh`. Make sure it's executable (`chmod +x menu.sh`) and run it to continue.
+4.  **Install AI Tools:**
+    -   After restarting, run `./menu.sh` again.
+    -   Navigate back to `Manage Tools` -> `Install a new tool`.
+    -   Select any AI tool you wish to install (e.g., "ComfyUI", "Ollama"). The scripts will handle the download and setup automatically.
 
 ## Usage
 
--   To start any installed tool, run `./menu.sh` and navigate to the **"Launch"** menu.
--   Always ensure you are running the tools from within the activated virtual environment. The launch scripts handle this automatically. If you need to run commands manually, first activate the environment:
+-   To start any installed application, run `./menu.sh` and select `Launch an AI tool`.
+-   To check what is installed, use the `Check Installation Status` option in the main menu.
+-   The launch scripts handle activating the Python virtual environment automatically. If you need to run commands manually, first activate it with:
     ```bash
     source ~/genai_env/bin/activate
     ```
+
+## System Management & Updates
+
+The `System & Updates` menu provides access to core system tasks:
+
+-   **Update Everything (Script & AI Stack):** This is the recommended way to keep your entire setup up-to-date. This smart update process works in two stages:
+    1.  First, it checks for updates to the menu script itself from GitHub. If an update is found, it is downloaded and the script will restart.
+    2.  After the script is confirmed to be up-to-date (or after it has just been updated and restarted), it will then ask if you want to proceed with updating the full AI Stack (ROCm, PyTorch, and all installed tools).
+    This ensures you are always running the latest update logic before updating the rest of your environment.
+
+-   **Manage AMD GPU Drivers:** This provides direct access to the driver installation script, which can also be used for repair or re-installation.
 
 ## ROCm Version Selection
 
@@ -105,6 +93,10 @@ I strongly recommend consulting the official AMD documentation to check the most
 -   **[Release Notes for ROCm 7.0 Pre-Releases (for experimental support)](https://rocm.docs.amd.com/en/docs-7.0-rc1/preview/release.html)**
 
 These sources provide the most accurate and up-to-date information.
+
+## For Users of Previous Versions
+
+If you were using this repository before the menu structure was updated (before August 2025), please note that the script names and locations have changed. Your old `*.sh` files in the root directory are now organized inside the `scripts/` folder and are called by the main `menu.sh` script. It is recommended to do a fresh clone, but if you are updating via `git pull`, be aware of these changes.
 
 ## Ryzen AI APUs and ROCm Support
 
@@ -127,11 +119,6 @@ As of late 2025, the official ROCm support primarily targets AMD's discrete and 
     -   Using these scripts with any APU's integrated graphics should be considered experimental.
 
 The landscape is changing quickly. For the latest information, always refer to the official [AMD ROCm Documentation](https://rocm.docs.amd.com/) and the [Radeon on WSL guide](https://rocm.docs.amd.com/projects/radeon/en/latest/docs/install/wsl/install-radeon.html).
-
-## Updating
-
--   **To update the scripts themselves:** Use the **"Self-update (GitHub)"** option in the main menu.
--   **To update the entire AI stack** (ROCm, PyTorch, and installed tools): Use the **"Updates"** option in the main menu.
 
 ## License
 
