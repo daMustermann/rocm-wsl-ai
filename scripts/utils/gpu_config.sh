@@ -38,38 +38,38 @@ _detect_gpu_arch_pre_rocm() {
 
     # --- GPU Architecture Detection and Configuration ---
     # RDNA 3.5 (Strix Point / Strix Halo APUs, e.g., Ryzen AI 300 series)
-    if [[ "$GPU_INFO" =~ 1150 || "$GPU_INFO" =~ 1151 ]] || [[ "$GPU_INFO" =~ "Ryzen AI 3" ]]; then
-        if [[ "$GPU_INFO" =~ Halo || "$GPU_INFO" =~ HX[[:space:]]3[79] ]]; then GFX_ARCH="gfx1151";
+    if [[ "$GPU_INFO" =~ 1150 ]] || [[ "$GPU_INFO" =~ 1151 ]] || [[ "$GPU_INFO" =~ "Ryzen AI 3" ]]; then
+        if [[ "$GPU_INFO" =~ Halo ]] || [[ "$GPU_INFO" =~ HX[[:space:]]3[79] ]]; then GFX_ARCH="gfx1151";
         else GFX_ARCH="gfx1150"; fi
     # RDNA4 (Navi 4x, e.g., RX 9000 series) - Future-proofing
-    elif [[ "$GPU_INFO" =~ 1200 || "$GPU_INFO" =~ 1201 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*9[0-9]{3} ]]; then
-        if [[ "$GPU_INFO" =~ 99[0-9]{2} || "$GPU_INFO" =~ 1200 ]]; then GFX_ARCH="gfx1200";
-        elif [[ "$GPU_INFO" =~ 98[0-9]{2} || "$GPU_INFO" =~ 97[0-9]{2} || "$GPU_INFO" =~ 1201 ]]; then GFX_ARCH="gfx1201";
+    elif [[ "$GPU_INFO" =~ 1200 ]] || [[ "$GPU_INFO" =~ 1201 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*9[0-9]{3} ]]; then
+        if [[ "$GPU_INFO" =~ 99[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1200 ]]; then GFX_ARCH="gfx1200";
+        elif [[ "$GPU_INFO" =~ 98[0-9]{2} ]] || [[ "$GPU_INFO" =~ 97[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1201 ]]; then GFX_ARCH="gfx1201";
         else GFX_ARCH="gfx1200"; fi
     # RDNA3 (Navi 3x, RX 7000 series & APUs)
-    elif [[ "$GPU_INFO" =~ 1100 || "$GPU_INFO" =~ 1101 || "$GPU_INFO" =~ 1102 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*7[0-9]{3} ]] || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]] || [[ "$GPU_INFO" =~ "Radeon 7" ]]; then
-        if [[ "$GPU_INFO" =~ 79[0-9]{2} || "$GPU_INFO" =~ 1100 ]]; then GFX_ARCH="gfx1100";
-        elif [[ "$GPU_INFO" =~ 78[0-9]{2} || "$GPU_INFO" =~ 77[0-9]{2} || "$GPU_INFO" =~ 1101 ]]; then GFX_ARCH="gfx1101";
-        elif [[ "$GPU_INFO" =~ 76[0-9]{2} || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]] || "$GPU_INFO" =~ 1102 ]]; then GFX_ARCH="gfx1102";
+    elif [[ "$GPU_INFO" =~ 1100 ]] || [[ "$GPU_INFO" =~ 1101 ]] || [[ "$GPU_INFO" =~ 1102 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*7[0-9]{3} ]] || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]] || [[ "$GPU_INFO" =~ "Radeon 7" ]]; then
+        if [[ "$GPU_INFO" =~ 79[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1100 ]]; then GFX_ARCH="gfx1100";
+        elif [[ "$GPU_INFO" =~ 78[0-9]{2} ]] || [[ "$GPU_INFO" =~ 77[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1101 ]]; then GFX_ARCH="gfx1101";
+        elif [[ "$GPU_INFO" =~ 76[0-9]{2} ]] || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]] || [[ "$GPU_INFO" =~ 1102 ]]; then GFX_ARCH="gfx1102";
         else GFX_ARCH="gfx1100"; fi
     # RDNA2 (Navi 2x, RX 6000 series)
-    elif [[ "$GPU_INFO" =~ 1030 || "$GPU_INFO" =~ 1031 || "$GPU_INFO" =~ 1032 || "$GPU_INFO" =~ 1034 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*6[0-9]{3} ]]; then
-        if [[ "$GPU_INFO" =~ 69[0-9]{2} || "$GPU_INFO" =~ 68[0-9]{2} || "$GPU_INFO" =~ 1030 ]]; then GFX_ARCH="gfx1030";
-        elif [[ "$GPU_INFO" =~ 67[0-9]{2} || "$GPU_INFO" =~ 1031 ]]; then GFX_ARCH="gfx1031";
-        elif [[ "$GPU_INFO" =~ 66[0-9]{2} || "$GPU_INFO" =~ 1032 ]]; then GFX_ARCH="gfx1032";
-        elif [[ "$GPU_INFO" =~ 65[0-9]{2} || "$GPU_INFO" =~ 64[0-9]{2} || "$GPU_INFO" =~ 1034 ]]; then GFX_ARCH="gfx1034";
+    elif [[ "$GPU_INFO" =~ 1030 ]] || [[ "$GPU_INFO" =~ 1031 ]] || [[ "$GPU_INFO" =~ 1032 ]] || [[ "$GPU_INFO" =~ 1034 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*6[0-9]{3} ]]; then
+        if [[ "$GPU_INFO" =~ 69[0-9]{2} ]] || [[ "$GPU_INFO" =~ 68[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1030 ]]; then GFX_ARCH="gfx1030";
+        elif [[ "$GPU_INFO" =~ 67[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1031 ]]; then GFX_ARCH="gfx1031";
+        elif [[ "$GPU_INFO" =~ 66[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1032 ]]; then GFX_ARCH="gfx1032";
+        elif [[ "$GPU_INFO" =~ 65[0-9]{2} ]] || [[ "$GPU_INFO" =~ 64[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1034 ]]; then GFX_ARCH="gfx1034";
         else GFX_ARCH="gfx1030"; fi
     # RDNA1 (Navi 1x, RX 5000 series)
-    elif [[ "$GPU_INFO" =~ 1010 || "$GPU_INFO" =~ 1012 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*5[0-9]{3} ]]; then
-        if [[ "$GPU_INFO" =~ 57[0-9]{2} || "$GPU_INFO" =~ 56[0-9]{2} || "$GPU_INFO" =~ 1010 ]]; then GFX_ARCH="gfx1010";
-        elif [[ "$GPU_INFO" =~ 55[0-9]{2} || "$GPU_INFO" =~ 54[0-9]{2} || "$GPU_INFO" =~ 1012 ]]; then GFX_ARCH="gfx1012";
+    elif [[ "$GPU_INFO" =~ 1010 ]] || [[ "$GPU_INFO" =~ 1012 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*5[0-9]{3} ]]; then
+        if [[ "$GPU_INFO" =~ 57[0-9]{2} ]] || [[ "$GPU_INFO" =~ 56[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1010 ]]; then GFX_ARCH="gfx1010";
+        elif [[ "$GPU_INFO" =~ 55[0-9]{2} ]] || [[ "$GPU_INFO" =~ 54[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1012 ]]; then GFX_ARCH="gfx1012";
         else GFX_ARCH="gfx1010"; fi
     # Vega / GCN 5
-    elif [[ "$GPU_INFO" =~ Vega || "$GPU_INFO" =~ Radeon[[:space:]]VII || "$GPU_INFO" =~ 90[0-9] ]]; then
-        if [[ "$GPU_INFO" =~ Radeon[[:space:]]VII || "$GPU_INFO" =~ 906 ]]; then GFX_ARCH="gfx906";
+    elif [[ "$GPU_INFO" =~ Vega ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]VII ]] || [[ "$GPU_INFO" =~ 90[0-9] ]]; then
+        if [[ "$GPU_INFO" =~ Radeon[[:space:]]VII ]] || [[ "$GPU_INFO" =~ 906 ]]; then GFX_ARCH="gfx906";
         else GFX_ARCH="gfx900"; fi
     # Polaris / GCN 4 (RX 500/400 series)
-    elif [[ "$GPU_INFO" =~ Polaris || "$GPU_INFO" =~ RX[[:space:]]*[54][0-9]{2} || "$GPU_INFO" =~ 803 ]]; then
+    elif [[ "$GPU_INFO" =~ Polaris ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*[54][0-9]{2} ]] || [[ "$GPU_INFO" =~ 803 ]]; then
         GFX_ARCH="gfx803";
     fi
 
