@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/common.sh" ]; then
+if [ -f "$SCRIPT_DIR/../../lib/common.sh" ]; then
     # shellcheck disable=SC1091
-    source "$SCRIPT_DIR/common.sh"
+    source "$SCRIPT_DIR/../../lib/common.sh"
 else
     echo "common.sh not found" >&2; exit 1
 fi
