@@ -159,7 +159,7 @@ self_update_repo() {
         return 0 # 0 signifies up-to-date
     elif [ "$LOCAL" = "$BASE" ]; then
         print_info "Updates available for the menu script. Pulling..."
-        git pull --rebase || git pull || { whiptail --msgbox "git pull failed. Please resolve conflicts manually." 8 78; return 1; }
+        git pull --rebase --autostash || git pull --autostash || { whiptail --msgbox "git pull failed. Please resolve conflicts manually." 8 78; return 1; }
 
         touch "$POST_UPDATE_FLAG"
 
@@ -225,7 +225,7 @@ check_status() {
         # Check ROCm system status
         echo -e "\n--- GPU Information ---"
         if command -v rocminfo &> /dev/null; then
-            rocminfo | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' | head -3
+            rocminfo 2>/dev/null | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' | head -3
         else
             echo "rocminfo command not found. Is ROCm installed correctly?"
         fi
