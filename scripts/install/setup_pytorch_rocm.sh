@@ -180,13 +180,13 @@ if rocm_available:
         hsa_override = os.environ.get('HSA_OVERRIDE_GFX_VERSION', 'Not Set')
         print(f'HSA_OVERRIDE_GFX_VERSION set to: {hsa_override}')
         arch = 'Unknown'
-        if hsa_override.startswith('gfx12'): arch = 'RDNA4 (RX 9000 series) - EXPERIMENTAL'
-        elif hsa_override.startswith('gfx115'): arch = 'RDNA3.5 (Ryzen AI 300 Series) - EXPERIMENTAL'
-        elif hsa_override.startswith('gfx11'): arch = 'RDNA3 (RX 7000 series)'
-        elif hsa_override.startswith('gfx103'): arch = 'RDNA2 (RX 6000 series)'
-        elif hsa_override.startswith('gfx101'): arch = 'RDNA1 (RX 5000 series)'
-        elif hsa_override.startswith('gfx9'): arch = 'Vega'
-        elif hsa_override.startswith('gfx8'): arch = 'GCN 4th Gen (Polaris)'
+    if hsa_override.startswith('gfx12'): arch = 'RDNA4 (gfx12xx) - experimental/future'
+    elif hsa_override.startswith('gfx115'): arch = 'RDNA3.5 (gfx115x) - experimental'
+    elif hsa_override.startswith('gfx11'): arch = 'RDNA3 (gfx11xx) - supported'
+    elif hsa_override.startswith('gfx103'): arch = 'RDNA2 (gfx103x) - unsupported by this toolkit'
+    elif hsa_override.startswith('gfx101'): arch = 'RDNA1 (gfx101x) - unsupported by this toolkit'
+    elif hsa_override.startswith('gfx9'): arch = 'Vega - unsupported by this toolkit'
+    elif hsa_override.startswith('gfx8'): arch = 'GCN 4th Gen (Polaris) - unsupported by this toolkit'
         print(f'GPU Architecture: {arch}')
     except Exception as e:
         print(f'[WARN] Error during GPU detail retrieval: {e}')

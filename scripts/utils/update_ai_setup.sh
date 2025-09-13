@@ -8,11 +8,13 @@ else
     echo "common.sh not found" >&2; exit 1
 fi
 
-# ==============================================================================
+# ===============================================================================
 # Update Script for ROCm AI Setup - 2025 Edition (Fixed & Enhanced)
-# Updates ROCm, PyTorch, ComfyUI, SD.Next, Automatic1111, Ollama, InvokeAI
-# Adds support for Fooocus and Text Generation WebUI updates
-# ==============================================================================
+# Updates ROCm, PyTorch, ComfyUI, SD.Next, Automatic1111, Ollama
+# Includes Text Generation WebUI update helper
+# Note: Support for several legacy third-party tools has been removed to focus
+# on maintaining a smaller, well-tested set of ROCm-compatible installers.
+# ===============================================================================
 
 # --- Configuration ---
 VENV_NAME="genai_env"
@@ -20,8 +22,6 @@ VENV_PATH="$HOME/$VENV_NAME"
 COMFYUI_DIR="$HOME/ComfyUI"
 SDNEXT_DIR="$HOME/SD.Next"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
-INVOKEAI_DIR="$HOME/InvokeAI"
-FOOOCUS_DIR="$HOME/Fooocus"
 TEXTGEN_DIR="$HOME/text-generation-webui"
 
 # Map prior function names
@@ -150,28 +150,10 @@ update_ollama() {
     fi
 }
 
-update_invokeai() {
-    print_section "Updating InvokeAI"
-    local dir="$INVOKEAI_DIR"; [ -d "$dir" ] || dir="$HOME/InvokeAI"
-    [ -d "$dir" ] || { print_warning "InvokeAI not found"; return 1; }
-    # Prefer root venv
-    check_venv
-    pip install --upgrade InvokeAI --extra-index-url https://download.pytorch.org/whl/rocm6.4 || print_warning "InvokeAI update failed"
-    print_success "InvokeAI updated"
-}
-
-update_fooocus() {
-    print_section "Updating Fooocus"
-    local dir="$FOOOCUS_DIR"; [ -d "$dir" ] || dir="$HOME/Fooocus"
-    [ -d "$dir" ] || { print_warning "Fooocus not found"; return 1; }
-    check_venv
-    pushd "$dir" >/dev/null || return 1
-    git pull || print_warning "Git pull failed"
-    [ -f requirements_versions.txt ] && pip install -r requirements_versions.txt --upgrade || \
-    [ -f requirements.txt ] && pip install -r requirements.txt --upgrade || true
-    popd >/dev/null
-    print_success "Fooocus updated"
-}
+    # Note: InvokeAI and Fooocus were removed from this toolkit to reduce
+    # maintenance surface. If you need to re-add them, implement dedicated
+    # installers and update handlers in the scripts/install and scripts/start
+    # directories.
 
 update_textgen() {
     print_section "Updating Text Generation WebUI"
@@ -228,8 +210,7 @@ show_update_menu() {
     echo -e "5.  Update SD.Next"
     echo -e "6.  Update Automatic1111"
     echo -e "7.  Update Ollama"
-    echo -e "8.  Update InvokeAI"
-    echo -e "9.  Update Fooocus"
+    # Legacy support entries removed where applicable.
     echo -e "10. Update Text Generation WebUI"
     echo ""
     echo -e "11. ${GREEN}Update ALL AI tools (excluding drivers)${NC}"
@@ -246,12 +227,11 @@ show_update_menu() {
             5) update_sdnext ;;
             6) update_automatic1111 ;;
             7) update_ollama ;;
-            8) update_invokeai ;;
-            9) update_fooocus ;;
+            # removed
             10) update_textgen ;;
             11)
                 print_header "Updating all AI tools"
-                update_pytorch; update_comfyui; update_sdnext; update_automatic1111; update_ollama; update_invokeai; update_fooocus; update_textgen
+                update_pytorch; update_comfyui; update_sdnext; update_automatic1111; update_ollama; update_textgen
                 cleanup_cache; verify_installations
                 print_success "All AI tools updated"
                 ;;

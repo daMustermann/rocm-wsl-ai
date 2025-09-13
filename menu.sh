@@ -11,7 +11,7 @@ fi
 # ==============================================================================
 # AI Tools Suite for AMD GPUs on Linux & WSL2 - 2025 (TUI with whiptail)
 # - Always latest ROCm & PyTorch Nightly
-# - Image & Video Generation: ComfyUI, SD.Next, Automatic1111, InvokeAI, Fooocus, SD WebUI Forge
+# - Image & Video Generation: ComfyUI, SD.Next, Automatic1111
 # - Utilities: Setup/Updates, GitHub self-update, Removal routines
 # ==============================================================================
 
@@ -21,9 +21,6 @@ VENV_PATH="$HOME/$VENV_NAME"
 COMFYUI_DIR="$HOME/ComfyUI"
 SDNEXT_DIR="$HOME/SD.Next"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
-INVOKEAI_DIR="$HOME/InvokeAI"
-FOOOCUS_DIR="$HOME/Fooocus"
-FORGE_DIR="$HOME/stable-diffusion-webui-forge"
 REPO_REMOTE="origin"
 POST_UPDATE_FLAG="/tmp/.ai_suite_post_update_flag"
 
@@ -195,6 +192,24 @@ run_full_update() {
 }
 
 check_status() {
+    # If running under WSL, ensure users know pwsh improves GPU detection and offer one-click install
+    if is_wsl; then
+        if ! command -v pwsh >/dev/null 2>&1; then
+            if (whiptail --title "PowerShell (pwsh) missing" --yesno "PowerShell (pwsh) is not installed in this WSL environment.\n\npwsh improves GPU detection prior to ROCm installation.\nDo you want to attempt automatic PowerShell installation now? (sudo required)" 12 78); then
+                print_info "Attempting to install PowerShell in the WSL environment..."
+                # Try to install via apt using common helper. If it fails, show guidance.
+                if ensure_apt_packages powershell; then
+                    whiptail --title "Installation complete" --msgbox "PowerShell was installed. Please run 'Check Status' again to refresh GPU detection." 10 78
+                else
+                    whiptail --title "Installation failed" --msgbox "Automatic PowerShell installation failed. Please follow the manual instructions." 12 78
+                    install_powershell_hint
+                fi
+            else
+                whiptail --title "Note" --msgbox "OK — PowerShell will not be installed. GPU detection may be less reliable. You can install PowerShell later manually." 10 78
+            fi
+        fi
+    fi
+
     local status_text
     status_text=$(
         # Check ROCm/PyTorch
@@ -220,9 +235,7 @@ check_status() {
         [ -f "$COMFYUI_DIR/main.py" ] && echo "✓ ComfyUI: INSTALLED" || echo "✗ ComfyUI: NOT INSTALLED"
         [ -f "$SDNEXT_DIR/webui.sh" ] && echo "✓ SD.Next: INSTALLED" || echo "✗ SD.Next: NOT INSTALLED"
         [ -f "$AUTOMATIC1111_DIR/webui.sh" ] && echo "✓ Automatic1111: INSTALLED" || echo "✗ Automatic1111: NOT INSTALLED"
-        [ -f "$INVOKEAI_DIR/invoke.sh" ] && echo "✓ InvokeAI: INSTALLED" || echo "✗ InvokeAI: NOT INSTALLED"
-        [ -d "$FOOOCUS_DIR" ] && echo "✓ Fooocus: INSTALLED" || echo "✗ Fooocus: NOT INSTALLED"
-        [ -d "$FORGE_DIR" ] && echo "✓ SD WebUI Forge: INSTALLED" || echo "✗ SD WebUI Forge: NOT INSTALLED"
+    # Note: legacy third-party tools have been removed from this toolkit to reduce maintenance surface.
 
         # Check ROCm system status
         echo -e "\n--- GPU Information ---"
@@ -417,18 +430,14 @@ show_launch_menu() {
         "comfyui" "Start ComfyUI" \
         "sdnext" "Start SD.Next" \
         "a1111" "Start Automatic1111" \
-        "invokeai" "Start InvokeAI" \
-        "fooocus" "Start Fooocus" \
-        "forge" "Start SD WebUI Forge" \
+    # Legacy third-party entries removed to reduce maintenance overhead
         3>&1 1>&2 2>&3) || return 0
 
     case "$CHOICE" in
         comfyui) start_tool "ComfyUI" "./scripts/start/comfyui.sh" "$COMFYUI_DIR/main.py" ;;
         sdnext) start_tool "SD.Next" "./scripts/start/sdnext.sh" "$SDNEXT_DIR/webui.sh" ;;
         a1111) start_tool "Automatic1111" "./scripts/start/automatic1111.sh" "$AUTOMATIC1111_DIR/webui.sh" ;;
-        invokeai) start_tool "InvokeAI" "./scripts/start/invokeai.sh" "$INVOKEAI_DIR/invoke.sh" ;;
-        fooocus) start_tool "Fooocus" "./scripts/start/fooocus.sh" "$FOOOCUS_DIR/launch.py" ;;
-        forge) start_tool "SD WebUI Forge" "./scripts/start/forge.sh" "$FORGE_DIR/webui.sh" ;;
+    # removed
     esac
 }
 
@@ -440,9 +449,7 @@ show_install_menu() {
         "comfyui" "Install ComfyUI" \
         "sdnext" "Install SD.Next" \
         "a1111" "Install Automatic1111" \
-        "invokeai" "Install InvokeAI" \
-        "fooocus" "Install Fooocus" \
-        "forge" "Install SD WebUI Forge" \
+    # Legacy third-party installers removed
         3>&1 1>&2 2>&3) || return 0
 
     case "$CHOICE" in
@@ -450,9 +457,7 @@ show_install_menu() {
         comfyui) install_tool "ComfyUI" "./scripts/install/comfyui.sh" "$COMFYUI_DIR" ;;
         sdnext) install_tool "SD.Next" "./scripts/install/sdnext.sh" "$SDNEXT_DIR" ;;
         a1111) install_tool "Automatic1111" "./scripts/install/automatic1111.sh" "$AUTOMATIC1111_DIR" ;;
-        invokeai) install_tool "InvokeAI" "./scripts/install/invokeai.sh" "$INVOKEAI_DIR" ;;
-        fooocus) install_tool "Fooocus" "./scripts/install/fooocus.sh" "$FOOOCUS_DIR" ;;
-        forge) install_tool "SD WebUI Forge" "./scripts/install/forge.sh" "$FORGE_DIR" ;;
+    # removed
     esac
 }
 
@@ -462,18 +467,14 @@ show_remove_menu() {
         "comfyui" "Uninstall ComfyUI" \
         "sdnext" "Uninstall SD.Next" \
         "a1111" "Uninstall Automatic1111" \
-        "invokeai" "Uninstall InvokeAI" \
-        "fooocus" "Uninstall Fooocus" \
-        "forge" "Uninstall SD WebUI Forge" \
+    # Legacy third-party uninstall entries removed
         3>&1 1>&2 2>&3) || return 0
 
     case "$CHOICE" in
         comfyui) remove_tool_dir "$COMFYUI_DIR" "ComfyUI" ;;
         sdnext) remove_tool_dir "$SDNEXT_DIR" "SD.Next" ;;
         a1111) remove_tool_dir "$AUTOMATIC1111_DIR" "Automatic1111" ;;
-        invokeai) remove_tool_dir "$INVOKEAI_DIR" "InvokeAI" ;;
-        fooocus) remove_tool_dir "$FOOOCUS_DIR" "Fooocus" ;;
-        forge) remove_tool_dir "$FORGE_DIR" "SD WebUI Forge" ;;
+    # removed
     esac
 }
 

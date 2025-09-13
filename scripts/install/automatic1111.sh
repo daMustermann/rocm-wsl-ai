@@ -11,9 +11,14 @@ standard_header "Automatic1111 Stable Diffusion WebUI"
 ensure_venv "$VENV_NAME" || { err "Run 1_setup_pytorch_rocm_wsl.sh first"; exit 1; }
 
 ensure_apt_packages wget git python3-pip python3-venv libgl1 libglib2.0-0
+# Clone or update the repository to ensure latest at install time
 git_clone_or_update https://github.com/AUTOMATIC1111/stable-diffusion-webui.git "$WEBUI_DIR"
 
 cd "$WEBUI_DIR"
+# Upgrade Python requirements (if present) using the toolkit virtualenv
+[ -f requirements.txt ] && pip install -r requirements.txt --upgrade || warn "No requirements.txt found for Automatic1111"
+
+# Ensure extensions are up-to-date (pull and install their requirements if present)
 cat > webui-user.sh << 'EOF'
 #!/bin/bash
 
@@ -50,7 +55,12 @@ for entry in "${EXT_LIST[@]}"; do
         log "Adding extension $name"
         git clone --depth=1 "$repo" "extensions/$name" || warn "Failed to clone $name"
     else
-        git -C "extensions/$name" pull --rebase --autostash >/dev/null 2>&1 || true
+        log "Updating extension $name"
+        git -C "extensions/$name" pull --rebase --autostash >/dev/null 2>&1 || warn "Failed to update $name"
+    fi
+    if [ -f "extensions/$name/requirements.txt" ]; then
+        log "Installing requirements for extension $name"
+        pip install -r "extensions/$name/requirements.txt" --upgrade || warn "Failed to install extension requirements for $name"
     fi
 done
 

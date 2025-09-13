@@ -4,82 +4,72 @@
 
 GPU_ENV_FILE="$HOME/.config/rocm-wsl-ai/gpu.env"
 
-# This function contains the complex pre-rocm-install GPU detection logic.
+# This function contains the pre-rocm-install GPU detection logic.
 # It tries to identify the GPU using lspci (Linux) or pwsh (WSL).
-# It returns a gfx string (e.g., "gfx1100") on success or an empty string on failure.
+# It will only return RDNA3+ families (gfx11xx / gfx12xx). For older families
+# the function returns an empty string so the caller can detect unsupported HW
+# and abort gracefully.
 _detect_gpu_arch_pre_rocm() {
-    local GPU_INFO=""
-    local GFX_ARCH=""
+  local GPU_INFO=""
+  local GFX_ARCH=""
 
-    # Add error handling to prevent script exit on command failure
-    set +e
-    if is_wsl; then
-        if command -v pwsh &> /dev/null; then
-            GPU_INFO=$(pwsh -Command "Get-CimInstance -ClassName Win32_VideoController | Where-Object { \$_.Name -like '*Radeon*' -or \$_.Name -like '*AMD*' } | Select-Object -ExpandProperty Name" 2>/dev/null)
-        else
-            warn "pwsh command not found. Cannot detect GPU via PowerShell for pre-install detection."
-        fi
+  # Add error handling to prevent script exit on command failure
+  set +e
+  if is_wsl; then
+    if command -v pwsh &> /dev/null; then
+      # Match common name strings (Radeon, AMD, ATI) and also check PNPDeviceID for vendor 1002
+      GPU_INFO=$(pwsh -Command "Get-CimInstance -ClassName Win32_VideoController | Where-Object { \$_.Name -like '*Radeon*' -or \$_.Name -like '*AMD*' -or \$_.Name -like '*ATI*' -or (\$_.PNPDeviceID -match 'VEN_1002') } | ForEach-Object { \"$($_.Name) $($_.PNPDeviceID)\" } | Select-Object -First 1" 2>/dev/null)
     else
-        if command -v lspci &> /dev/null; then
-            GPU_INFO=$(lspci | grep -i 'vga\|3d\|display' | grep -i 'amd\|radeon\|ati')
-        else
-            warn "lspci command not found. Cannot detect GPU via lspci for pre-install detection."
-        fi
+      warn "pwsh command not found. Cannot detect GPU via PowerShell for pre-install detection."
     fi
-    set -e
-
-    if [ -z "$GPU_INFO" ]; then
-        warn "Could not detect AMD GPU details before ROCm installation. Will rely on post-install detection or fallback."
-        echo ""
-        return
+  else
+    if command -v lspci &> /dev/null; then
+      GPU_INFO=$(lspci | grep -i 'vga\|3d\|display' | grep -i 'amd\|radeon\|ati')
+    else
+      warn "lspci command not found. Cannot detect GPU via lspci for pre-install detection."
     fi
+  fi
+  set -e
 
-    log "Pre-ROCm GPU Info: $GPU_INFO"
+  if [ -z "$GPU_INFO" ]; then
+    warn "Could not detect AMD GPU details before ROCm installation. Will rely on post-install detection or fallback."
+    echo ""
+    return
+  fi
 
-    # --- GPU Architecture Detection and Configuration ---
-    # RDNA 3.5 (Strix Point / Strix Halo APUs, e.g., Ryzen AI 300 series)
-    if [[ "$GPU_INFO" =~ 1150 ]] || [[ "$GPU_INFO" =~ 1151 ]] || [[ "$GPU_INFO" =~ "Ryzen AI 3" ]]; then
-        if [[ "$GPU_INFO" =~ Halo ]] || [[ "$GPU_INFO" =~ HX[[:space:]]3[79] ]]; then GFX_ARCH="gfx1151";
-        else GFX_ARCH="gfx1150"; fi
-    # RDNA4 (Navi 4x, e.g., RX 9000 series) - Future-proofing
-    elif [[ "$GPU_INFO" =~ 1200 ]] || [[ "$GPU_INFO" =~ 1201 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*9[0-9]{3} ]]; then
-        if [[ "$GPU_INFO" =~ 99[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1200 ]]; then GFX_ARCH="gfx1200";
-        elif [[ "$GPU_INFO" =~ 98[0-9]{2} ]] || [[ "$GPU_INFO" =~ 97[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1201 ]]; then GFX_ARCH="gfx1201";
-        else GFX_ARCH="gfx1200"; fi
-    # RDNA3 (Navi 3x, RX 7000 series & APUs)
-    elif [[ "$GPU_INFO" =~ 1100 ]] || [[ "$GPU_INFO" =~ 1101 ]] || [[ "$GPU_INFO" =~ 1102 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*7[0-9]{3} ]] || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]] || [[ "$GPU_INFO" =~ "Radeon 7" ]]; then
-        if [[ "$GPU_INFO" =~ 79[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1100 ]]; then GFX_ARCH="gfx1100";
-        elif [[ "$GPU_INFO" =~ 78[0-9]{2} ]] || [[ "$GPU_INFO" =~ 77[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1101 ]]; then GFX_ARCH="gfx1101";
-        elif [[ "$GPU_INFO" =~ 76[0-9]{2} ]] || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]] || [[ "$GPU_INFO" =~ 1102 ]]; then GFX_ARCH="gfx1102";
-        else GFX_ARCH="gfx1100"; fi
-    # RDNA2 (Navi 2x, RX 6000 series)
-    elif [[ "$GPU_INFO" =~ 1030 ]] || [[ "$GPU_INFO" =~ 1031 ]] || [[ "$GPU_INFO" =~ 1032 ]] || [[ "$GPU_INFO" =~ 1034 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*6[0-9]{3} ]]; then
-        if [[ "$GPU_INFO" =~ 69[0-9]{2} ]] || [[ "$GPU_INFO" =~ 68[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1030 ]]; then GFX_ARCH="gfx1030";
-        elif [[ "$GPU_INFO" =~ 67[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1031 ]]; then GFX_ARCH="gfx1031";
-        elif [[ "$GPU_INFO" =~ 66[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1032 ]]; then GFX_ARCH="gfx1032";
-        elif [[ "$GPU_INFO" =~ 65[0-9]{2} ]] || [[ "$GPU_INFO" =~ 64[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1034 ]]; then GFX_ARCH="gfx1034";
-        else GFX_ARCH="gfx1030"; fi
-    # RDNA1 (Navi 1x, RX 5000 series)
-    elif [[ "$GPU_INFO" =~ 1010 ]] || [[ "$GPU_INFO" =~ 1012 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*5[0-9]{3} ]]; then
-        if [[ "$GPU_INFO" =~ 57[0-9]{2} ]] || [[ "$GPU_INFO" =~ 56[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1010 ]]; then GFX_ARCH="gfx1010";
-        elif [[ "$GPU_INFO" =~ 55[0-9]{2} ]] || [[ "$GPU_INFO" =~ 54[0-9]{2} ]] || [[ "$GPU_INFO" =~ 1012 ]]; then GFX_ARCH="gfx1012";
-        else GFX_ARCH="gfx1010"; fi
-    # Vega / GCN 5
-    elif [[ "$GPU_INFO" =~ Vega ]] || [[ "$GPU_INFO" =~ Radeon[[:space:]]VII ]] || [[ "$GPU_INFO" =~ 90[0-9] ]]; then
-        if [[ "$GPU_INFO" =~ Radeon[[:space:]]VII ]] || [[ "$GPU_INFO" =~ 906 ]]; then GFX_ARCH="gfx906";
-        else GFX_ARCH="gfx900"; fi
-    # Polaris / GCN 4 (RX 500/400 series)
-    elif [[ "$GPU_INFO" =~ Polaris ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*[54][0-9]{2} ]] || [[ "$GPU_INFO" =~ 803 ]]; then
-        GFX_ARCH="gfx803";
-    fi
+  log "Pre-ROCm GPU Info: $GPU_INFO"
 
+  # Prefer matching RDNA4 / gfx12xx identifiers
+  if [[ "$GPU_INFO" =~ 1200 ]] || [[ "$GPU_INFO" =~ 1201 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*9[0-9]{3} ]]; then
+    GFX_ARCH="gfx1200"
     echo "$GFX_ARCH"
+    return
+  fi
+
+  # Match RDNA3 / gfx11xx (RX 7000 series and APUs)
+  if [[ "$GPU_INFO" =~ 1100 ]] || [[ "$GPU_INFO" =~ 1101 ]] || [[ "$GPU_INFO" =~ 1102 ]] || [[ "$GPU_INFO" =~ RX[[:space:]]*7[0-9]{3} ]] || [[ "$GPU_INFO" =~ 7[0-9]{3}M ]]; then
+    GFX_ARCH="gfx1100"
+    echo "$GFX_ARCH"
+    return
+  fi
+
+  # If we reach here the detected GPU looks like an older family (gfx10xx, Vega, Polaris)
+  warn "Detected GPU does not appear to be RDNA3 or newer (pre-RDNA3 hardware). This toolkit only supports RDNA3 (gfx11xx) and newer."
+  echo ""
 }
 
 detect_and_export_rocm_env(){
   # If user has already set HSA_OVERRIDE_GFX_VERSION, respect it.
   if [ -n "${HSA_OVERRIDE_GFX_VERSION-}" ]; then
-    local arch_list="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1010"
+    # Validate user-provided override: must be RDNA3+ (gfx11xx or gfx12xx)
+    local numeric_override
+    numeric_override=${HSA_OVERRIDE_GFX_VERSION#gfx}
+    if ! [[ "$numeric_override" =~ ^[0-9]+$ ]] || [ "$numeric_override" -lt 1100 ]; then
+      print_error "Provided HSA_OVERRIDE_GFX_VERSION='$HSA_OVERRIDE_GFX_VERSION' is not RDNA3+ (gfx11xx/gfx12xx). Aborting."
+      return 1
+    fi
+
+    local arch_list="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102"
     export PYTORCH_ROCM_ARCH="$arch_list"
 
     mkdir -p "$(dirname "$GPU_ENV_FILE")"
@@ -119,9 +109,17 @@ detect_and_export_rocm_env(){
     arch="gfx1100"  # fallback RDNA3 default
     warn "Could not detect GPU architecture. Falling back to default: $arch"
   fi
+  # Validate detected arch is RDNA3+; if a pre-install detection returned an older family,
+  # abort so we don't attempt to install on unsupported hardware.
+  local numeric_arch
+  numeric_arch=${arch#gfx}
+  if ! [[ "$numeric_arch" =~ ^[0-9]+$ ]] || [ "$numeric_arch" -lt 1100 ]; then
+    print_error "Detected GPU architecture '$arch' is older than RDNA3. This toolkit only supports RDNA3 (gfx11xx) and newer. Aborting."
+    return 1
+  fi
 
   local hsa_override_val="$arch"
-  local arch_list="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1010"
+  local arch_list="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102"
   export PYTORCH_ROCM_ARCH="$arch_list"
   export HSA_OVERRIDE_GFX_VERSION="$hsa_override_val"
 

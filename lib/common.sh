@@ -21,6 +21,14 @@ pip_install_if_exists(){ local f="$1"; [ -f "$f" ] || { warn "No requirements: $
 
 ensure_apt_packages(){ [ $# -eq 0 ] && return 0; log "Ensuring apt packages: $*"; sudo apt update -y >/dev/null; sudo apt install -y "$@"; }
 
+install_powershell_hint(){
+  warn "Automatic installation of PowerShell failed or is not available for your distribution."
+  echo "You can try the following manual steps in WSL to install PowerShell:" >&2
+  echo "  sudo apt update" >&2
+  echo "  sudo apt install -y powershell" >&2
+  echo "If the package is not available, follow Microsoft docs: https://learn.microsoft.com/powershell/scripting/install/install-ubuntu" >&2
+}
+
 is_wsl(){ grep -qi microsoft /proc/version 2>/dev/null; }
 has_rocm(){ command -v rocminfo >/dev/null 2>&1; }
 

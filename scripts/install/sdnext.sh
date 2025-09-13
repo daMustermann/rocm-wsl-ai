@@ -12,6 +12,10 @@ VENV_NAME="genai_env"
 # Directory where SD.Next will be cloned
 SDNEXT_DIR="$HOME/SD.Next"
 
+SCRIPT_DIR="$(dirname "$0")"
+COMMON="$SCRIPT_DIR/common.sh"
+[ -f "$COMMON" ] && source "$COMMON" || { echo "common.sh not found"; exit 1; }
+
 # --- Script Start ---
 echo "Starting SD.Next installation..."
 echo "---------------------------------"
@@ -68,43 +72,38 @@ else:
 "
 echo "--------------------------------------------------"
 
-# --- 4. Clone SD.Next Repository ---
-echo "[TASK 3/4] Cloning SD.Next repository..."
-
-if [ -d "$SDNEXT_DIR" ]; then
-    echo "SD.Next directory already exists at ${SDNEXT_DIR}."
-    echo "Would you like to update it? (y/n)"
-    read -r update_choice
-    if [[ "$update_choice" =~ ^[Yy]$ ]]; then
-        echo "Updating SD.Next repository..."
-        cd "$SDNEXT_DIR"
-        git pull
-    else
-        echo "Skipping update."
-    fi
+# --- 4. Clone or update SD.Next Repository ---
+echo "[TASK 3/4] Ensuring SD.Next repository is present and up-to-date..."
+if [ -d "$SDNEXT_DIR/.git" ]; then
+    log "Updating existing SD.Next repository at ${SDNEXT_DIR}"
+    git -C "$SDNEXT_DIR" pull --rebase --autostash || warn "Failed to pull latest SD.Next"
 else
-    echo "Cloning SD.Next from GitHub into ${SDNEXT_DIR}..."
-    git clone https://github.com/vladmandic/sdnext.git "$SDNEXT_DIR"
-    echo "SD.Next repository cloned successfully."
+    log "Cloning SD.Next from upstream into ${SDNEXT_DIR}"
+    git clone https://github.com/vladmandic/sdnext.git "$SDNEXT_DIR" || { echo "[ERROR] Failed to clone SD.Next"; exit 1; }
 fi
 echo "--------------------------------------------------"
 
-# --- 5. Install SD.Next ---
-echo "[TASK 4/4] Installing SD.Next..."
+# --- 5. Install / Upgrade SD.Next dependencies ---
+echo "[TASK 4/4] Installing / upgrading SD.Next dependencies"
 cd "$SDNEXT_DIR"
+# Use toolkit venv to upgrade requirements if present
+if ensure_venv "$VENV_NAME" ; then
+    if [ -f requirements.txt ]; then
+        pip install -r requirements.txt --upgrade || warn "Failed to install SD.Next requirements"
+    else
+        warn "No requirements.txt found for SD.Next"
+    fi
+else
+    warn "Toolkit virtualenv not found at $VENV_PATH; please activate your environment and run manual upgrade if necessary"
+fi
 
-# Create a simple test script to verify installation
-cat > test_sdnext_install.sh << 'EOF'
-#!/bin/bash
-cd "$(dirname "$0")"
-./webui.sh --use-rocm --skip-torch-cuda-test --no-download-sd-model --no-half --no-half-vae --test
-EOF
-
-chmod +x test_sdnext_install.sh
-
-echo "SD.Next installation prepared. Running a quick test to verify installation..."
-./test_sdnext_install.sh
-
+# Run a non-destructive quick test if available
+if [ -x ./webui.sh ]; then
+    log "Performing quick SD.Next launch test (no model download)"
+    ./webui.sh --use-rocm --skip-torch-cuda-test --no-download-sd-model --no-half --no-half-vae --test || warn "SD.Next quick test failed (may be expected on first run)"
+else
+    warn "webui.sh not present or not executable"
+fi
 echo "--------------------------------------------------"
 
 # --- Script End ---
