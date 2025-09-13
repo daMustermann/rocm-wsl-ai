@@ -7,7 +7,7 @@ The toolkit automates the entire process, from driver installation to applicatio
 ## Why Use This Toolkit?
 
 -   **Automated & Simple:** Gone are the days of manual dependency hell. A user-friendly terminal menu guides you through every step.
--   **Smart GPU Detection:** Automatically detects your AMD GPU and configures the environment with the correct settings (`HSA_OVERRIDE_GFX_VERSION`), simplifying setup for a wide range of RDNA, Vega, and Polaris cards.
+-   **Smart GPU Detection (RDNA3+ only):** Automatically detects your AMD GPU and configures the environment with the correct settings (`HSA_OVERRIDE_GFX_VERSION`). Note: as of this release the toolkit only supports RDNA3 (gfx11xx) and newer families. Older GPUs (RDNA1/2, Vega, Polaris) are no longer supported.
 -   **Always Up-to-Date:** The scripts automatically fetch the latest stable ROCm drivers and the correct PyTorch nightly builds, so you're always on the cutting edge.
 -   **Robust & Isolated:** Manages a dedicated Python virtual environment to prevent conflicts with your system packages.
 -   **Cross-Platform:** Works consistently on both native Ubuntu 22.04/24.04 and WSL2.
@@ -20,9 +20,9 @@ This toolkit is focused on the best open-source applications for creative AI:
 -   ComfyUI
 -   Stable Diffusion WebUI (Automatic1111)
 -   SD.Next
--   InvokeAI
--   Fooocus
--   SD WebUI Forge
+ 
+Note: The following projects have been removed from this toolkit and are no longer supported: InvokeAI, Fooocus, and SD WebUI Forge. They were removed to reduce maintenance surface and focus testing and support on a smaller set of ROCm-compatible tools. If you still need these applications, please consult their upstream repositories for installation instructions.
+ 
 
 ## Getting Started
 
@@ -94,11 +94,12 @@ This ensures you're always using the latest, most stable update procedures.
 
 ## Advanced Topics
 
+
 ### GPU Compatibility
 
-The script automatically detects the GPU architecture and sets the appropriate `HSA_OVERRIDE_GFX_VERSION` environment variable. This works for most modern AMD GPUs (RDNA 1/2/3, Vega, Polaris). The detection works even on a fresh system before ROCm is installed.
+The script automatically detects the GPU architecture and sets the appropriate `HSA_OVERRIDE_GFX_VERSION` environment variable. Important: this toolkit now targets RDNA3 and newer hardware only. If your GPU is older than RDNA3 (for example, RX 5000/6000 series or Vega/Polaris), the installer will warn and abort rather than attempting a potentially unsupported setup.
 
-If you have a very new or unsupported GPU, you might need to set this variable manually. For the most accurate information, please consult the official AMD documentation.
+If detection fails or you need to override the detected value (advanced), you can set `HSA_OVERRIDE_GFX_VERSION` manually before running the installer. Consult AMD's compatibility documentation for guidance.
 
 -   **[Official Compatibility Matrix for ROCm (Latest Stable)](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)**
 
@@ -106,7 +107,7 @@ If you have a very new or unsupported GPU, you might need to set this variable m
 
 As of late 2025, ROCm support primarily targets discrete GPUs. While modern Ryzen APUs (like the 7040/8040 and AI 300 series) have powerful integrated graphics, their support in the ROCm ecosystem is still **highly experimental**.
 
-This toolkit will attempt to detect APUs and apply experimental settings, but stability is not guaranteed. For the most stable and performant experience, an **officially supported discrete AMD Radeon GPU (RX 6000 series / RDNA2 or newer) is strongly recommended.**
+This toolkit will attempt to detect APUs, but only RDNA3-class APUs (if any) will be accepted by the installer. Stability for APUs remains experimental. For the most stable and performant experience, a supported discrete AMD Radeon GPU that is RDNA3 or newer is strongly recommended.
 
 The Neural Processing Unit (NPU) in "Ryzen AI" APUs is not used by this toolkit, as it is accessed via different software stacks and does not use ROCm.
 
