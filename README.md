@@ -1,36 +1,38 @@
-# ROCm AI Toolkit for Image & Video Generation
+# ROCm WSL2 AI Toolkit
 
-This repository provides a powerful, menu-driven toolkit to simplify the setup of a comprehensive AI environment for **image and video generation** on Linux. It's designed for AMD GPUs, using ROCm to unlock their full potential on both native Linux (Ubuntu) and WSL2.
+Simple, powerful toolkit for running AI image and video generation on AMD GPUs in WSL2. Uses the latest ROCm 6.4.2.1 and PyTorch 2.6.0.
 
-The toolkit automates the entire process, from driver installation to application management, ensuring you have a stable, up-to-date environment with just a few commands.
+## ✨ Features
 
-## Why Use This Toolkit?
+- **Latest Stack**: ROCm 6.4.2.1 + PyTorch 2.6.0 (official AMD wheels)
+- **WSL2 Optimized**: Designed specifically for Windows Subsystem for Linux 2
+- **Ubuntu 24.04 Focus**: Primary support for Ubuntu 24.04, with Ubuntu 22.04 secondary
+- **Simple Setup**: Clean TUI menu for easy installation and management
+- **Automated**: Official AMD `amdgpu-install` method for reliable installation
+- **AI Tools**: ComfyUI, SD.Next, and Automatic1111 support
 
--   **Automated & Simple:** Gone are the days of manual dependency hell. A user-friendly terminal menu guides you through every step.
--   **Smart GPU Detection (RDNA3+ only):** Automatically detects your AMD GPU and configures the environment with the correct settings (`HSA_OVERRIDE_GFX_VERSION`). Note: as of this release the toolkit only supports RDNA3 (gfx11xx) and newer families. Older GPUs (RDNA1/2, Vega, Polaris) are no longer supported.
--   **Always Up-to-Date:** The scripts automatically fetch the latest stable ROCm drivers and the correct PyTorch nightly builds, so you're always on the cutting edge.
--   **Robust & Isolated:** Manages a dedicated Python virtual environment to prevent conflicts with your system packages.
--   **Cross-Platform:** Works consistently on both native Ubuntu 22.04/24.04 and WSL2.
--   **Smart Updates:** A built-in, unified update system keeps both the toolkit and all your installed AI applications current with a single command.
+## 🎯 Supported GPUs
 
-## Supported Tools
+- AMD Radeon RX 7000 series (RDNA3)
+- AMD Radeon RX 9000 series (RDNA4)
+- **Note**: Only RDNA3+ (gfx1100+) GPUs are supported
 
-This toolkit is focused on the best open-source applications for creative AI:
+## 📋 Prerequisites
 
--   ComfyUI
--   Stable Diffusion WebUI (Automatic1111)
--   SD.Next
- 
-Note: The following projects have been removed from this toolkit and are no longer supported: InvokeAI, Fooocus, and SD WebUI Forge. They were removed to reduce maintenance surface and focus testing and support on a smaller set of ROCm-compatible tools. If you still need these applications, please consult their upstream repositories for installation instructions.
- 
+### Windows Requirements
+- Windows 11 **or** Windows 10 with WSL2 support
+- [AMD Adrenalin Edition 25.8.1 for WSL2](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-25-8-1.html) driver installed
+- WSL2 enabled and configured
 
-## Getting Started
+### WSL2 Requirements
+- Ubuntu 24.04 (recommended) **or** Ubuntu 22.04
+- At least 20GB free disk space
+- Internet connection for downloads
 
-Follow these steps to get up and running in minutes.
+## 🚀 Quick Start
 
 ### 1. Clone the Repository
 
-First, clone this repository to your local machine and navigate into the directory:
 ```bash
 git clone https://github.com/daMustermann/rocm-wsl-ai.git
 cd rocm-wsl-ai
@@ -38,79 +40,185 @@ cd rocm-wsl-ai
 
 ### 2. Run the Menu
 
-First, make the menu.sh executable:
 ```bash
 chmod +x menu.sh
-```
-
-Next, launch the main menu script:
-```bash
 ./menu.sh
 ```
-The script will automatically handle permissions for all its helper scripts.
 
-### 3. Perform the Base Installation
+### 3. Install Base Environment
 
-This is the most important first step. It sets up the core ROCm and PyTorch environment that all other tools will use.
+1. From the menu, select **Install** → **Base Environment**
+2. Wait for installation to complete (10-20 minutes)
+3. **IMPORTANT**: Restart WSL2
+   ```powershell
+   # In Windows PowerShell or CMD:
+   wsl --shutdown
+   ```
+4. Restart your Ubuntu terminal
 
--   From the main menu, select `Manage Tools`.
--   Choose `Install a new tool`.
--   Select **`Base Installation (ROCm & PyTorch)`**.
+### 4. Install AI Tools
 
-You will be presented with a choice for the ROCm and PyTorch versions:
--   **`Latest stable ROCm (recommended) + PyTorch for ROCm Nightly`**: This is the recommended option for most users. It installs the latest stable ROCm drivers from the AMD repository and a matching PyTorch nightly build.
+Run `./menu.sh` again and install your desired tools:
+- **ComfyUI**: Node-based workflow for Stable Diffusion
+- **SD.Next**: Advanced Stable Diffusion WebUI
+- **Automatic1111**: Popular Stable Diffusion WebUI
 
-The script will then handle everything:
--   Installs the necessary AMD drivers and ROCm stack.
--   Creates a self-contained Python virtual environment at `~/genai_env`.
--   Installs the chosen compatible PyTorch nightly build and Triton.
+### 5. Launch and Enjoy!
 
-**A system restart is required** after this step is complete to ensure all driver and user-group changes take effect.
+Use the **Launch Tool** menu to start your installed applications.
 
-### 4. Install Your Favorite Tools
+## 📖 Menu Options
 
-After restarting, run `./menu.sh` again. Navigate back to `Manage Tools` -> `Install a new tool` and select any of the supported AI applications to install them.
+### 📦 Install
+- **Base Environment**: Installs ROCm 6.4.2.1 + PyTorch 2.6.0 + Python virtual environment
+- **ComfyUI**: Node-based Stable Diffusion interface
+- **SD.Next**: Feature-rich Stable Diffusion WebUI
+- **Automatic1111**: Classic Stable Diffusion WebUI
 
-## How It Works
+### 🚀 Launch Tool
+Start any installed AI application. The tool will automatically activate the Python environment and launch the web interface.
 
-The toolkit is centered around the `menu.sh` script, which provides a simple interface for complex tasks.
+### 📊 System Status
+View installation status of:
+- Base environment (ROCm/PyTorch)
+- Installed AI tools
+- GPU detection status
 
--   **Launch an AI tool:** Start any installed application.
--   **Manage Tools (Install / Uninstall):** Add or remove AI applications. The base environment must be installed first.
--   **System & Updates:** Access system-wide tasks, including the unified updater and driver manager.
--   **Check Installation Status:** Get a quick overview of what's installed and verify your system configuration.
+### ❓ Help
+Quick reference for setup and troubleshooting.
 
-## Updating Your Setup
+## 🛠️ What Gets Installed
 
-To keep your toolkit and AI applications current, use the built-in update feature:
--   Navigate to `System & Updates` in the main menu.
--   Select **`Update Everything (Script & AI Stack)`**.
+### Base Environment Installation
+1. **ROCm 6.4.2.1**: Via AMD's official `amdgpu-install` method
+   - Graphics stack
+   - HIP runtime
+   - ROCm libraries
+2. **Python Virtual Environment**: `~/genai_env`
+3. **PyTorch 2.6.0**: Official AMD wheels from repo.radeon.com
+   - torch, torchvision, torchaudio
+   - pytorch-triton-rocm
+4. **GPU Configuration**: Automatic HSA_OVERRIDE_GFX_VERSION detection
 
-This smart updater works in two stages:
-1.  It first checks for and pulls any updates for the toolkit scripts themselves. If updates are found, it will restart to apply them.
-2.  It then proceeds to update your entire AI stack, including ROCm, PyTorch, and all the tools you've installed.
+### Python Versions
+- **Ubuntu 24.04**: Python 3.12
+- **Ubuntu 22.04**: Python 3.10
 
-This ensures you're always using the latest, most stable update procedures.
+## ⚙️ Technical Details
 
-## Advanced Topics
+| Component | Version |
+|-----------|---------|
+| ROCm | 6.4.2.1 |
+| PyTorch | 2.6.0+rocm6.4.2 |
+| Triton | 3.2.0+rocm6.4.2 |
+| Installation Method | amdgpu-install (official) |
+| Python (24.04) | 3.12 |
+| Python (22.04) | 3.10 |
 
+## 🔧 Troubleshooting
 
-### GPU Compatibility
+### GPU Not Detected
 
-The script automatically detects the GPU architecture and sets the appropriate `HSA_OVERRIDE_GFX_VERSION` environment variable. Important: this toolkit now targets RDNA3 and newer hardware only. If your GPU is older than RDNA3 (for example, RX 5000/6000 series or Vega/Polaris), the installer will warn and abort rather than attempting a potentially unsupported setup.
+**Symptoms**: `rocminfo` shows no GPU or PyTorch can't see ROCm
 
-If detection fails or you need to override the detected value (advanced), you can set `HSA_OVERRIDE_GFX_VERSION` manually before running the installer. Consult AMD's compatibility documentation for guidance.
+**Solutions**:
+1. Verify AMD Adrenalin 25.8.1 is installed on Windows
+2. Restart WSL2: `wsl --shutdown` (in PowerShell)
+3. Check GPU in Windows: Open Radeon Software
+4. Verify WSL2 is up to date: `wsl --update`
 
--   **[Official Compatibility Matrix for ROCm (Latest Stable)](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)**
+### Installation Fails
 
-### A Note on APUs (Ryzen AI)
+**Common Issues**:
+- **No internet**: Check connection with `ping google.com`
+- **Disk space**: Ensure 20GB+ free with `df -h`
+- **Wrong Ubuntu**: This toolkit requires 24.04 or 22.04
 
-As of late 2025, ROCm support primarily targets discrete GPUs. While modern Ryzen APUs (like the 7040/8040 and AI 300 series) have powerful integrated graphics, their support in the ROCm ecosystem is still **highly experimental**.
+### PyTorch Import Error
 
-This toolkit will attempt to detect APUs, but only RDNA3-class APUs (if any) will be accepted by the installer. Stability for APUs remains experimental. For the most stable and performant experience, a supported discrete AMD Radeon GPU that is RDNA3 or newer is strongly recommended.
+**Symptoms**: `ImportError` when importing torch
 
-The Neural Processing Unit (NPU) in "Ryzen AI" APUs is not used by this toolkit, as it is accessed via different software stacks and does not use ROCm.
+**Solutions**:
+1. Ensure virtual environment is activated:
+   ```bash
+   source ~/genai_env/bin/activate
+   ```
+2. Reinstall base environment from menu
+3. Check Python version matches Ubuntu (3.12 for 24.04, 3.10 for 22.04)
 
-## License
+### Tools Won't Launch
 
-This project is open-source and available under the MIT License.
+**Symptoms**: Error when launching ComfyUI/SD.Next/Automatic1111
+
+**Solutions**:
+1. Verify base environment is installed (check System Status)
+2. Ensure WSL2 was restarted after base installation
+3. Try running tool manually to see detailed error:
+   ```bash
+   source ~/genai_env/bin/activate
+   cd ~/ComfyUI  # or ~/SD.Next or ~/stable-diffusion-webui
+   python main.py  # for ComfyUI
+   ```
+
+## 📚 Advanced Topics
+
+### Manual Virtual Environment Activation
+
+Each time you open a new terminal, activate the environment:
+```bash
+source ~/genai_env/bin/activate
+```
+
+### Updating Tools
+
+AI tools can be updated individually:
+```bash
+source ~/genai_env/bin/activate
+cd ~/ComfyUI  # or your tool directory
+git pull
+pip install -r requirements.txt  # if exists
+```
+
+### WSL2 Performance Tips
+
+1. **Use Windows 11**: Better WSL2 GPU support
+2. **Allocate RAM**: Edit `.wslconfig` in Windows user folder
+   ```ini
+   [wsl2]
+   memory=16GB
+   processors=8
+   ```
+3. **Store files in WSL**: Keep projects in `/home/` not `/mnt/c/`
+
+## 📖 Additional Documentation
+
+- **[WSL2 Setup Guide](docs/WSL2_SETUP_GUIDE.md)**: Detailed setup instructions
+- **[Changelog](CHANGELOG.md)**: Version history and updates
+
+## 🔗 Official Resources
+
+- [AMD ROCm Documentation](https://rocm.docs.amd.com/)
+- [AMD ROCm WSL Installation](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/install-radeon.html)
+- [PyTorch ROCm Installation](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/install-pytorch.html)
+- [AMD Compatibility Matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/compatibility.html)
+
+## 🆘 Getting Help
+
+1. Check **System Status** in the menu
+2. Review troubleshooting section above
+3. Check [AMD ROCm Documentation](https://rocm.docs.amd.com/)
+4. Open an issue on GitHub with:
+   - Ubuntu version (`lsb_release -a`)
+   - GPU model
+   - Error messages
+   - Output of `rocminfo`
+
+## 📄 License
+
+MIT License - See LICENSE file for details
+
+## 🙏 Acknowledgments
+
+- AMD for ROCm and driver support
+- PyTorch team for ROCm integration
+- ComfyUI, SD.Next, and Automatic1111 communities
