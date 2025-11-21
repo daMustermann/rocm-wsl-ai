@@ -102,6 +102,5 @@ For users upgrading from 1.x:
 ### Notes
 - Baseline version numbering as 1.0.0
 
-[Unreleased]: https://github.com/daMustermann/rocm-wsl-ai/compare/2.0.0...HEAD
-[2.0.0]: https://github.com/daMustermann/rocm-wsl-ai/compare/1.0.0...2.0.0
-[1.0.0]: https://github.com/daMustermann/rocm-wsl-ai/releases/tag/1.0.0
+
+
