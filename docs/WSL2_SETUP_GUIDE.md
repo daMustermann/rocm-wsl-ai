@@ -112,7 +112,7 @@ You **MUST** install the AMD Adrenalin driver on Windows before ROCm will work i
 
 ### Step 1: Download AMD Driver
 
-Download [AMD Adrenalin Edition 25.8.1 for WSL2](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-25-8-1.html)
+Download [AMD Adrenalin Edition 26.1.1 for WSL2](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-26-1-1.html)
 
 ### Step 2: Install Driver
 
@@ -156,14 +156,14 @@ sudo apt upgrade -y
 
 **For Ubuntu 24.04:**
 ```bash
-wget https://repo.radeon.com/amdgpu-install/6.4.2.1/ubuntu/noble/amdgpu-install_6.4.60402-1_all.deb
-sudo apt install ./amdgpu-install_6.4.60402-1_all.deb
+wget https://repo.radeon.com/amdgpu-install/7.2/ubuntu/noble/amdgpu-install_7.2.70200-1_all.deb
+sudo apt install ./amdgpu-install_7.2.70200-1_all.deb
 ```
 
 **For Ubuntu 22.04:**
 ```bash
-wget https://repo.radeon.com/amdgpu-install/6.4.2.1/ubuntu/jammy/amdgpu-install_6.4.60402-1_all.deb
-sudo apt install ./amdgpu-install_6.4.60402-1_all.deb
+wget https://repo.radeon.com/amdgpu-install/7.2/ubuntu/jammy/amdgpu-install_7.2.70200-1_all.deb
+sudo apt install ./amdgpu-install_7.2.70200-1_all.deb
 ```
 
 #### Step 3: Install ROCm
@@ -220,25 +220,25 @@ pip install --upgrade pip wheel
 **For Ubuntu 24.04 (Python 3.12):**
 ```bash
 cd /tmp
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/torch-2.6.0%2Brocm6.4.2.git76481f7c-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/torchvision-0.21.0%2Brocm6.4.2.git4040d51f-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/torchaudio-2.6.0%2Brocm6.4.2.gitd8831425-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/pytorch_triton_rocm-3.2.0%2Brocm6.4.2.git7e948ebf-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torch-2.9.1%2Brocm7.2.0.lw.git7e1940d4-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchvision-0.24.0%2Brocm7.2.0.gitb919bd0c-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchaudio-2.9.0%2Brocm7.2.0.gite3c6ee2b-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/triton-3.5.1%2Brocm7.2.0.gita272dfa8-cp312-cp312-linux_x86_64.whl
 ```
 
 **For Ubuntu 22.04 (Python 3.10):**
 ```bash
 cd /tmp
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/torch-2.6.0%2Brocm6.4.2.git76481f7c-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/torchvision-0.21.0%2Brocm6.4.2.git4040d51f-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/torchaudio-2.6.0%2Brocm6.4.2.gitd8831425-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/pytorch_triton_rocm-3.2.0%2Brocm6.4.2.git7e948ebf-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torch-2.9.1%2Brocm7.2.0.lw.git7e1940d4-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchvision-0.24.0%2Brocm7.2.0.gitb919bd0c-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchaudio-2.9.0%2Brocm7.2.0.gite3c6ee2b-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/triton-3.5.1%2Brocm7.2.0.gita272dfa8-cp310-cp310-linux_x86_64.whl
 ```
 
 #### Step 3: Install Wheels
 
 ```bash
-pip3 install torch-*.whl torchvision-*.whl torchaudio-*.whl pytorch_triton_rocm-*.whl
+pip3 install torch-*.whl torchvision-*.whl torchaudio-*.whl triton-*.whl
 rm -f *.whl
 ```
 
@@ -277,7 +277,7 @@ python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'ROCm a
 
 Expected output:
 ```
-PyTorch: 2.6.0+rocm6.4.2
+PyTorch: 2.9.1+rocm7.2.0
 ROCm available: True
 GPU count: 1
 GPU name: Radeon RX 7900 XTX
@@ -291,7 +291,7 @@ GPU name: Radeon RX 7900 XTX
 
 **Solutions**:
 1. **Verify Windows Driver**: Open AMD Radeon Software on Windows, ensure GPU is detected
-2. **Check Driver Version**: Must be AMD Adrenalin 25.8.1 or newer
+2. **Check Driver Version**: Must be AMD Adrenalin 26.1.1 or newer
 3. **Restart WSL2**:
    ```powershell
    wsl --shutdown
