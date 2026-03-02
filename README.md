@@ -1,10 +1,10 @@
 # ROCm WSL2 AI Toolkit
 
-Simple, powerful toolkit for running AI image and video generation on AMD GPUs in WSL2. Uses the latest ROCm 6.4.2.1 and PyTorch 2.6.0.
+Simple, powerful toolkit for running AI image and video generation on AMD GPUs in WSL2. Uses the latest ROCm 7.2.0 and PyTorch 2.9.1.
 
 ## ✨ Features
 
-- **Latest Stack**: ROCm 6.4.2.1 + PyTorch 2.6.0 (official AMD wheels)
+- **Latest Stack**: ROCm 7.2.0 + PyTorch 2.9.1 (official AMD wheels)
 - **WSL2 Optimized**: Designed specifically for Windows Subsystem for Linux 2
 - **Ubuntu 24.04 Focus**: Primary support for Ubuntu 24.04, with Ubuntu 22.04 secondary
 - **Simple Setup**: Clean TUI menu for easy installation and management
@@ -21,7 +21,7 @@ Simple, powerful toolkit for running AI image and video generation on AMD GPUs i
 
 ### Windows Requirements
 - Windows 11 **or** Windows 10 with WSL2 support
-- [AMD Adrenalin Edition 25.8.1 for WSL2](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-25-8-1.html) driver installed
+- [AMD Adrenalin Edition 26.1.1 for WSL2](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-26-1-1.html) driver installed
 - WSL2 enabled and configured
 
 ### WSL2 Requirements
@@ -70,7 +70,7 @@ Use the **Launch Tool** menu to start your installed applications.
 ## 📖 Menu Options
 
 ### 📦 Install
-- **Base Environment**: Installs ROCm 6.4.2.1 + PyTorch 2.6.0 + Python virtual environment
+- **Base Environment**: Installs ROCm 7.2.0 + PyTorch 2.9.1 + Python virtual environment
 - **ComfyUI**: Node-based Stable Diffusion interface
 - **SD.Next**: Feature-rich Stable Diffusion WebUI
 - **Automatic1111**: Classic Stable Diffusion WebUI
@@ -90,12 +90,12 @@ Quick reference for setup and troubleshooting.
 ## 🛠️ What Gets Installed
 
 ### Base Environment Installation
-1. **ROCm 6.4.2.1**: Via AMD's official `amdgpu-install` method
+1. **ROCm 7.2.0**: Via AMD's official `amdgpu-install` method
    - Graphics stack
    - HIP runtime
    - ROCm libraries
 2. **Python Virtual Environment**: `~/genai_env`
-3. **PyTorch 2.6.0**: Official AMD wheels from repo.radeon.com
+3. **PyTorch 2.9.1**: Official AMD wheels from repo.radeon.com
    - torch, torchvision, torchaudio
    - pytorch-triton-rocm
 4. **GPU Configuration**: Automatic HSA_OVERRIDE_GFX_VERSION detection
@@ -108,9 +108,9 @@ Quick reference for setup and troubleshooting.
 
 | Component | Version |
 |-----------|---------|
-| ROCm | 6.4.2.1 |
-| PyTorch | 2.6.0+rocm6.4.2 |
-| Triton | 3.2.0+rocm6.4.2 |
+| ROCm | 7.2.0 |
+| PyTorch | 2.9.1+rocm7.2.0 |
+| Triton | 3.5.1+rocm7.2.0 |
 | Installation Method | amdgpu-install (official) |
 | Python (24.04) | 3.12 |
 | Python (22.04) | 3.10 |
@@ -122,7 +122,7 @@ Quick reference for setup and troubleshooting.
 **Symptoms**: `rocminfo` shows no GPU or PyTorch can't see ROCm
 
 **Solutions**:
-1. Verify AMD Adrenalin 25.8.1 is installed on Windows
+1. Verify AMD Adrenalin 26.1.1 is installed on Windows
 2. Restart WSL2: `wsl --shutdown` (in PowerShell)
 3. Check GPU in Windows: Open Radeon Software
 4. Verify WSL2 is up to date: `wsl --update`

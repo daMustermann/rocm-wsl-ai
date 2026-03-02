@@ -23,7 +23,7 @@ cat > webui-user.sh << 'EOF'
 #!/bin/bash
 
 # ROCm Configuration for Automatic1111 WebUI (auto GPU detection aware)
-export COMMANDLINE_ARGS="--precision full --no-half --opt-split-attention --use-cpu interrogate"
+export COMMANDLINE_ARGS="--listen --enable-insecure-extension-access --theme dark --no-half-vae --medvram --opt-sdp-attention"
 
 # Load auto-detected GPU environment if present
 [ -f "$HOME/.config/rocm-wsl-ai/gpu.env" ] && source "$HOME/.config/rocm-wsl-ai/gpu.env"
@@ -35,7 +35,7 @@ export GPU_FORCE_64BIT_PTR=1
 export GPU_MAX_HEAP_SIZE="100%"
 export GPU_MAX_ALLOC_PERCENT="100%"
 export GPU_USE_SYNC_OBJECTS=1
-export TORCH_COMMAND="pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4"
+export TORCH_COMMAND="pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2"
 export PYTORCH_CUDA_ALLOC_CONF=""
 export PYTORCH_ROCM_ALLOW_UNALIGNED_ACCESS=1
 EOF

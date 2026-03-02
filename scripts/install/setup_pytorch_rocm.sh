@@ -11,18 +11,18 @@ fi
 
 # ==============================================================================
 # Script to install AMD GPU drivers (ROCm) and PyTorch for WSL2
-# Following AMD official documentation for ROCm 6.4.2.1 and PyTorch 2.6.0
+# Following AMD official documentation for ROCm 7.2.0 and PyTorch 2.9.1
 # 
 # Official AMD Documentation:
 # - ROCm Install: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/install-radeon.html
-# - PyTorch Install: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/install-pytorch.html
+# - PyTorch Install: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-pytorch.html
 # ==============================================================================
 
 # --- Configuration ---
 VENV_NAME="genai_env"
-ROCM_VERSION="6.4.2.1"
-AMDGPU_INSTALL_VERSION="6.4.60402-1"
-PYTORCH_VERSION="2.6.0+rocm6.4.2"
+ROCM_VERSION="7.2.0"
+AMDGPU_INSTALL_VERSION="7.2.70200-1"
+PYTORCH_VERSION="2.9.1+rocm7.2.0"
 
 # --- Script Start ---
 headline "ROCm ${ROCM_VERSION} + PyTorch ${PYTORCH_VERSION} Setup for WSL2"
@@ -78,7 +78,7 @@ else
     
     # Download the appropriate amdgpu-install package
     AMDGPU_INSTALL_DEB="amdgpu-install_${AMDGPU_INSTALL_VERSION}_all.deb"
-    AMDGPU_INSTALL_URL="https://repo.radeon.com/amdgpu-install/${ROCM_VERSION}/ubuntu/${UBUNTU_CODENAME}/${AMDGPU_INSTALL_DEB}"
+    AMDGPU_INSTALL_URL="https://repo.radeon.com/amdgpu-install/7.2/ubuntu/${UBUNTU_CODENAME}/${AMDGPU_INSTALL_DEB}"
     
     wget -q "$AMDGPU_INSTALL_URL" -O "/tmp/${AMDGPU_INSTALL_DEB}" || {
         err "Failed to download amdgpu-install package from: ${AMDGPU_INSTALL_URL}"
@@ -142,13 +142,13 @@ log "Python version: $(python3 --version)"
 log "Target wheel suffix: ${WHEEL_SUFFIX}"
 
 # Define wheel URLs from AMD's official repository
-PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2"
+PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2"
 
 # Wheel filenames with proper encoding for + character
-TORCH_WHEEL="torch-2.6.0%2Brocm6.4.2.git76481f7c-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHVISION_WHEEL="torchvision-0.21.0%2Brocm6.4.2.git4040d51f-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHAUDIO_WHEEL="torchaudio-2.6.0%2Brocm6.4.2.gitd8831425-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TRITON_WHEEL="pytorch_triton_rocm-3.2.0%2Brocm6.4.2.git7e948ebf-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCH_WHEEL="torch-2.9.1%2Brocm7.2.0.lw.git7e1940d4-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCHVISION_WHEEL="torchvision-0.24.0%2Brocm7.2.0.gitb919bd0c-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCHAUDIO_WHEEL="torchaudio-2.9.0%2Brocm7.2.0.gite3c6ee2b-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TRITON_WHEEL="triton-3.5.1%2Brocm7.2.0.gita272dfa8-${WHEEL_SUFFIX}-linux_x86_64.whl"
 
 log "Downloading PyTorch wheels from repo.radeon.com..."
 cd /tmp || exit 1

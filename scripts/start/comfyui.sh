@@ -54,11 +54,21 @@ cd "$COMFYUI_DIR"
 
 # --- 4. Launch ComfyUI ---
 echo "Launching ComfyUI..."
-echo "(Run command: python main.py $@)"
+
+# Optimized parameters for ROCm
+OPTIMIZED_PARAMS="--lowvram --disable-pinned-memory"
+
+# Apply MIGraphX optimization if not already set
+if [ -z "$MIGRAPHX_MLIR_USE_SPECIFIC_OPS" ]; then
+    export MIGRAPHX_MLIR_USE_SPECIFIC_OPS="attention"
+    echo "[INFO] Applied MIGraphX optimization: MIGRAPHX_MLIR_USE_SPECIFIC_OPS=attention"
+fi
+
+echo "Run command: python main.py $OPTIMIZED_PARAMS $@"
 echo "---------------------------------"
 # "$@" passes all arguments given to this script directly to main.py
 # Example: ./start_comfyui.sh --listen --port 8888
-python main.py "$@"
+python main.py $OPTIMIZED_PARAMS "$@"
 
 # --- Script End ---
 EXIT_CODE=$?

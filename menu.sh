@@ -13,7 +13,7 @@ fi
 
 # ==============================================================================
 # ROCm WSL2 AI Toolkit - Main Menu
-# Version 2.0.0 - Simplified TUI for ROCm 6.4.2.1 + PyTorch 2.6.0
+# Version 2.0.0 - Simplified TUI for ROCm 7.2.0 + PyTorch 2.9.1
 # ==============================================================================
 
 # Configuration
@@ -46,7 +46,7 @@ install_base() {
         return
     fi
     
-    if (whiptail --title "Confirm Installation" --yesno "Install ROCm 6.4.2.1 + PyTorch 2.6.0?\n\nThis will:\n• Install AMD ROCm 6.4.2.1 via amdgpu-install\n• Create Python virtual environment\n• Install PyTorch 2.6.0 with ROCm support\n• Configure GPU environment\n\nRequires: AMD Adrenalin 25.8.1 on Windows\n\nContinue?" 18 70); then
+    if (whiptail --title "Confirm Installation" --yesno "Install ROCm 7.2.0 + PyTorch 2.9.1?\n\nThis will:\n• Install AMD ROCm 7.2.0 via amdgpu-install\n• Create Python virtual environment\n• Install PyTorch 2.9.1 with ROCm support\n• Configure GPU environment\n\nRequires: AMD Adrenalin 26.1.1 on Windows\n\nContinue?" 18 70); then
         "$SCRIPT_DIR/scripts/install/setup_pytorch_rocm.sh"
         
         whiptail --title "Installation Complete" --msgbox "Base environment installation finished!\n\nIMPORTANT: Restart WSL2 now:\n1. Close this terminal\n2. In PowerShell/CMD: wsl --shutdown\n3. Restart Ubuntu\n\nThen you can install AI tools." 14 70
@@ -110,15 +110,15 @@ show_status() {
     if [ -f "$VENV_PATH/bin/activate" ]; then
         status_text+="✓ Python venv: INSTALLED\n"
         # shellcheck disable=SC1091
-        (
-            source "$VENV_PATH/bin/activate"
-            PY_VER=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || echo "N/A")
-            ROCM_OK=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "N/A")
-            echo "  PyTorch: $PY_VER"
-            echo "  ROCm Available: $ROCM_OK"
-        ) >> /tmp/status_check.txt 2>&1
-        status_text+=$(cat /tmp/status_check.txt 2>/dev/null || echo "  Status check failed")
-        rm -f /tmp/status_check.txt
+        local python_status
+        python_status=$(source "$VENV_PATH/bin/activate" && python3 -c "
+import torch
+py_ver = torch.__version__
+rocm_ok = torch.cuda.is_available()
+print(f'  PyTorch: {py_ver}')
+print(f'  ROCm Available: {rocm_ok}')
+" 2>/dev/null || echo "  Status check failed")
+        status_text+="$python_status"
     else
         status_text+="✗ Base environment: NOT INSTALLED\n"
     fi
@@ -192,7 +192,7 @@ GETTING STARTED:
 REQUIREMENTS:
 • Windows 11 or Windows 10 with WSL2
 • AMD Radeon RX 7000/9000 series GPU
-• AMD Adrenalin 25.8.1 driver (Windows)
+• AMD Adrenalin 26.1.1 driver (Windows)
 • Ubuntu 24.04 or 22.04 in WSL2
 
 For detailed setup instructions, see:

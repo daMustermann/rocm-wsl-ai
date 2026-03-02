@@ -34,7 +34,7 @@ log "Changing to SD.Next directory: $SDNEXT_DIR"
 cd "$SDNEXT_DIR"
 
 log "Launching SD.Next with ROCm arguments..."
-./webui.sh --use-rocm --skip-torch-cuda-test
+./webui.sh --use-rocm --skip-torch-cuda-test --no-half --no-half-vae
 
 # Deactivate virtual environment on exit
 trap 'deactivate' EXIT

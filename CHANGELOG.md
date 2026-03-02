@@ -9,8 +9,8 @@ All notable changes to this project will be documented in this file.
 This release represents a complete overhaul of the ROCm WSL2 AI toolkit, focusing on the latest AMD stack and improved user experience.
 
 ### ✨ Added
-- **ROCm 6.4.2.1** support (latest stable from AMD)
-- **PyTorch 2.6.0** with official AMD wheels from repo.radeon.com
+- **ROCm 7.2.0** support (latest stable from AMD)
+- **PyTorch 2.9.1** with official AMD wheels from repo.radeon.com
 - **Ubuntu 24.04** as primary platform (Python 3.12)
 - **New Simplified TUI** - Clean, modern menu system with emoji icons
 - **Comprehensive WSL2 Setup Guide** (docs/WSL2_SETUP_GUIDE.md)
@@ -34,7 +34,7 @@ This release represents a complete overhaul of the ROCm WSL2 AI toolkit, focusin
 ### 📚 Documentation
 - Completely rewritten README.md with WSL2 focus
 - New comprehensive WSL2_SETUP_GUIDE.md with troubleshooting
-- Updated all version references to ROCm 6.4.2.1 and PyTorch 2.6.0
+- Updated all version references to ROCm 7.2.0 and PyTorch 2.9.1
 - Added quick start guide
 - Added troubleshooting section
 - Added performance tips for WSL2
@@ -49,23 +49,23 @@ This release represents a complete overhaul of the ROCm WSL2 AI toolkit, focusin
 
 ### 🛠️ Technical Details
 - Installation script: `scripts/install/setup_pytorch_rocm.sh`
-- amdgpu-install package: 6.4.60402-1
+- amdgpu-install package: 7.2.70200-1
 - PyTorch wheels: cp312 (Ubuntu 24.04), cp310 (Ubuntu 22.04)
-- Wheel source: https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/
-- Triton version: 3.2.0+rocm6.4.2
+- Wheel source: https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/
+- Triton version: 3.5.1+rocm7.2.0
 
 ### 📦 Wheel Downloads
 **Ubuntu 24.04 (Python 3.12):**
-- torch-2.6.0+rocm6.4.2
-- torchvision-0.21.0+rocm6.4.2
-- torchaudio-2.6.0+rocm6.4.2
-- pytorch_triton_rocm-3.2.0+rocm6.4.2
+- torch-2.9.1+rocm7.2.0
+- torchvision-0.24.0+rocm7.2.0
+- torchaudio-2.9.0+rocm7.2.0
+- triton-3.5.1+rocm7.2.0
 
 **Ubuntu 22.04 (Python 3.10):**
-- torch-2.6.0+rocm6.4.2
-- torchvision-0.21.0+rocm6.4.2
-- torchaudio-2.6.0+rocm6.4.2
-- pytorch_triton_rocm-3.2.0+rocm6.4.2
+- torch-2.9.1+rocm7.2.0
+- torchvision-0.24.0+rocm7.2.0
+- torchaudio-2.9.0+rocm7.2.0
+- triton-3.5.1+rocm7.2.0
 
 ### ⚠️ Migration Notes
 For users upgrading from 1.x:
@@ -77,8 +77,8 @@ For users upgrading from 1.x:
 
 ### 🔗 References
 - [AMD ROCm WSL Installation Guide](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/install-radeon.html)
-- [AMD PyTorch Installation Guide](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/install-pytorch.html)
-- [AMD Adrenalin 25.8.1 Release Notes](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-25-8-1.html)
+- [AMD PyTorch Installation Guide](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-pytorch.html)
+- [AMD Adrenalin 26.1.1 Release Notes](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-26-1-1.html)
 
 ---
 

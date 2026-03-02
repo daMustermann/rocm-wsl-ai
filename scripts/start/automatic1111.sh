@@ -41,8 +41,6 @@ if [ -f "./launch_webui_rocm.sh" ]; then
 fi
 
 log "Launching Automatic1111..."
-COMMAND_LINE_ARGS="--listen --enable-insecure-extension-access --theme dark --no-half-vae"
-export COMMAND_LINE_ARGS
 $LAUNCH_SCRIPT
 
 # Deactivate virtual environment on exit
