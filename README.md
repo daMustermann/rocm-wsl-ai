@@ -2,6 +2,8 @@
 
 **The painless, automated way to run stable, high-performance AI on AMD hardware.**
 
+![ROCm WSL2 AI Toolkit Preview](preview.png)
+
 ## 🛑 The Problem: AMD AI on Windows is a Headache
 If you've ever tried running Stable Diffusion or ComfyUI on an AMD Radeon graphics card in Windows, you know the struggle:
 - **Native Windows ROCm** is often unsupported, lagging behind Linux in features, or fundamentally unstable.
