@@ -7,17 +7,49 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
 # --- Logging & UI Helpers ---
-log()     { echo -e "${BLUE}[INFO]${NC} $*" >&2; }
-warn()    { echo -e "${YELLOW}[WARN]${NC} $*" >&2; }
-err()     { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-success() { echo -e "${GREEN}[OK]${NC} $*" >&2; }
-headline(){ echo -e "\n${BOLD}${MAGENTA}==== $* ====${NC}" >&2; }
+# --- Logging & UI Helpers ---
+log()     { if command -v gum >/dev/null 2>&1; then gum style --foreground 117 "ℹ  $*" >&2; else echo -e "${BLUE}[INFO]${NC} $*" >&2; fi; }
+warn()    { if command -v gum >/dev/null 2>&1; then gum style --foreground 214 "⚠  $*" >&2; else echo -e "${YELLOW}[WARN]${NC} $*" >&2; fi; }
+err()     { if command -v gum >/dev/null 2>&1; then gum style --foreground 196 "✖  $*" >&2; else echo -e "${RED}[ERROR]${NC} $*" >&2; fi; }
+success() { if command -v gum >/dev/null 2>&1; then gum style --foreground 46 "✔  $*" >&2; else echo -e "${GREEN}[OK]${NC} $*" >&2; fi; }
+headline(){ if command -v gum >/dev/null 2>&1; then echo ""; gum style --bold --foreground 212 --border normal --border-foreground 212 --padding "0 2" "$*" >&2; else echo -e "\n${BOLD}${MAGENTA}==== $* ====${NC}" >&2; fi; }
 
 # --- Interaction Helpers ---
 confirm(){
     local msg="$1"
-    read -p "${msg} (y/N): " -r response
-    [[ "$response" =~ ^[Yy]$ ]]
+    if command -v gum >/dev/null 2>&1; then
+        gum confirm "$msg" --default=false
+    else
+        read -p "${msg} (y/N): " -r response
+        [[ "$response" =~ ^[Yy]$ ]]
+    fi
+}
+
+msgbox() {
+    local title="$1"
+    local text="$2"
+    echo ""
+    if command -v gum >/dev/null 2>&1; then
+        echo -e "$(gum style --bold --foreground 212 "$title")\n\n$text" | gum style --border rounded --margin "0 2" --padding "1 2" --border-foreground 212
+    else
+        echo -e "\n==== $title ====\n$text"
+    fi
+    echo ""
+    read -rp "  Press Enter to continue..."
+}
+
+yesno() {
+    local title="$1"
+    local text="$2"
+    echo ""
+    if command -v gum >/dev/null 2>&1; then
+        echo -e "$(gum style --bold --foreground 214 "$title")\n\n$text" | gum style --border normal --margin "0 2" --padding "1 2" --border-foreground 214
+        echo ""
+        gum confirm "Continue?" --default=false
+    else
+        echo -e "\n==== $title ====\n$text"
+        confirm "Continue?"
+    fi
 }
 
 # --- Environment Checks ---
@@ -109,7 +141,7 @@ standard_header(){
 }
 
 # Export functions for subshells
-export -f log warn err success headline confirm is_wsl require_wsl has_rocm check_not_root ensure_venv git_clone_or_update pip_install_if_exists ensure_apt_packages standard_header
+export -f log warn err success headline confirm msgbox yesno is_wsl require_wsl has_rocm check_not_root ensure_venv git_clone_or_update pip_install_if_exists ensure_apt_packages standard_header
 
 # --- Automatic GPU Environment Detection ---
 # This ensures that any script sourcing common.sh immediately has access to 

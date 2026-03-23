@@ -1,15 +1,25 @@
 # ROCm WSL2 AI Toolkit
 
-Simple, powerful toolkit for running AI image and video generation on AMD GPUs in WSL2. Uses the latest ROCm 7.2.0 and PyTorch 2.9.1.
+**The painless, automated way to run stable, high-performance AI on AMD hardware.**
 
-## ✨ Features
+## 🛑 The Problem: AMD AI on Windows is a Headache
+If you've ever tried running Stable Diffusion or ComfyUI on an AMD Radeon graphics card in Windows, you know the struggle:
+- **Native Windows ROCm** is often unsupported, lagging behind Linux in features, or fundamentally unstable.
+- **WSL2 (Windows Subsystem for Linux)** is drastically faster and more stable, but requires complex terminal wizardry to properly pass-through the GPU and manually configure the drivers.
+- **Dependency Hell**: Tracking down the exact python wheels, `HSA_OVERRIDE_GFX_VERSION` variables, and PyTorch builds that actually work together takes hours of forum searching.
+- **VRAM Hostage Situations**: Forgetting to close a terminal window means Python permanently hogs your card's VRAM, completely crippling your Windows gaming or rendering performance until you hunt down the process.
 
-- **Latest Stack**: ROCm 7.2.0 + PyTorch 2.9.1 (official AMD wheels)
-- **WSL2 Optimized**: Designed specifically for Windows Subsystem for Linux 2
-- **Ubuntu 24.04 Focus**: Primary support for Ubuntu 24.04, with Ubuntu 22.04 secondary
-- **Simple Setup**: Clean TUI menu for easy installation and management
-- **Automated**: Official AMD `amdgpu-install` method for reliable installation
-- **AI Tools**: ComfyUI, SD.Next, and Automatic1111 support
+## ⭐ The Solution: Make it Effortless
+This toolkit was built to abstract away the Linux complexity. It provides a beautiful, keyboard-driven smart dashboard that fully automates the installation of AMD's official ROCm 7.2.0 stack and PyTorch 2.9.1 inside WSL2. 
+
+**Why this makes your life easier:**
+- **Zero Guesswork Installation**: It automatically queries your OS, downloads the exact AMD-official PyTorch wheels, and silos everything in an isolated virtual environment. You literally just press "Install".
+- **Seamless Windows Integration**: It generates interactive `.bat` files straight to your Windows Desktop. Double-click the icon in Windows, and it silently boots the WSL backend and launches your AI tools without you ever touching a terminal.
+- **💤 Smart Sleep VRAM Manager**: Your AI tools are automatically put into hibernation after 30 minutes of inactivity, instantly freeing 100% of your VRAM back to Windows! Simply refreshing your browser on port 8188 wakes the AI instantly back up.
+- **✨ Magic Settings Auto-Tuner**: Unsure which PyTorch optimizations make your specific GPU fastest? The built-in tuner natively sweeps your hardware against different attention and caching profiles, isolates the mathematical winner, and permanently injects it into your launch scripts.
+- **Gorgeous Status Dashboard**: Built with Charmbracelet's `gum`, giving you a highly readable, colorful interface with real-time hardware polling so you never have to guess if ROCm is actually working.
+
+---
 
 ## 🎯 Supported GPUs
 
@@ -21,7 +31,7 @@ Simple, powerful toolkit for running AI image and video generation on AMD GPUs i
 
 ### Windows Requirements
 - Windows 11 **or** Windows 10 with WSL2 support
-- [AMD Adrenalin Edition 26.1.1 for WSL2](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-26-1-1.html) driver installed
+- [AMD Adrenalin Edition 26.1.1 **or newer**](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-26-1-1.html) driver installed
 - WSL2 enabled and configured
 
 ### WSL2 Requirements
@@ -29,7 +39,15 @@ Simple, powerful toolkit for running AI image and video generation on AMD GPUs i
 - At least 20GB free disk space
 - Internet connection for downloads
 
+---
+
 ## 🚀 Quick Start
+
+### 0. Absolute Beginner? (Windows 1-Click Setup)
+If you have absolutely no idea how to install WSL2 or Ubuntu, we wrote an automated Windows wizard for you.
+Simply right-click the `Install_WSL_Ubuntu.bat` file in this repository and select **"Run as administrator"**. It will completely configure WSL2 and download Ubuntu 24.04 directly to your PC.
+
+Once inside your new Ubuntu terminal, continue below:
 
 ### 1. Clone the Repository
 
@@ -65,44 +83,19 @@ Run `./menu.sh` again and install your desired tools:
 
 ### 5. Launch and Enjoy!
 
-Use the **Launch Tool** menu to start your installed applications.
+Use the **Launch Tool** menu to start your installed applications, or use the **Create Desktop Shortcuts** option to add icons directly to your Windows desktop!
 
-## 📖 Menu Options
-
-### 📦 Install
-- **Base Environment**: Installs ROCm 7.2.0 + PyTorch 2.9.1 + Python virtual environment
-- **ComfyUI**: Node-based Stable Diffusion interface
-- **SD.Next**: Feature-rich Stable Diffusion WebUI
-- **Automatic1111**: Classic Stable Diffusion WebUI
-
-### 🚀 Launch Tool
-Start any installed AI application. The tool will automatically activate the Python environment and launch the web interface.
-
-### 📊 System Status
-View installation status of:
-- Base environment (ROCm/PyTorch)
-- Installed AI tools
-- GPU detection status
-
-### ❓ Help
-Quick reference for setup and troubleshooting.
+---
 
 ## 🛠️ What Gets Installed
 
 ### Base Environment Installation
 1. **ROCm 7.2.0**: Via AMD's official `amdgpu-install` method
-   - Graphics stack
-   - HIP runtime
-   - ROCm libraries
-2. **Python Virtual Environment**: `~/genai_env`
+   - Graphics stack, HIP runtime, ROCm libraries
+2. **Python Virtual Environment**: Completely isolated in `~/genai_env`
 3. **PyTorch 2.9.1**: Official AMD wheels from repo.radeon.com
-   - torch, torchvision, torchaudio
-   - pytorch-triton-rocm
-4. **GPU Configuration**: Automatic HSA_OVERRIDE_GFX_VERSION detection
-
-### Python Versions
-- **Ubuntu 24.04**: Python 3.12
-- **Ubuntu 22.04**: Python 3.10
+   - `torch`, `torchvision`, `torchaudio`, `pytorch-triton-rocm`
+4. **GPU Configuration**: Automatic `HSA_OVERRIDE_GFX_VERSION` detection
 
 ## ⚙️ Technical Details
 
@@ -112,106 +105,27 @@ Quick reference for setup and troubleshooting.
 | PyTorch | 2.9.1+rocm7.2.0 |
 | Triton | 3.5.1+rocm7.2.0 |
 | Installation Method | amdgpu-install (official) |
-| Python (24.04) | 3.12 |
-| Python (22.04) | 3.10 |
+
+---
 
 ## 🔧 Troubleshooting
 
 ### GPU Not Detected
-
 **Symptoms**: `rocminfo` shows no GPU or PyTorch can't see ROCm
-
 **Solutions**:
 1. Verify AMD Adrenalin 26.1.1 is installed on Windows
 2. Restart WSL2: `wsl --shutdown` (in PowerShell)
 3. Check GPU in Windows: Open Radeon Software
 4. Verify WSL2 is up to date: `wsl --update`
 
-### Installation Fails
-
-**Common Issues**:
-- **No internet**: Check connection with `ping google.com`
-- **Disk space**: Ensure 20GB+ free with `df -h`
-- **Wrong Ubuntu**: This toolkit requires 24.04 or 22.04
-
 ### PyTorch Import Error
-
 **Symptoms**: `ImportError` when importing torch
-
 **Solutions**:
 1. Ensure virtual environment is activated:
    ```bash
    source ~/genai_env/bin/activate
    ```
 2. Reinstall base environment from menu
-3. Check Python version matches Ubuntu (3.12 for 24.04, 3.10 for 22.04)
-
-### Tools Won't Launch
-
-**Symptoms**: Error when launching ComfyUI/SD.Next/Automatic1111
-
-**Solutions**:
-1. Verify base environment is installed (check System Status)
-2. Ensure WSL2 was restarted after base installation
-3. Try running tool manually to see detailed error:
-   ```bash
-   source ~/genai_env/bin/activate
-   cd ~/ComfyUI  # or ~/SD.Next or ~/stable-diffusion-webui
-   python main.py  # for ComfyUI
-   ```
-
-## 📚 Advanced Topics
-
-### Manual Virtual Environment Activation
-
-Each time you open a new terminal, activate the environment:
-```bash
-source ~/genai_env/bin/activate
-```
-
-### Updating Tools
-
-AI tools can be updated individually:
-```bash
-source ~/genai_env/bin/activate
-cd ~/ComfyUI  # or your tool directory
-git pull
-pip install -r requirements.txt  # if exists
-```
-
-### WSL2 Performance Tips
-
-1. **Use Windows 11**: Better WSL2 GPU support
-2. **Allocate RAM**: Edit `.wslconfig` in Windows user folder
-   ```ini
-   [wsl2]
-   memory=16GB
-   processors=8
-   ```
-3. **Store files in WSL**: Keep projects in `/home/` not `/mnt/c/`
-
-## 📖 Additional Documentation
-
-- **[WSL2 Setup Guide](docs/WSL2_SETUP_GUIDE.md)**: Detailed setup instructions
-- **[Changelog](CHANGELOG.md)**: Version history and updates
-
-## 🔗 Official Resources
-
-- [AMD ROCm Documentation](https://rocm.docs.amd.com/)
-- [AMD ROCm WSL Installation](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/install-radeon.html)
-- [PyTorch ROCm Installation](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/install-pytorch.html)
-- [AMD Compatibility Matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibilityrad/compatibility.html)
-
-## 🆘 Getting Help
-
-1. Check **System Status** in the menu
-2. Review troubleshooting section above
-3. Check [AMD ROCm Documentation](https://rocm.docs.amd.com/)
-4. Open an issue on GitHub with:
-   - Ubuntu version (`lsb_release -a`)
-   - GPU model
-   - Error messages
-   - Output of `rocminfo`
 
 ## 📄 License
 
@@ -221,4 +135,4 @@ MIT License - See LICENSE file for details
 
 - AMD for ROCm and driver support
 - PyTorch team for ROCm integration
-- ComfyUI, SD.Next, and Automatic1111 communities
+- The incredible ComfyUI, SD.Next, and Automatic1111 open-source communities

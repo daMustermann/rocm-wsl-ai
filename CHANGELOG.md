@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-03-23
+
+### 🎉 Major New Features
+- **1-Click Windows Setup Wizard**: Added `Install_WSL_Ubuntu.bat`, a fully automated Windows script that completely bootstraps the WSL2 kernel and a clean Ubuntu 24.04 instance for absolute beginners with zero Linux knowledge.
+- **💤 Smart Sleep VRAM Manager**: AI processes like ComfyUI now automatically enter hibernation mode after 30 minutes of inactivity to entirely free up GPU VRAM! Hitting port 8188 wakes it seamlessly back up via a proxy splash screen.
+- **✨ Magic Settings Auto-Tuner**: New TUI dashboard option that actively runs PyTorch benchmark sweeps to perfectly optimize AMD arguments (`PYTORCH_HIP_ALLOC_CONF` and `MIGRAPHX`) for your specific GPU architecture.
+
+### ✨ Added
+- **Gorgeous TUI Upgrade**: Replaced standard whiptail menus with Charmbracelet `gum` for a highly styled, modern, and beautiful terminal interface.
+- **Windows Desktop Shortcuts**: New menu option to automatically generate `wsl.exe` `.bat` shortcuts on the Windows Desktop for launching AI tools with one click.
+- Automatic installation of `gum` dependency.
+
+### 🔄 Changed
+- Refactored `menu.sh` and `lib/common.sh` logging to use colored `gum style` blocks.
+- Improved help and status readability.
+
+---
+
 ## [2.0.0] - 2025-11-21
 
 ### 🎉 Major Release - Complete Overhaul

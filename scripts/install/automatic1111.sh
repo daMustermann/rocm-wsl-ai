@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 SCRIPT_DIR="$(dirname "$0")"
-COMMON="$SCRIPT_DIR/common.sh"
+COMMON="$SCRIPT_DIR/../../lib/common.sh"
 [ -f "$COMMON" ] && source "$COMMON" || { echo "common.sh not found"; exit 1; }
 
 VENV_NAME="genai_env"

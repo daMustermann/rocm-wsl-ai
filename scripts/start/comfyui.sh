@@ -53,30 +53,49 @@ echo "Navigating to ComfyUI directory: ${COMFYUI_DIR}"
 cd "$COMFYUI_DIR"
 
 # --- 4. Launch ComfyUI ---
-echo "Launching ComfyUI..."
+echo "Launching ComfyUI with Smart Sleep VRAM Manager..."
+echo "Idle timeout is 30 minutes. The GPU will free up automatically."
+
+# Load Auto-Tuned Magic Settings (if the user ran Auto-Tuner)
+if [ -f "$HOME/.genai_opt_profile" ]; then 
+    echo "[INFO] Loading Magic Settings from ~/.genai_opt_profile"
+    source "$HOME/.genai_opt_profile"
+fi
 
 # Optimized parameters for ROCm
 OPTIMIZED_PARAMS="--lowvram --disable-pinned-memory"
 
-# Apply MIGraphX optimization if not already set
 if [ -z "$MIGRAPHX_MLIR_USE_SPECIFIC_OPS" ]; then
     export MIGRAPHX_MLIR_USE_SPECIFIC_OPS="attention"
-    echo "[INFO] Applied MIGraphX optimization: MIGRAPHX_MLIR_USE_SPECIFIC_OPS=attention"
 fi
 
-echo "Run command: python main.py $OPTIMIZED_PARAMS $@"
-echo "---------------------------------"
-# "$@" passes all arguments given to this script directly to main.py
-# Example: ./start_comfyui.sh --listen --port 8888
-python main.py $OPTIMIZED_PARAMS "$@"
+# Detect custom port or default to 8188 for the wake server
+PORT=8188
+ARGS=("$@")
+for ((i=0; i<${#ARGS[@]}; i++)); do
+    if [ "${ARGS[$i]}" == "--port" ]; then
+        PORT="${ARGS[$i+1]}"
+    fi
+done
 
-# --- Script End ---
-EXIT_CODE=$?
-echo "---------------------------------"
-echo "ComfyUI process finished with exit code: $EXIT_CODE"
-
-# The virtual environment will deactivate automatically when the script exits
-# or you can manually uncomment 'deactivate' if needed in specific scenarios.
-# deactivate
+# Start the execution loop for Smart Sleep
+while true; do
+    echo "---------------------------------"
+    echo "Run command: python main.py $OPTIMIZED_PARAMS $@"
+    
+    # Run the Smart Sleep Wrapper
+    python "$SCRIPT_DIR/../../scripts/utils/smart_sleep_wrapper.py" python main.py $OPTIMIZED_PARAMS "$@"
+    EXIT_CODE=$?
+    
+    if [ $EXIT_CODE -eq 42 ]; then
+        echo "---------------------------------"
+        # Enter Wake Server mode
+        python "$SCRIPT_DIR/../../scripts/utils/wake_server.py" "$PORT"
+    else
+        echo "---------------------------------"
+        echo "ComfyUI process finished with exit code: $EXIT_CODE"
+        break
+    fi
+done
 
 exit $EXIT_CODE
