@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ==============================================================================
 # ROCm WSL2 AI Toolkit - Main Menu
-# Version 2.1.0 - Styled with Gum ✨
+# Version 2.2.0 - Styled with Gum ✨
 # ==============================================================================
 
 # Check for gum dependency
@@ -259,7 +259,7 @@ show_shortcuts_menu() {
 }
 
 show_help() {
-    msgbox "Quick Help" "ROCm WSL2 AI Toolkit v2.1.0\n\n$(gum style --bold GETTING STARTED:)\n1. Install Base Environment first\n2. Restart WSL2 (wsl --shutdown)\n3. Install AI tools\n4. Launch your tools!\n\n$(gum style --bold REQUIREMENTS:)\n• Windows 11 or Windows 10 with WSL2\n• AMD Radeon RX 7000/9000 series GPU\n• AMD Adrenalin 26.1.1 driver (Windows)\n• Ubuntu 24.04 or 22.04 in WSL2\n\nFor detailed setup instructions, see:\ndocs/WSL2_SETUP_GUIDE.md\n\nFor troubleshooting, see:\nREADME.md\n\nAMD Documentation:\nrocm.docs.amd.com/projects/radeon-ryzen/"
+    msgbox "Quick Help" "ROCm WSL2 AI Toolkit v2.2.0\n\n$(gum style --bold GETTING STARTED:)\n1. Install Base Environment first\n2. Restart WSL2 (wsl --shutdown)\n3. Install AI tools\n4. Launch your tools!\n\n$(gum style --bold REQUIREMENTS:)\n• Windows 11 or Windows 10 with WSL2\n• AMD Radeon RX 7000/9000 series GPU\n• AMD Adrenalin 26.1.1 driver (Windows)\n• Ubuntu 24.04 or 22.04 in WSL2\n\nFor detailed setup instructions, see:\ndocs/WSL2_SETUP_GUIDE.md\n\nFor troubleshooting, see:\nREADME.md\n\nAMD Documentation:\nrocm.docs.amd.com/projects/radeon-ryzen/"
 }
 
 # --- Main Loop ---
@@ -268,7 +268,7 @@ main_menu() {
     while true; do
         clear
         echo ""
-        gum style --border double --margin "0 2" --padding "1 2" --border-foreground 212 --align center "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit v2.1.0")" "ROCm 7.2.0 | PyTorch 2.9.1 | WSL2 Ubuntu 24.04/22.04"
+        gum style --border double --margin "0 2" --padding "1 2" --border-foreground 212 --align center "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit v2.2.0")" "ROCm 7.2.0 | PyTorch 2.9.1 | WSL2 Ubuntu 24.04/22.04"
         echo ""
         
         CHOICE=$(gum choose --cursor="» " --header="$(gum style --bold 'Main Menu') (Choose an option):" \

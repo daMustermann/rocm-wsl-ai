@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-03-23
+
+### 🐛 Fixed
+- **PyTorch Installer Bug**: Fixed a URL-encoding mismatch where files containing `%2B` were incorrectly decoded during `wget`, causing the official AMD PyTorch wheels to fail installation on strict pip environments.
+
+---
+
 ## [2.1.0] - 2026-03-23
 
 ### 🎉 Major New Features
