@@ -144,28 +144,28 @@ log "Target wheel suffix: ${WHEEL_SUFFIX}"
 # Define wheel URLs from AMD's official repository
 PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2"
 
-# Wheel filenames with proper encoding for + character
-TORCH_WHEEL="torch-2.9.1%2Brocm7.2.0.lw.git7e1940d4-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHVISION_WHEEL="torchvision-0.24.0%2Brocm7.2.0.gitb919bd0c-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHAUDIO_WHEEL="torchaudio-2.9.0%2Brocm7.2.0.gite3c6ee2b-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TRITON_WHEEL="triton-3.5.1%2Brocm7.2.0.gita272dfa8-${WHEEL_SUFFIX}-linux_x86_64.whl"
+# Wheel filenames with proper local versions (+)
+TORCH_WHEEL="torch-2.9.1+rocm7.2.0.lw.git7e1940d4-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCHVISION_WHEEL="torchvision-0.24.0+rocm7.2.0.gitb919bd0c-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCHAUDIO_WHEEL="torchaudio-2.9.0+rocm7.2.0.gite3c6ee2b-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TRITON_WHEEL="triton-3.5.1+rocm7.2.0.gita272dfa8-${WHEEL_SUFFIX}-linux_x86_64.whl"
 
 log "Downloading PyTorch wheels from repo.radeon.com..."
 cd /tmp || exit 1
 
-wget -q "${PYTORCH_BASE_URL}/${TORCH_WHEEL}" || {
+wget -q "${PYTORCH_BASE_URL}/${TORCH_WHEEL//+/%2B}" -O "${TORCH_WHEEL}" || {
     err "Failed to download torch wheel. Please check the URL and your connection."
     exit 1
 }
-wget -q "${PYTORCH_BASE_URL}/${TORCHVISION_WHEEL}" || {
+wget -q "${PYTORCH_BASE_URL}/${TORCHVISION_WHEEL//+/%2B}" -O "${TORCHVISION_WHEEL}" || {
     err "Failed to download torchvision wheel."
     exit 1
 }
-wget -q "${PYTORCH_BASE_URL}/${TORCHAUDIO_WHEEL}" || {
+wget -q "${PYTORCH_BASE_URL}/${TORCHAUDIO_WHEEL//+/%2B}" -O "${TORCHAUDIO_WHEEL}" || {
     err "Failed to download torchaudio wheel."
     exit 1
 }
-wget -q "${PYTORCH_BASE_URL}/${TRITON_WHEEL}" || {
+wget -q "${PYTORCH_BASE_URL}/${TRITON_WHEEL//+/%2B}" -O "${TRITON_WHEEL}" || {
     err "Failed to download pytorch_triton_rocm wheel."
     exit 1
 }
