@@ -2,7 +2,7 @@
 
 **The painless, automated way to run stable, high-performance AI on AMD hardware.**
 
-![ROCm WSL2 AI Toolkit Preview](preview.png)
+![ROCm WSL2 AI Toolkit Preview](docs/assets/preview.png)
 
 ## 🛑 The Problem: AMD AI on Windows is a Headache
 If you've ever tried running Stable Diffusion or ComfyUI on an AMD Radeon graphics card in Windows, you know the struggle:
@@ -12,7 +12,7 @@ If you've ever tried running Stable Diffusion or ComfyUI on an AMD Radeon graphi
 - **VRAM Hostage Situations**: Forgetting to close a terminal window means Python permanently hogs your card's VRAM, completely crippling your Windows gaming or rendering performance until you hunt down the process.
 
 ## ⭐ The Solution: Make it Effortless
-This toolkit was built to abstract away the Linux complexity. It provides a beautiful, keyboard-driven smart dashboard that fully automates the installation of AMD's official ROCm 7.2.0 stack and PyTorch 2.9.1 inside WSL2. 
+This toolkit was built to abstract away the Linux complexity. It provides a beautiful, keyboard-driven smart dashboard that fully automates the installation of AMD's ROCm 7.2.1 stack with ROCDXG and PyTorch 2.9.1 inside WSL2. 
 
 **Why this makes your life easier:**
 - **Zero Guesswork Installation**: It automatically queries your OS, downloads the exact AMD-official PyTorch wheels, and silos everything in an isolated virtual environment. You literally just press "Install".
@@ -27,13 +27,15 @@ This toolkit was built to abstract away the Linux complexity. It provides a beau
 
 - AMD Radeon RX 7000 series (RDNA3)
 - AMD Radeon RX 9000 series (RDNA4)
-- **Note**: Only RDNA3+ (gfx1100+) GPUs are supported
+- AMD Ryzen Strix / Strix Halo APUs (NEW in 3.0.0)
+- **Note**: Only RDNA3+ (gfx1100+) GPUs and supported Ryzen APUs are supported
 
 ## 📋 Prerequisites
 
 ### Windows Requirements
-- Windows 11 **or** Windows 10 with WSL2 support
-- [AMD Adrenalin Edition 26.1.1 **or newer**](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-26-1-1.html) driver installed
+- Windows 11
+- [AMD Adrenalin Edition 26.2.2 **or newer**](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html) driver installed
+- [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) installed (required for ROCDXG build)
 - WSL2 enabled and configured
 
 ### WSL2 Requirements
@@ -89,24 +91,80 @@ Use the **Launch Tool** menu to start your installed applications, or use the **
 
 ---
 
+## ⬆️ Upgrading from v2.x (ROCm 7.2.0)
+
+If you already have the toolkit installed with ROCm 7.2.0, you can upgrade to 7.2.1 + ROCDXG **without losing any of your AI tools, models, or custom nodes**.
+
+### Before You Upgrade
+
+On your **Windows** machine, install these two things:
+
+1. **AMD Adrenalin 26.2.2+ driver** — [Download here](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html)
+2. **Windows SDK** — [Download here](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
+   *(During installation, check **"Windows SDK for Desktop C++ amd64 Apps"**. It will automatically select a few required dependencies—leave those checked, but you can uncheck everything else to save space).*
+   
+   <img src="docs/assets/winsdkinstall.png" width="600" alt="Windows SDK Installation Options">
+
+### Run the Upgrade
+
+```bash
+cd rocm-wsl-ai
+git pull        # Get the latest toolkit version
+./menu.sh
+# Select: Install Tools → Upgrade from ROCm 7.2.0 → 7.2.1 (ROCDXG)
+```
+
+The upgrade wizard will:
+- ✅ **Back up** your old Python virtual environment (you can delete it later)
+- ✅ **Install** ROCm 7.2.1 and build ROCDXG (librocdxg) from source
+- ✅ **Create** a fresh venv with PyTorch 2.9.1+rocm7.2.1
+- ✅ **Reinstall** all dependencies for your installed AI tools (ComfyUI, SD.Next, etc.)
+- ✅ **Preserve** all your models, custom nodes, extensions, and configurations
+
+> **Your models are SAFE.** They live in `~/ComfyUI/models/`, `~/stable-diffusion-webui/models/`, etc. — completely outside the Python environment. The upgrade never touches them.
+
+### After the Upgrade
+
+1. Restart WSL: `wsl --shutdown` (in PowerShell)
+2. Relaunch Ubuntu and run `./menu.sh`
+3. Launch your AI tools as usual — everything should work with the new ROCm 7.2.1 + ROCDXG stack
+
+### What Changed (Technical)
+
+| | Before (v2.x) | After (v3.0.0) |
+|---|---|---|
+| ROCm | 7.2.0 | 7.2.1 |
+| WSL Bridge | Legacy roc4wsl | **ROCDXG (librocdxg)** |
+| Install method | `amdgpu-install --usecase=wsl,rocm` | `apt install rocm` + librocdxg |
+| Windows driver | Adrenalin 26.1.1 | **Adrenalin 26.2.2+** |
+| Env var | — | `HSA_ENABLE_DXG_DETECTION=1` |
+| GPU support | RDNA3+ discrete | + **Ryzen Strix/Halo APUs** |
+
+---
+
 ## 🛠️ What Gets Installed
 
 ### Base Environment Installation
-1. **ROCm 7.2.0**: Via AMD's official `amdgpu-install` method
-   - Graphics stack, HIP runtime, ROCm libraries
-2. **Python Virtual Environment**: Completely isolated in `~/genai_env`
-3. **PyTorch 2.9.1**: Official AMD wheels from repo.radeon.com
+1. **ROCm 7.2.1**: Via AMD's official `amdgpu-install` quick-start method
+   - ROCm packages installed via `apt install rocm`
+2. **ROCDXG (librocdxg)**: Built from source ([GitHub](https://github.com/ROCm/librocdxg/))
+   - User-mode WSL bridge library enabling GPU compute via DXCore
+   - Replaces the legacy `roc4wsl` approach
+3. **Python Virtual Environment**: Completely isolated in `~/genai_env`
+4. **PyTorch 2.9.1**: Official AMD wheels from repo.radeon.com
    - `torch`, `torchvision`, `torchaudio`, `pytorch-triton-rocm`
-4. **GPU Configuration**: Automatic `HSA_OVERRIDE_GFX_VERSION` detection
+5. **GPU Configuration**: Automatic `HSA_OVERRIDE_GFX_VERSION` + `HSA_ENABLE_DXG_DETECTION` setup
 
 ## ⚙️ Technical Details
 
 | Component | Version |
 |-----------|---------|
-| ROCm | 7.2.0 |
-| PyTorch | 2.9.1+rocm7.2.0 |
-| Triton | 3.5.1+rocm7.2.0 |
-| Installation Method | amdgpu-install (official) |
+| ROCm | 7.2.1 |
+| ROCDXG | librocdxg (built from source) |
+| PyTorch | 2.9.1+rocm7.2.1 |
+| Triton | 3.5.1+rocm7.2.1 |
+| Installation Method | amdgpu-install + apt install rocm + librocdxg |
+| WSL Bridge | ROCDXG (HSA_ENABLE_DXG_DETECTION=1) |
 
 ---
 
@@ -115,10 +173,12 @@ Use the **Launch Tool** menu to start your installed applications, or use the **
 ### GPU Not Detected
 **Symptoms**: `rocminfo` shows no GPU or PyTorch can't see ROCm
 **Solutions**:
-1. Verify AMD Adrenalin 26.1.1 is installed on Windows
-2. Restart WSL2: `wsl --shutdown` (in PowerShell)
-3. Check GPU in Windows: Open Radeon Software
-4. Verify WSL2 is up to date: `wsl --update`
+1. Verify AMD Adrenalin 26.2.2 or newer is installed on Windows
+2. Verify `HSA_ENABLE_DXG_DETECTION=1` is set in your environment
+3. Check librocdxg is installed: `ls /opt/rocm/lib/librocdxg.so`
+4. Restart WSL2: `wsl --shutdown` (in PowerShell)
+5. Check GPU in Windows: Open Radeon Software
+6. Verify WSL2 is up to date: `wsl --update`
 
 ### PyTorch Import Error
 **Symptoms**: `ImportError` when importing torch

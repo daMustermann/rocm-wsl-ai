@@ -7,9 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../lib/common.sh"
 
 # --- Configuration ---
+# Name of the Python virtual environment
 VENV_NAME="genai_env"
 VENV_PATH="$HOME/$VENV_NAME"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
+
+# Enable ROCDXG for WSL GPU compute
+export HSA_ENABLE_DXG_DETECTION=1
 
 # --- Main Logic ---
 headline "Starting Automatic1111 SD-WebUI"

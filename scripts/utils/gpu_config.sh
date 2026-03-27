@@ -63,14 +63,16 @@ detect_and_export_rocm_env(){
   if [ -n "${HSA_OVERRIDE_GFX_VERSION-}" ]; then
     # Validate user-provided override: must be RDNA3+ (gfx11xx or gfx12xx)
     local numeric_override
-    numeric_override=${HSA_OVERRIDE_GFX_VERSION#gfx}
+    numeric_override="${HSA_OVERRIDE_GFX_VERSION#gfx}"
+    numeric_override="${numeric_override//./}"
     if ! [[ "$numeric_override" =~ ^[0-9]+$ ]] || [ "$numeric_override" -lt 1100 ]; then
-      print_error "Provided HSA_OVERRIDE_GFX_VERSION='$HSA_OVERRIDE_GFX_VERSION' is not RDNA3+ (gfx11xx/gfx12xx). Aborting."
+      err "Provided HSA_OVERRIDE_GFX_VERSION='$HSA_OVERRIDE_GFX_VERSION' is not RDNA3+ (gfx11xx/11.0.x/gfx12xx). Aborting."
       return 1
     fi
 
     local arch_list="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102"
     export PYTORCH_ROCM_ARCH="$arch_list"
+    export HSA_ENABLE_DXG_DETECTION=1
 
     mkdir -p "$(dirname "$GPU_ENV_FILE")"
     {
@@ -78,6 +80,7 @@ detect_and_export_rocm_env(){
       echo "# Using user-defined HSA_OVERRIDE_GFX_VERSION: $HSA_OVERRIDE_GFX_VERSION"
       echo "export PYTORCH_ROCM_ARCH=\"$PYTORCH_ROCM_ARCH\""
       echo "export HSA_OVERRIDE_GFX_VERSION=\"$HSA_OVERRIDE_GFX_VERSION\""
+      echo "export HSA_ENABLE_DXG_DETECTION=1"
     } >"$GPU_ENV_FILE.tmp" && mv "$GPU_ENV_FILE.tmp" "$GPU_ENV_FILE"
     success "GPU env written: $GPU_ENV_FILE (using user-defined HSA_OVERRIDE_GFX_VERSION=$HSA_OVERRIDE_GFX_VERSION)"
     return 0
@@ -112,9 +115,10 @@ detect_and_export_rocm_env(){
   # Validate detected arch is RDNA3+; if a pre-install detection returned an older family,
   # abort so we don't attempt to install on unsupported hardware.
   local numeric_arch
-  numeric_arch=${arch#gfx}
+  numeric_arch="${arch#gfx}"
+  numeric_arch="${numeric_arch//./}"
   if ! [[ "$numeric_arch" =~ ^[0-9]+$ ]] || [ "$numeric_arch" -lt 1100 ]; then
-    print_error "Detected GPU architecture '$arch' is older than RDNA3. This toolkit only supports RDNA3 (gfx11xx) and newer. Aborting."
+    err "Detected GPU architecture '$arch' is older than RDNA3. This toolkit only supports RDNA3 (gfx11xx/11.0.x) and newer. Aborting."
     return 1
   fi
 
@@ -122,6 +126,7 @@ detect_and_export_rocm_env(){
   local arch_list="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102"
   export PYTORCH_ROCM_ARCH="$arch_list"
   export HSA_OVERRIDE_GFX_VERSION="$hsa_override_val"
+  export HSA_ENABLE_DXG_DETECTION=1
 
   mkdir -p "$(dirname "$GPU_ENV_FILE")"
   {
@@ -129,6 +134,7 @@ detect_and_export_rocm_env(){
     echo "# Detected arch: $arch"
     echo "export PYTORCH_ROCM_ARCH=\"$PYTORCH_ROCM_ARCH\""
     echo "export HSA_OVERRIDE_GFX_VERSION=\"$hsa_override_val\""
+    echo "export HSA_ENABLE_DXG_DETECTION=1"
   } >"$GPU_ENV_FILE.tmp" && mv "$GPU_ENV_FILE.tmp" "$GPU_ENV_FILE"
   success "GPU env written: $GPU_ENV_FILE (arch=$arch hsa=$hsa_override_val)"
 }

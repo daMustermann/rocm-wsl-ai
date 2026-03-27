@@ -69,6 +69,22 @@ has_rocm(){
     command -v rocminfo >/dev/null 2>&1
 }
 
+has_rocdxg(){
+    [ -f "/opt/rocm/lib/librocdxg.so" ]
+}
+
+has_windows_sdk(){
+    local win_kits_base="/mnt/c/Program Files (x86)/Windows Kits/10/Include"
+    if [ -d "$win_kits_base" ]; then
+        local sdk_version
+        sdk_version=$(ls -1 "$win_kits_base" 2>/dev/null | grep -E '^10\.' | sort -V | tail -1)
+        if [ -n "$sdk_version" ]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 check_not_root(){
     if [ "$EUID" -eq 0 ]; then
         warn "Running as root/sudo is not recommended for this toolkit."
@@ -141,7 +157,7 @@ standard_header(){
 }
 
 # Export functions for subshells
-export -f log warn err success headline confirm msgbox yesno is_wsl require_wsl has_rocm check_not_root ensure_venv git_clone_or_update pip_install_if_exists ensure_apt_packages standard_header
+export -f log warn err success headline confirm msgbox yesno is_wsl require_wsl has_rocm has_rocdxg has_windows_sdk check_not_root ensure_venv git_clone_or_update pip_install_if_exists ensure_apt_packages standard_header
 
 # --- Automatic GPU Environment Detection ---
 # This ensures that any script sourcing common.sh immediately has access to 

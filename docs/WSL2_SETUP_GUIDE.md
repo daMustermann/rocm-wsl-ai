@@ -17,10 +17,15 @@ Complete guide for setting up AMD ROCm on WSL2 for AI workloads.
 
 ### Windows Requirements
 
-- **Windows Version**: Windows 11 (recommended) or Windows 10 version 2004+ (Build 19041+)
-- **GPU**: AMD Radeon RX 7000 or RX 9000 series (RDNA3/RDNA4)
+- **Windows Version**: Windows 11
+- **GPU**: AMD Radeon RX 7000 or RX 9000 series (RDNA3/RDNA4), or Ryzen Strix / Strix Halo APU
 - **RAM**: 16GB+ recommended
 - **Disk Space**: 30GB+ free space
+- **AMD Adrenalin 26.2.2+ driver**: [Download](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html)
+- **Windows SDK**: [Download](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) (required for ROCDXG build).  
+  *Note: During SDK installation, check **"Windows SDK for Desktop C++ amd64 Apps"**. Leave its auto-selected dependencies checked, but you can uncheck Performance Toolkit, Debugging Tools, .NET, etc. to save space.*
+  
+  <img src="assets/winsdkinstall.png" width="600" alt="Windows SDK Installation Options">
 
 ### Check Windows Version
 
@@ -29,7 +34,24 @@ Complete guide for setting up AMD ROCm on WSL2 for AI workloads.
 winver
 ```
 
-Should show Build 19041 or higher for Windows 10, or any Windows 11 build.
+## Upgrading from v2.x (ROCm 7.2.0)
+
+If you already have an existing ROCm 7.2.0 installation, use the built-in upgrade wizard:
+
+```bash
+cd rocm-wsl-ai
+git pull
+./menu.sh
+# Select: Install Tools → Upgrade from ROCm 7.2.0 → 7.2.1 (ROCDXG)
+```
+
+**Before upgrading, install on Windows:**
+1. AMD Adrenalin 26.2.2+ driver
+2. Windows SDK *(Check "Desktop C++ amd64 Apps" and leave its auto-selected dependencies checked; uncheck the rest)*
+
+<img src="assets/winsdkinstall.png" width="600" alt="Windows SDK Installation Options">
+
+The upgrade wizard will back up your old venv, install ROCm 7.2.1 + ROCDXG, create a fresh Python environment, and reinstall all your AI tool dependencies. **Your models, custom nodes, and extensions are never touched.**
 
 ## WSL2 Installation
 
@@ -112,7 +134,7 @@ You **MUST** install the AMD Adrenalin driver on Windows before ROCm will work i
 
 ### Step 1: Download AMD Driver
 
-Download [AMD Adrenalin Edition 26.1.1 for WSL2](https://www.amd.com/en/resources/support-articles/release-notes/rn-rad-win-26-1-1.html)
+Download [AMD Adrenalin Edition 26.2.2 or newer](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html)
 
 ### Step 2: Install Driver
 
@@ -156,31 +178,59 @@ sudo apt upgrade -y
 
 **For Ubuntu 24.04:**
 ```bash
-wget https://repo.radeon.com/amdgpu-install/7.2/ubuntu/noble/amdgpu-install_7.2.70200-1_all.deb
-sudo apt install ./amdgpu-install_7.2.70200-1_all.deb
+wget https://repo.radeon.com/amdgpu-install/7.2.1/ubuntu/noble/amdgpu-install_7.2.1.70201-1_all.deb
+sudo apt install ./amdgpu-install_7.2.1.70201-1_all.deb
 ```
 
 **For Ubuntu 22.04:**
 ```bash
-wget https://repo.radeon.com/amdgpu-install/7.2/ubuntu/jammy/amdgpu-install_7.2.70200-1_all.deb
-sudo apt install ./amdgpu-install_7.2.70200-1_all.deb
+wget https://repo.radeon.com/amdgpu-install/7.2.1/ubuntu/jammy/amdgpu-install_7.2.1.70201-1_all.deb
+sudo apt install ./amdgpu-install_7.2.1.70201-1_all.deb
 ```
 
 #### Step 3: Install ROCm
 
 ```bash
-sudo amdgpu-install -y --usecase=wsl,rocm --no-dkms
+sudo apt update
+sudo apt install -y python3-setuptools python3-wheel
+sudo apt install -y rocm
 ```
 
-**Note**: `--no-dkms` flag is required for WSL2 (no kernel module compilation needed).
+**Note**: In ROCm 7.2.1, the install method changed from `amdgpu-install --usecase=wsl,rocm` to `apt install rocm`.
 
-#### Step 4: Add User to Groups
+#### Step 4: Build & Install ROCDXG (librocdxg)
+
+ROCDXG is the new user-mode bridge library that enables GPU compute in WSL via DXCore.
+
+**Prerequisites**: Windows SDK must be installed on Windows.
+
+```bash
+# Install build dependencies
+sudo apt install -y cmake gcc
+
+# Clone librocdxg
+git clone https://github.com/ROCm/librocdxg.git
+cd librocdxg
+
+# Set path to the Windows SDK Include directory dynamically
+export win_kits="/mnt/c/Program Files (x86)/Windows Kits/10/Include"
+export sdk_ver=$(ls -1 "$win_kits" | grep -E '^10\.' | sort -V | tail -1)
+export win_sdk="${win_kits}/${sdk_ver}"
+export CXXFLAGS="-I$win_sdk/shared -I$win_sdk/um"
+
+mkdir -p build && cd build
+cmake .. -DWIN_SDK="${win_sdk}/shared"
+make
+sudo make install
+```
+
+#### Step 5: Add User to Groups
 
 ```bash
 sudo usermod -a -G render,video $USER
 ```
 
-#### Step 5: Restart WSL2
+#### Step 6: Restart WSL2
 
 **In Windows PowerShell:**
 ```powershell
@@ -189,9 +239,10 @@ wsl --shutdown
 
 Then restart your Ubuntu terminal.
 
-#### Step 6: Verify ROCm
+#### Step 7: Verify ROCm
 
 ```bash
+export HSA_ENABLE_DXG_DETECTION=1
 rocminfo
 ```
 
@@ -220,19 +271,19 @@ pip install --upgrade pip wheel
 **For Ubuntu 24.04 (Python 3.12):**
 ```bash
 cd /tmp
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torch-2.9.1%2Brocm7.2.0.lw.git7e1940d4-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchvision-0.24.0%2Brocm7.2.0.gitb919bd0c-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchaudio-2.9.0%2Brocm7.2.0.gite3c6ee2b-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/triton-3.5.1%2Brocm7.2.0.gita272dfa8-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torch-2.9.1%2Brocm7.2.1.lw.gitff65f5bc-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torchvision-0.24.0%2Brocm7.2.1.gitb919bd0c-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torchaudio-2.9.0%2Brocm7.2.1.gite3c6ee2b-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/triton-3.5.1%2Brocm7.2.1.gita272dfa8-cp312-cp312-linux_x86_64.whl
 ```
 
 **For Ubuntu 22.04 (Python 3.10):**
 ```bash
 cd /tmp
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torch-2.9.1%2Brocm7.2.0.lw.git7e1940d4-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchvision-0.24.0%2Brocm7.2.0.gitb919bd0c-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/torchaudio-2.9.0%2Brocm7.2.0.gite3c6ee2b-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/triton-3.5.1%2Brocm7.2.0.gita272dfa8-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torch-2.9.1%2Brocm7.2.1.lw.gitff65f5bc-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torchvision-0.24.0%2Brocm7.2.1.gitb919bd0c-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torchaudio-2.9.0%2Brocm7.2.1.gite3c6ee2b-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/triton-3.5.1%2Brocm7.2.1.gita272dfa8-cp310-cp310-linux_x86_64.whl
 ```
 
 #### Step 3: Install Wheels
@@ -277,7 +328,7 @@ python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'ROCm a
 
 Expected output:
 ```
-PyTorch: 2.9.1+rocm7.2.0
+PyTorch: 2.9.1+rocm7.2.1
 ROCm available: True
 GPU count: 1
 GPU name: Radeon RX 7900 XTX
@@ -291,17 +342,25 @@ GPU name: Radeon RX 7900 XTX
 
 **Solutions**:
 1. **Verify Windows Driver**: Open AMD Radeon Software on Windows, ensure GPU is detected
-2. **Check Driver Version**: Must be AMD Adrenalin 26.1.1 or newer
-3. **Restart WSL2**:
+2. **Check Driver Version**: Must be AMD Adrenalin 26.2.2 or newer
+3. **Check ROCDXG**: Verify librocdxg is installed:
+   ```bash
+   ls /opt/rocm/lib/librocdxg.so
+   ```
+4. **Set ROCDXG env var**: Ensure HSA_ENABLE_DXG_DETECTION is set:
+   ```bash
+   export HSA_ENABLE_DXG_DETECTION=1
+   ```
+5. **Restart WSL2**:
    ```powershell
    wsl --shutdown
    ```
-4. **Check WSL Version**:
+6. **Check WSL Version**:
    ```powershell
    wsl --list --verbose
    ```
    Must show VERSION 2, not 1
-5. **Update WSL**:
+7. **Update WSL**:
    ```powershell
    wsl --update
    ```

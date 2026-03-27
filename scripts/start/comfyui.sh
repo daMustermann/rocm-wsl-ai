@@ -9,6 +9,8 @@
 # ==============================================================================
 
 # --- Configuration ---
+# Current script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Name of the Python virtual environment
 VENV_NAME="genai_env"
 # Directory where ComfyUI was cloned
@@ -17,6 +19,9 @@ COMFYUI_DIR="$HOME/ComfyUI"
 # --- Script Start ---
 echo "Attempting to start ComfyUI..."
 echo "---------------------------------"
+
+# Enable ROCDXG for WSL GPU compute
+export HSA_ENABLE_DXG_DETECTION=1
 
 # Display GPU information if available
 if [ ! -z "$HSA_OVERRIDE_GFX_VERSION" ]; then

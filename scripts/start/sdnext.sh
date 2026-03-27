@@ -7,9 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../lib/common.sh"
 
 # --- Configuration ---
+# Name of the Python virtual environment
 VENV_NAME="genai_env"
 VENV_PATH="$HOME/$VENV_NAME"
 SDNEXT_DIR="$HOME/SD.Next"
+
+# Enable ROCDXG for WSL GPU compute
+export HSA_ENABLE_DXG_DETECTION=1
 
 # --- Main Logic ---
 headline "Starting SD.Next"

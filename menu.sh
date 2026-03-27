@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ==============================================================================
 # ROCm WSL2 AI Toolkit - Main Menu
-# Version 2.2.0 - Styled with Gum ✨
+# Version 3.0.0 - ROCDXG + Gum ✨
 # ==============================================================================
 
 # Check for gum dependency
@@ -62,10 +62,27 @@ install_base() {
         return
     fi
     
-    if yesno "Confirm Installation" "Install ROCm 7.2.0 + PyTorch 2.9.1?\n\nThis will:\n• Install AMD ROCm 7.2.0 via amdgpu-install\n• Create Python virtual environment\n• Install PyTorch 2.9.1 with ROCm support\n• Configure GPU environment\n\nRequires: AMD Adrenalin 26.1.1 on Windows"; then
+    if yesno "Confirm Installation" "Install ROCm 7.2.1 + ROCDXG + PyTorch 2.9.1?\n\nThis will:\n• Install AMD ROCm 7.2.1 via official quick-start\n• Build & install ROCDXG (librocdxg) for WSL GPU compute\n• Create Python virtual environment\n• Install PyTorch 2.9.1 with ROCm support\n• Configure GPU environment\n\nRequires:\n• AMD Adrenalin 26.2.2+ on Windows\n• Windows SDK installed on Windows"; then
         "$SCRIPT_DIR/scripts/install/setup_pytorch_rocm.sh"
         
         msgbox "Installation Complete" "Base environment installation finished!\n\nIMPORTANT: Restart WSL2 now:\n1. Close this terminal\n2. In PowerShell/CMD: wsl --shutdown\n3. Restart Ubuntu\n\nThen you can install AI tools."
+    fi
+}
+
+upgrade_base() {
+    headline "Upgrade to ROCm 7.2.1 + ROCDXG"
+    
+    if ! is_wsl; then
+        msgbox "WSL2 Required" "This upgrader is designed specifically for WSL2."
+        return
+    fi
+    
+    if [ -f "$SCRIPT_DIR/scripts/install/upgrade_to_rocdxg.sh" ]; then
+        "$SCRIPT_DIR/scripts/install/upgrade_to_rocdxg.sh"
+        
+        msgbox "Upgrade Complete" "Your environment has been upgraded to ROCm 7.2.1 + ROCDXG!\n\nIMPORTANT: Restart WSL2 now:\n1. Close this terminal\n2. In PowerShell/CMD: wsl --shutdown\n3. Restart Ubuntu\n\nYour AI tools and models were NOT touched.\nOnly Python dependencies were reinstalled."
+    else
+        msgbox "Error" "Upgrade script not found:\n$SCRIPT_DIR/scripts/install/upgrade_to_rocdxg.sh"
     fi
 }
 
@@ -205,16 +222,18 @@ show_install_menu() {
     local CHOICE
     CHOICE=$(gum choose --cursor="» " --header="Choose what to install:" \
         "1. Base Environment (ROCm + PyTorch)" \
-        "2. ComfyUI" \
-        "3. SD.Next" \
-        "4. Automatic1111" \
+        "2. ⬆️  Upgrade from ROCm 7.2.0 → 7.2.1 (ROCDXG)" \
+        "3. ComfyUI" \
+        "4. SD.Next" \
+        "5. Automatic1111" \
         "0. ← Back to Main Menu")
     
     case "$CHOICE" in
         1.*) install_base ;;
-        2.*) install_tool "ComfyUI" "$SCRIPT_DIR/scripts/install/comfyui.sh" "$COMFYUI_DIR" ;;
-        3.*) install_tool "SD.Next" "$SCRIPT_DIR/scripts/install/sdnext.sh" "$SDNEXT_DIR" ;;
-        4.*) install_tool "Automatic1111" "$SCRIPT_DIR/scripts/install/automatic1111.sh" "$AUTOMATIC1111_DIR" ;;
+        2.*) upgrade_base ;;
+        3.*) install_tool "ComfyUI" "$SCRIPT_DIR/scripts/install/comfyui.sh" "$COMFYUI_DIR" ;;
+        4.*) install_tool "SD.Next" "$SCRIPT_DIR/scripts/install/sdnext.sh" "$SDNEXT_DIR" ;;
+        5.*) install_tool "Automatic1111" "$SCRIPT_DIR/scripts/install/automatic1111.sh" "$AUTOMATIC1111_DIR" ;;
         0.*) return ;;
     esac
 }
@@ -259,7 +278,7 @@ show_shortcuts_menu() {
 }
 
 show_help() {
-    msgbox "Quick Help" "ROCm WSL2 AI Toolkit v2.2.0\n\n$(gum style --bold GETTING STARTED:)\n1. Install Base Environment first\n2. Restart WSL2 (wsl --shutdown)\n3. Install AI tools\n4. Launch your tools!\n\n$(gum style --bold REQUIREMENTS:)\n• Windows 11 or Windows 10 with WSL2\n• AMD Radeon RX 7000/9000 series GPU\n• AMD Adrenalin 26.1.1 driver (Windows)\n• Ubuntu 24.04 or 22.04 in WSL2\n\nFor detailed setup instructions, see:\ndocs/WSL2_SETUP_GUIDE.md\n\nFor troubleshooting, see:\nREADME.md\n\nAMD Documentation:\nrocm.docs.amd.com/projects/radeon-ryzen/"
+    msgbox "Quick Help" "ROCm WSL2 AI Toolkit v3.0.0\n\n$(gum style --bold GETTING STARTED:)\n1. Install Base Environment first\n2. Restart WSL2 (wsl --shutdown)\n3. Install AI tools\n4. Launch your tools!\n\n$(gum style --bold UPGRADING FROM v2.x:)\nInstall Tools → Upgrade from ROCm 7.2.0 → 7.2.1\n\n$(gum style --bold REQUIREMENTS:)\n• Windows 11\n• AMD Radeon RX 7000/9000 series GPU\n  or Ryzen Strix / Strix Halo APU\n• AMD Adrenalin 26.2.2+ driver (Windows)\n• Windows SDK (for ROCDXG build)\n• Ubuntu 24.04 or 22.04 in WSL2\n\nFor detailed setup instructions, see:\ndocs/WSL2_SETUP_GUIDE.md\n\nFor troubleshooting, see:\nREADME.md\n\nAMD Documentation:\nrocm.docs.amd.com/projects/radeon-ryzen/"
 }
 
 # --- Main Loop ---
@@ -268,7 +287,7 @@ main_menu() {
     while true; do
         clear
         echo ""
-        gum style --border double --margin "0 2" --padding "1 2" --border-foreground 212 --align center "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit v2.2.0")" "ROCm 7.2.0 | PyTorch 2.9.1 | WSL2 Ubuntu 24.04/22.04"
+        gum style --border double --margin "0 2" --padding "1 2" --border-foreground 212 --align center "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit v3.0.0")" "ROCm 7.2.1 + ROCDXG | PyTorch 2.9.1 | WSL2 Ubuntu 24.04/22.04"
         echo ""
         
         CHOICE=$(gum choose --cursor="» " --header="$(gum style --bold 'Main Menu') (Choose an option):" \
@@ -291,6 +310,55 @@ main_menu() {
         esac
     done
 }
+
+# --- Startup Checks ---
+check_windows_sdk_warning() {
+    if is_wsl && ! has_windows_sdk; then
+        echo ""
+        if command -v gum >/dev/null 2>&1; then
+            echo -e "$(gum style --bold --foreground 196 '[!] Missing Windows SDK')\n\nROCm 7.2.1 on WSL requires the Windows SDK to build ROCDXG.\nWe could not detect it in the default system path.\n\n\e[1mPlease install it on Windows before proceeding.\e[0m\nDownload: https://aka.ms/winsdk\n\n\e[3m(If you installed it to a custom drive, the installer might not find it, in which case you can ignore this warning)\e[0m" | gum style --border rounded --margin "0 2" --padding "1 2" --border-foreground 196
+        else
+            echo -e "${RED}[MISSING WINDOWS SDK]${NC}"
+            echo -e "ROCm 7.2.1 on WSL requires the Windows SDK to build ROCDXG."
+            echo -e "Download it here: https://aka.ms/winsdk"
+        fi
+        echo ""
+        read -rp "  Press Enter to acknowledge and continue..."
+    fi
+}
+
+# Detect old ROCm installation and show upgrade guidance
+check_upgrade_needed() {
+    # Only show notice if ROCm is installed but ROCDXG is not
+    if has_rocm && ! has_rocdxg; then
+        local old_rocm="unknown"
+        if [ -f "/opt/rocm/.info/version" ]; then
+            old_rocm=$(cat /opt/rocm/.info/version 2>/dev/null | head -1 | tr -cd '0-9.' | head -1)
+        fi
+        
+        local amd_url="https://amd.com/support"
+        local winsdk_url="https://aka.ms/winsdk"
+        
+        echo ""
+        if command -v gum >/dev/null 2>&1; then
+            echo -e "\e[1;38;5;214m[!] Upgrade Available\e[0m\n\nYour system has ROCm ${old_rocm} without ROCDXG.\nAMD now requires ROCDXG (librocdxg) for WSL GPU compute.\n\n\e[1mTo upgrade:\e[0m\n  Main Menu → Install Tools → Upgrade from ROCm 7.2.0 → 7.2.1\n\n\e[1mWhat you need on Windows:\e[0m\n  • AMD Adrenalin 26.2.2+ driver\n    \e[4m${amd_url}\e[0m\n  • Windows SDK\n    \e[4m${winsdk_url}\e[0m\n\n\e[38;5;46mYour AI tools and models will NOT be affected.\e[0m" | gum style --border rounded --margin "0 2" --padding "1 2" --border-foreground 214
+        else
+            echo -e "${YELLOW}[UPGRADE AVAILABLE]${NC} ROCm ${old_rocm} detected without ROCDXG."
+            echo -e "${YELLOW}AMD now requires ROCDXG for WSL GPU compute.${NC}"
+            echo -e "Go to: Install Tools → Upgrade from ROCm 7.2.0 → 7.2.1"
+            echo -e ""
+            echo -e "What you need on Windows:"
+            echo -e "  • AMD Adrenalin 26.2.2+ driver: ${amd_url}"
+            echo -e "  • Windows SDK: ${winsdk_url}"
+        fi
+        echo ""
+        read -rp "  Press Enter to continue to menu..."
+    fi
+}
+
+# Run startup checks before showing menu
+check_windows_sdk_warning
+check_upgrade_needed
 
 # Start the application
 main_menu
