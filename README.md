@@ -191,7 +191,7 @@ The upgrade wizard will:
 
 ## 📄 License
 
-MIT License - See LICENSE file for details
+MIT License
 
 ## 🙏 Acknowledgments
 
