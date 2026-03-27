@@ -34,7 +34,7 @@ This toolkit was built to abstract away the Linux complexity. It provides a beau
 
 ### Windows Requirements
 - Windows 11
-- [AMD Adrenalin Edition 26.2.2 **or newer**](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html) driver installed
+- [AMD Adrenalin Edition 26.2.2 **or newer**](https://www.amd.com/en/support/download/drivers.html) driver installed
 - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) installed (required for ROCDXG build)
 - WSL2 enabled and configured
 
@@ -99,7 +99,7 @@ If you already have the toolkit installed with ROCm 7.2.0, you can upgrade to 7.
 
 On your **Windows** machine, install these two things:
 
-1. **AMD Adrenalin 26.2.2+ driver** — [Download here](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html)
+1. **AMD Adrenalin 26.2.2+ driver or newer** — [Download here](https://www.amd.com/en/support/download/drivers.html)
 2. **Windows SDK** — [Download here](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
    *(During installation, check **"Windows SDK for Desktop C++ amd64 Apps"**. It will automatically select a few required dependencies—leave those checked, but you can uncheck everything else to save space).*
    
