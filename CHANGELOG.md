@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.0] - 2026-05-18
+
+### 🔄 ROCm 7.2.3 Update
+
+Bumps the entire stack to AMD's latest stable ROCm release (7.2.3, released May 4, 2026).
+
+### ✨ Changed
+- **ROCm 7.2.1 → 7.2.3**: Updated all installers and upgrade scripts to use the latest stable ROCm release
+- **PyTorch wheels updated** to `+rocm7.2.3` (new git hash: `gitebc02d69`)
+- **Wheel source URL** updated to `rocm-rel-7.2.3`
+- **amdgpu-install package** updated to `7.2.3.70203-1`
+- **Upgrade wizard** now migrates from ROCm 7.2.1 → 7.2.3
+- Menu banner, help text, and all UI strings updated to v3.1.0
+- `update_ai_setup.sh` header updated to reflect ROCm 7.2.3
+
+### 🛠️ Technical Details
+- amdgpu-install package: 7.2.3.70203-1
+- PyTorch wheels: `torch-2.9.1+rocm7.2.3.lw.gitebc02d69`
+- torchvision wheels: `torchvision-0.24.0+rocm7.2.3.gitb919bd0c`
+- torchaudio wheels: `torchaudio-2.9.0+rocm7.2.3.gite3c6ee2b`
+- Wheel source: `https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.3/`
+- Triton version: 3.5.1+rocm7.2.3
+
+### 🔗 References
+- [ROCm 7.2.3 Release Notes](https://rocm.docs.amd.com/en/latest/release/versions.html)
+- [AMD ROCm Radeon/Ryzen Docs](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/)
+
+---
+
 ## [3.0.0] - 2026-03-27
 
 ### 🎉 Major Release - ROCDXG Architecture Upgrade

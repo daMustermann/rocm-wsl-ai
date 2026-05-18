@@ -10,7 +10,7 @@ else
 fi
 
 # ==============================================================================
-# Base Environment Installer: ROCm 7.2.1 + ROCDXG + PyTorch 2.9.1
+# Base Environment Installer: ROCm 7.2.3 + ROCDXG + PyTorch 2.9.1
 #
 # AMD's official WSL instructions require building librocdxg from source
 # to bridge the Windows DXCore driver to the WSL ROCm runtime.
@@ -27,9 +27,9 @@ export PIP_USER=0
 
 # --- Configuration ---
 VENV_NAME="genai_env"
-ROCM_VERSION="7.2.1"
-AMDGPU_INSTALL_VERSION="7.2.1.70201-1"
-PYTORCH_VERSION="2.9.1+rocm7.2.1"
+ROCM_VERSION="7.2.3"
+AMDGPU_INSTALL_VERSION="7.2.3.70203-1"
+PYTORCH_VERSION="2.9.1+rocm7.2.3"
 LIBROCDXG_REPO="https://github.com/ROCm/librocdxg.git"
 LIBROCDXG_DIR="/tmp/librocdxg"
 
@@ -72,7 +72,7 @@ headline "TASK 2/8: System Update and Prerequisites"
 ensure_apt_packages wget build-essential git python3-pip python3-venv libnuma-dev pkg-config cmake gcc
 success "System update and prerequisites installation complete."
 
-# --- 3. Install ROCm via amdgpu-install (new method for 7.2.1) ---
+# --- 3. Install ROCm via amdgpu-install (new method for 7.2.3) ---
 headline "TASK 3/8: Installing ROCm ${ROCM_VERSION}"
 
 if command -v rocminfo &> /dev/null && [ -f "/opt/rocm/bin/rocminfo" ]; then
@@ -85,9 +85,9 @@ if command -v rocminfo &> /dev/null && [ -f "/opt/rocm/bin/rocminfo" ]; then
 else
     log "Downloading amdgpu-install package for Ubuntu ${UBUNTU_CODENAME}..."
     
-    # Download the appropriate amdgpu-install package (7.2.1)
+    # Download the appropriate amdgpu-install package (7.2.3)
     AMDGPU_INSTALL_DEB="amdgpu-install_${AMDGPU_INSTALL_VERSION}_all.deb"
-    AMDGPU_INSTALL_URL="https://repo.radeon.com/amdgpu-install/7.2.1/ubuntu/${UBUNTU_CODENAME}/${AMDGPU_INSTALL_DEB}"
+    AMDGPU_INSTALL_URL="https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/${UBUNTU_CODENAME}/${AMDGPU_INSTALL_DEB}"
     
     wget -q "$AMDGPU_INSTALL_URL" -O "/tmp/${AMDGPU_INSTALL_DEB}" || {
         err "Failed to download amdgpu-install package from: ${AMDGPU_INSTALL_URL}"
@@ -108,7 +108,7 @@ else
     log "Installing ROCm packages..."
     log "This may take several minutes. Please be patient..."
     
-    # New ROCm 7.2.1 install method: use 'apt install rocm' instead of 'amdgpu-install --usecase=wsl,rocm'
+    # New ROCm 7.2.3 install method: use 'apt install rocm' instead of 'amdgpu-install --usecase=wsl,rocm'
     sudo apt install -y rocm || {
         err "ROCm installation failed. Please check the error messages above."
         err "For troubleshooting, see: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/"
@@ -234,14 +234,14 @@ headline "TASK 7/8: Installing PyTorch ${PYTORCH_VERSION} via official AMD wheel
 log "Python version: $(python3 --version)"
 log "Target wheel suffix: ${WHEEL_SUFFIX}"
 
-# Define wheel URLs from AMD's official repository (ROCm 7.2.1)
-PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1"
+# Define wheel URLs from AMD's official repository (ROCm 7.2.3)
+PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.3"
 
-# Wheel filenames with proper local versions (+) - ROCm 7.2.1 git hashes
-TORCH_WHEEL="torch-2.9.1+rocm7.2.1.lw.gitff65f5bc-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHVISION_WHEEL="torchvision-0.24.0+rocm7.2.1.gitb919bd0c-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHAUDIO_WHEEL="torchaudio-2.9.0+rocm7.2.1.gite3c6ee2b-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TRITON_WHEEL="triton-3.5.1+rocm7.2.1.gita272dfa8-${WHEEL_SUFFIX}-linux_x86_64.whl"
+# Wheel filenames with proper local versions (+) - ROCm 7.2.3 git hashes
+TORCH_WHEEL="torch-2.9.1+rocm7.2.3.lw.gitebc02d69-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCHVISION_WHEEL="torchvision-0.24.0+rocm7.2.3.gitb919bd0c-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCHAUDIO_WHEEL="torchaudio-2.9.0+rocm7.2.3.gite3c6ee2b-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TRITON_WHEEL="triton-3.5.1+rocm7.2.3.gita272dfa8-${WHEEL_SUFFIX}-linux_x86_64.whl"
 
 log "Downloading PyTorch wheels from repo.radeon.com..."
 cd /tmp || exit 1

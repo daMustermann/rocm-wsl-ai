@@ -9,11 +9,11 @@ else
 fi
 
 # ==============================================================================
-# Upgrade Script: Migrate from ROCm 7.2.0 to ROCm 7.2.1 + ROCDXG
+# Upgrade Script: Migrate from ROCm 7.2.0 to ROCm 7.2.3 + ROCDXG
 #
 # This script safely upgrades an existing ROCm WSL AI Toolkit installation:
 # 1. Backs up your old Python virtual environment
-# 2. Installs ROCm 7.2.1 + builds ROCDXG (librocdxg)
+# 2. Installs ROCm 7.2.3 + builds ROCDXG (librocdxg)
 # 3. Creates a fresh virtual environment with new PyTorch wheels
 # 4. Reinstalls all your AI tools (ComfyUI, SD.Next, Automatic1111)
 #
@@ -27,8 +27,8 @@ export PIP_USER=0
 VENV_NAME="genai_env"
 VENV_PATH="$HOME/$VENV_NAME"
 VENV_BACKUP="$HOME/${VENV_NAME}_backup_$(date +%Y%m%d_%H%M%S)"
-ROCM_VERSION="7.2.1"
-AMDGPU_INSTALL_VERSION="7.2.1.70201-1"
+ROCM_VERSION="7.2.3"
+AMDGPU_INSTALL_VERSION="7.2.3.70203-1"
 LIBROCDXG_REPO="https://github.com/ROCm/librocdxg.git"
 LIBROCDXG_DIR="/tmp/librocdxg"
 
@@ -113,14 +113,14 @@ if command -v gum >/dev/null 2>&1; then
 fi
 echo ""
 log "From: ROCm ${CURRENT_ROCM} → ROCm ${ROCM_VERSION} + ROCDXG"
-log "PyTorch: ${CURRENT_PYTORCH:-unknown} → 2.9.1+rocm7.2.1"
+log "PyTorch: ${CURRENT_PYTORCH:-unknown} → 2.9.1+rocm7.2.3"
 if [ ${#INSTALLED_TOOLS[@]} -gt 0 ]; then
     log "AI Tools to re-link: ${INSTALLED_TOOLS[*]}"
 fi
 log "Your models, custom nodes, and extensions will NOT be touched."
 echo ""
 
-if ! yesno "Ready to Upgrade?" "This will:\n\n• Backup your old venv to ${VENV_BACKUP}\n• Upgrade ROCm to 7.2.1\n• Build & install ROCDXG (librocdxg)\n• Create a new Python venv with PyTorch 2.9.1+rocm7.2.1\n• Reinstall dependencies for: ${INSTALLED_TOOLS[*]:-none}\n\n⚠ Before proceeding, make sure you have:\n• AMD Adrenalin 26.2.2+ driver on Windows\n• Windows SDK installed on Windows\n\nYour models and files are SAFE — they are never touched."; then
+if ! yesno "Ready to Upgrade?" "This will:\n\n• Backup your old venv to ${VENV_BACKUP}\n• Upgrade ROCm to 7.2.3\n• Build & install ROCDXG (librocdxg)\n• Create a new Python venv with PyTorch 2.9.1+rocm7.2.3\n• Reinstall dependencies for: ${INSTALLED_TOOLS[*]:-none}\n\n⚠ Before proceeding, make sure you have:\n• AMD Adrenalin 26.2.2+ driver on Windows\n• Windows SDK installed on Windows\n\nYour models and files are SAFE — they are never touched."; then
     log "Upgrade cancelled by user."
     exit 0
 fi
@@ -139,7 +139,7 @@ else
 fi
 
 # ==========================================================================
-# STEP 3: Upgrade ROCm to 7.2.1
+# STEP 3: Upgrade ROCm to 7.2.3
 # ==========================================================================
 headline "STEP 3/7: Upgrading ROCm to ${ROCM_VERSION}"
 
@@ -147,8 +147,8 @@ headline "STEP 3/7: Upgrading ROCm to ${ROCM_VERSION}"
 NEEDS_ROCM_UPGRADE=true
 if [ -f "/opt/rocm/.info/version" ]; then
     local_rocm=$(cat /opt/rocm/.info/version 2>/dev/null | head -1)
-    if [[ "$local_rocm" == *"7.2.1"* ]]; then
-        success "ROCm 7.2.1 is already installed."
+    if [[ "$local_rocm" == *"7.2.3"* ]]; then
+        success "ROCm 7.2.3 is already installed."
         NEEDS_ROCM_UPGRADE=false
     fi
 fi
@@ -157,9 +157,9 @@ if $NEEDS_ROCM_UPGRADE; then
     ensure_apt_packages wget build-essential git python3-pip python3-venv libnuma-dev pkg-config cmake gcc
 
     AMDGPU_INSTALL_DEB="amdgpu-install_${AMDGPU_INSTALL_VERSION}_all.deb"
-    AMDGPU_INSTALL_URL="https://repo.radeon.com/amdgpu-install/7.2.1/ubuntu/${UBUNTU_CODENAME}/${AMDGPU_INSTALL_DEB}"
+    AMDGPU_INSTALL_URL="https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/${UBUNTU_CODENAME}/${AMDGPU_INSTALL_DEB}"
 
-    log "Downloading amdgpu-install 7.2.1..."
+    log "Downloading amdgpu-install 7.2.3..."
     wget -q "$AMDGPU_INSTALL_URL" -O "/tmp/${AMDGPU_INSTALL_DEB}" || {
         err "Failed to download amdgpu-install package."
         err "URL: ${AMDGPU_INSTALL_URL}"
@@ -172,7 +172,7 @@ if $NEEDS_ROCM_UPGRADE; then
     sudo apt update -y
     sudo apt install -y python3-setuptools python3-wheel
 
-    log "Installing ROCm 7.2.1 packages (this may take a few minutes)..."
+    log "Installing ROCm 7.2.3 packages (this may take a few minutes)..."
     sudo apt install -y rocm || {
         err "ROCm 7.2.1 installation failed."
         exit 1
@@ -183,7 +183,7 @@ if $NEEDS_ROCM_UPGRADE; then
 
     success "ROCm ${ROCM_VERSION} installed."
 else
-    log "Skipping ROCm package installation — already at 7.2.1."
+    log "Skipping ROCm package installation — already at 7.2.3."
 fi
 
 # ==========================================================================
@@ -238,7 +238,7 @@ fi
 # ==========================================================================
 # STEP 5: Create new venv + install PyTorch
 # ==========================================================================
-headline "STEP 5/7: Creating New Python Environment with PyTorch 2.9.1+rocm7.2.1"
+headline "STEP 5/7: Creating New Python Environment with PyTorch 2.9.1+rocm7.2.3"
 
 python3 -m venv "$VENV_PATH"
 # shellcheck disable=SC1091
@@ -246,12 +246,12 @@ source "$VENV_PATH/bin/activate"
 
 pip install --upgrade pip wheel
 
-# PyTorch wheels (ROCm 7.2.1)
-PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1"
-TORCH_WHEEL="torch-2.9.1+rocm7.2.1.lw.gitff65f5bc-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHVISION_WHEEL="torchvision-0.24.0+rocm7.2.1.gitb919bd0c-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHAUDIO_WHEEL="torchaudio-2.9.0+rocm7.2.1.gite3c6ee2b-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TRITON_WHEEL="triton-3.5.1+rocm7.2.1.gita272dfa8-${WHEEL_SUFFIX}-linux_x86_64.whl"
+# PyTorch wheels (ROCm 7.2.3)
+PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.3"
+TORCH_WHEEL="torch-2.9.1+rocm7.2.3.lw.gitebc02d69-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCHVISION_WHEEL="torchvision-0.24.0+rocm7.2.3.gitb919bd0c-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TORCHAUDIO_WHEEL="torchaudio-2.9.0+rocm7.2.3.gite3c6ee2b-${WHEEL_SUFFIX}-linux_x86_64.whl"
+TRITON_WHEEL="triton-3.5.1+rocm7.2.3.gita272dfa8-${WHEEL_SUFFIX}-linux_x86_64.whl"
 
 log "Downloading PyTorch wheels..."
 cd /tmp
@@ -290,7 +290,7 @@ if [ -n "${HSA_OVERRIDE_GFX_VERSION:-}" ]; then
     fi
 fi
 
-success "New Python venv created with PyTorch 2.9.1+rocm7.2.1"
+success "New Python venv created with PyTorch 2.9.1+rocm7.2.3"
 
 # ==========================================================================
 # STEP 6: Reinstall AI tool dependencies

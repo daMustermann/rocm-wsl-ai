@@ -36,13 +36,13 @@ winver
 
 ## Upgrading from v2.x (ROCm 7.2.0)
 
-If you already have an existing ROCm 7.2.0 installation, use the built-in upgrade wizard:
+If you already have an existing ROCm 7.2.1 installation, use the built-in upgrade wizard:
 
 ```bash
 cd rocm-wsl-ai
 git pull
 ./menu.sh
-# Select: Install Tools → Upgrade from ROCm 7.2.0 → 7.2.1 (ROCDXG)
+# Select: Install Tools → Upgrade from ROCm 7.2.1 → 7.2.3 (ROCDXG)
 ```
 
 **Before upgrading, install on Windows:**
@@ -51,7 +51,7 @@ git pull
 
 <img src="assets/winsdkinstall.png" width="600" alt="Windows SDK Installation Options">
 
-The upgrade wizard will back up your old venv, install ROCm 7.2.1 + ROCDXG, create a fresh Python environment, and reinstall all your AI tool dependencies. **Your models, custom nodes, and extensions are never touched.**
+The upgrade wizard will back up your old venv, install ROCm 7.2.3 + ROCDXG, create a fresh Python environment, and reinstall all your AI tool dependencies. **Your models, custom nodes, and extensions are never touched.**
 
 ## WSL2 Installation
 

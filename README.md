@@ -12,7 +12,7 @@ If you've ever tried running Stable Diffusion or ComfyUI on an AMD Radeon graphi
 - **VRAM Hostage Situations**: Forgetting to close a terminal window means Python permanently hogs your card's VRAM, completely crippling your Windows gaming or rendering performance until you hunt down the process.
 
 ## ⭐ The Solution: Make it Effortless
-This toolkit was built to abstract away the Linux complexity. It provides a beautiful, keyboard-driven smart dashboard that fully automates the installation of AMD's ROCm 7.2.1 stack with ROCDXG and PyTorch 2.9.1 inside WSL2. 
+This toolkit was built to abstract away the Linux complexity. It provides a beautiful, keyboard-driven smart dashboard that fully automates the installation of AMD's ROCm 7.2.3 stack with ROCDXG and PyTorch 2.9.1 inside WSL2. 
 
 **Why this makes your life easier:**
 - **Zero Guesswork Installation**: It automatically queries your OS, downloads the exact AMD-official PyTorch wheels, and silos everything in an isolated virtual environment. You literally just press "Install".
@@ -91,9 +91,9 @@ Use the **Launch Tool** menu to start your installed applications, or use the **
 
 ---
 
-## ⬆️ Upgrading from v2.x (ROCm 7.2.0)
+## ⬆️ Upgrading from v3.0.x (ROCm 7.2.1)
 
-If you already have the toolkit installed with ROCm 7.2.0, you can upgrade to 7.2.1 + ROCDXG **without losing any of your AI tools, models, or custom nodes**.
+If you already have the toolkit installed with ROCm 7.2.1, you can upgrade to 7.2.3 + ROCDXG **without losing any of your AI tools, models, or custom nodes**.
 
 ### Before You Upgrade
 
@@ -111,13 +111,13 @@ On your **Windows** machine, install these two things:
 cd rocm-wsl-ai
 git pull        # Get the latest toolkit version
 ./menu.sh
-# Select: Install Tools → Upgrade from ROCm 7.2.0 → 7.2.1 (ROCDXG)
+# Select: Install Tools → Upgrade from ROCm 7.2.1 → 7.2.3 (ROCDXG)
 ```
 
 The upgrade wizard will:
 - ✅ **Back up** your old Python virtual environment (you can delete it later)
-- ✅ **Install** ROCm 7.2.1 and build ROCDXG (librocdxg) from source
-- ✅ **Create** a fresh venv with PyTorch 2.9.1+rocm7.2.1
+- ✅ **Install** ROCm 7.2.3 and build ROCDXG (librocdxg) from source
+- ✅ **Create** a fresh venv with PyTorch 2.9.1+rocm7.2.3
 - ✅ **Reinstall** all dependencies for your installed AI tools (ComfyUI, SD.Next, etc.)
 - ✅ **Preserve** all your models, custom nodes, extensions, and configurations
 
@@ -127,13 +127,13 @@ The upgrade wizard will:
 
 1. Restart WSL: `wsl --shutdown` (in PowerShell)
 2. Relaunch Ubuntu and run `./menu.sh`
-3. Launch your AI tools as usual — everything should work with the new ROCm 7.2.1 + ROCDXG stack
+3. Launch your AI tools as usual — everything should work with the new ROCm 7.2.3 + ROCDXG stack
 
 ### What Changed (Technical)
 
-| | Before (v2.x) | After (v3.0.0) |
+| | Before (v3.0.x) | After (v3.1.0) |
 |---|---|---|
-| ROCm | 7.2.0 | 7.2.1 |
+| ROCm | 7.2.1 | 7.2.3 |
 | WSL Bridge | Legacy roc4wsl | **ROCDXG (librocdxg)** |
 | Install method | `amdgpu-install --usecase=wsl,rocm` | `apt install rocm` + librocdxg |
 | Windows driver | Adrenalin 26.1.1 | **Adrenalin 26.2.2+** |
@@ -145,7 +145,7 @@ The upgrade wizard will:
 ## 🛠️ What Gets Installed
 
 ### Base Environment Installation
-1. **ROCm 7.2.1**: Via AMD's official `amdgpu-install` quick-start method
+1. **ROCm 7.2.3**: Via AMD's official `amdgpu-install` quick-start method
    - ROCm packages installed via `apt install rocm`
 2. **ROCDXG (librocdxg)**: Built from source ([GitHub](https://github.com/ROCm/librocdxg/))
    - User-mode WSL bridge library enabling GPU compute via DXCore
@@ -159,10 +159,10 @@ The upgrade wizard will:
 
 | Component | Version |
 |-----------|---------|
-| ROCm | 7.2.1 |
+| ROCm | 7.2.3 |
 | ROCDXG | librocdxg (built from source) |
-| PyTorch | 2.9.1+rocm7.2.1 |
-| Triton | 3.5.1+rocm7.2.1 |
+| PyTorch | 2.9.1+rocm7.2.3 |
+| Triton | 3.5.1+rocm7.2.3 |
 | Installation Method | amdgpu-install + apt install rocm + librocdxg |
 | WSL Bridge | ROCDXG (HSA_ENABLE_DXG_DETECTION=1) |
 

@@ -9,7 +9,7 @@ else
 fi
 
 # ===============================================================================
-# Update Script for ROCm AI Setup - 2026 Edition (ROCm 7.2.1 + ROCDXG)
+# Update Script for ROCm AI Setup - 2026 Edition (ROCm 7.2.3 + ROCDXG)
 # Updates ROCm, PyTorch, ComfyUI, SD.Next, Automatic1111, Ollama
 # Includes Text Generation WebUI update helper
 # Note: Support for several legacy third-party tools has been removed to focus
@@ -84,7 +84,7 @@ update_amdgpu_drivers() {
 }
 
 update_pytorch() {
-    print_section "Updating PyTorch (ROCm 7.2.1) + Triton"
+    print_section "Updating PyTorch (ROCm 7.2.3) + Triton"
     check_venv
     python3 -c "import torch; print(f'PyTorch: {torch.__version__} (ROCm avail: {torch.cuda.is_available()})')" 2>/dev/null || true
     pip install --upgrade "torch==2.9.1" torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2
@@ -202,7 +202,7 @@ PY
 show_update_menu() {
     while true; do
         clear
-        print_header "AI Tools Update Menu - 2026 (ROCm 7.2.1 + ROCDXG)"
+        print_header "AI Tools Update Menu - 2026 (ROCm 7.2.3 + ROCDXG)"
     echo -e "${CYAN}🔄 Select what to update:${NC}\n"
     echo -e "1.  ${YELLOW}Reinstall AMD GPU drivers${NC}"
     echo -e "2.  Update ROCm stack"
