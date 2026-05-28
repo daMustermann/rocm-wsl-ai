@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.3.0] - 2026-05-29
+## [3.3.0] - 2026-05-28
 
 ### ⚙️ First-Run Wizard · GPU Diagnostics · GPU Profiles · Settings · Changenotes
 
