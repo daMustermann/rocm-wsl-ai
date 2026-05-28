@@ -10,8 +10,11 @@ Complete guide for setting up AMD ROCm on WSL2 for AI workloads.
 4. [AMD Driver Installation](#amd-driver-installation)
 5. [ROCm Installation](#rocm-installation)
 6. [PyTorch Installation](#pytorch-installation)
-7. [Verification](#verification)
-8. [Troubleshooting](#troubleshooting)
+7. [Optional: kohya_ss Model Training](#optional-kohyass-model-training)
+8. [Self-Update](#self-update)
+9. [Windows Desktop Shortcuts](#windows-desktop-shortcuts)
+10. [Verification](#verification)
+11. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -34,13 +37,13 @@ Complete guide for setting up AMD ROCm on WSL2 for AI workloads.
 winver
 ```
 
-## Upgrading from v2.x (ROCm 7.2.0)
+## Upgrading from v2.x / v3.1.x
 
 If you already have an existing ROCm 7.2.1 installation, use the built-in upgrade wizard:
 
 ```bash
 cd rocm-wsl-ai
-git pull
+git pull    # or: ./menu.sh → Updates → Check for Toolkit Updates
 ./menu.sh
 # Select: Install Tools → Upgrade from ROCm 7.2.1 → 7.2.3 (ROCDXG)
 ```
@@ -301,6 +304,133 @@ cd ${location}/torch/lib/
 rm -f libhsa-runtime64.so*
 ```
 
+## Optional: kohya_ss Model Training
+
+[kohya_ss](https://github.com/bmaltais/kohya_ss) provides a web-based GUI for LoRA training, DreamBooth fine-tuning, and other model customization techniques. It runs on your AMD GPU via ROCm inside WSL2.
+
+### Install via Menu
+
+```bash
+./menu.sh
+# Select: Install Tools → kohya_ss (LoRA / Model Training)
+```
+
+### What Gets Installed
+
+| Item | Location |
+|------|----------|
+| kohya_ss repository | `~/kohya_ss` |
+| Dedicated Python venv | `~/kohya_env` |
+| Accelerate config | `~/.config/accelerate/default_config.yaml` |
+| Web GUI port | http://localhost:7861 |
+
+> **Separate venv**: kohya_ss is intentionally installed into its own `~/kohya_env` virtual environment. This prevents dependency conflicts with the inference tools (ComfyUI, SD.Next, etc.) that use `~/genai_env`.
+
+### Manual Requirements
+
+If you want to install kohya_ss manually:
+
+```bash
+# System packages
+sudo apt install python3-venv python3-tk python3-dev libgl1-mesa-glx libglib2.0-0
+
+# Clone
+git clone https://github.com/bmaltais/kohya_ss.git ~/kohya_ss
+
+# Dedicated venv
+python3 -m venv ~/kohya_env
+source ~/kohya_env/bin/activate
+
+# PyTorch for ROCm
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2
+
+# kohya_ss dependencies
+cd ~/kohya_ss
+pip install -r requirements.txt
+pip install accelerate transformers diffusers safetensors
+
+deactivate
+```
+
+### Launch kohya_ss
+
+```bash
+./menu.sh
+# Select: Launch Tool → kohya_ss (Training GUI)
+# Open in Windows: http://localhost:7861
+```
+
+---
+
+## Self-Update
+
+The toolkit can update itself without leaving the menu.
+
+### Check for Toolkit Updates
+
+```bash
+./menu.sh
+# Select: Updates → Check for Toolkit Updates
+```
+
+The toolkit will:
+1. Run `git fetch` to check for new commits
+2. Show the list of new changes
+3. Apply them with `git pull --rebase --autostash`
+4. Prompt you to restart `menu.sh`
+
+Alternatively, update manually:
+```bash
+git -C ~/rocm-wsl-ai pull --rebase --autostash
+```
+
+### Update AI Tools
+
+```bash
+./menu.sh
+# Select: Updates → Update Installed AI Tools
+```
+
+The Update Manager lets you selectively update ComfyUI, SD.Next, Automatic1111, kohya_ss, Ollama, Text Generation WebUI, or all at once.
+
+---
+
+## Windows Desktop Shortcuts
+
+Desktop shortcuts let you launch any AI tool with a double-click from Windows — no need to open a WSL terminal manually.
+
+### Create a Shortcut
+
+```bash
+./menu.sh
+# Select: Create Desktop Shortcuts → (choose tool)
+```
+
+A `.bat` file will be created on your Windows Desktop.
+
+### How It Works
+
+The `.bat` file uses the correct `wsl.exe` syntax to start WSL and run the server:
+
+```batch
+wsl.exe -d "Ubuntu-24.04" -- bash -l "/path/to/start/script.sh"
+```
+
+- `--` separates WSL options from the Linux command
+- `bash -l` starts a login shell (loads your `.profile`/`.bashrc` and environment variables)
+- The CMD window stays open and shows server logs; close it to stop the server
+
+### Troubleshooting Shortcuts
+
+| Symptom | Fix |
+|---------|-----|
+| Window closes instantly | Recreate shortcut — old ones (pre-v3.2) used broken wsl.exe syntax |
+| "WSL distribution not found" | Run `wsl --list --verbose` in PowerShell to check installed distros |
+| Server starts but browser can't connect | Wait ~30 seconds, then open `http://localhost:PORT` |
+| Black window, no output | Run from WSL manually first to check for errors |
+
+---
+
 ## Verification
 
 ### Test ROCm
@@ -335,6 +465,10 @@ GPU name: Radeon RX 7900 XTX
 ```
 
 ## Troubleshooting
+
+### Troubleshooting Shortcuts
+
+See the [Windows Desktop Shortcuts](#windows-desktop-shortcuts) section above, or the README troubleshooting guide.
 
 ### GPU Not Detected in WSL2
 

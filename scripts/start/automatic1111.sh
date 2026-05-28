@@ -12,6 +12,12 @@ VENV_NAME="genai_env"
 VENV_PATH="$HOME/$VENV_NAME"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
 
+# Load persistent user settings (GPU profile, port overrides, etc.)
+if [ -f "$HOME/.config/rocm-wsl-ai/user.env" ]; then
+    # shellcheck disable=SC1090
+    source "$HOME/.config/rocm-wsl-ai/user.env"
+fi
+
 # Enable ROCDXG for WSL GPU compute
 export HSA_ENABLE_DXG_DETECTION=1
 
@@ -45,7 +51,9 @@ if [ -f "./launch_webui_rocm.sh" ]; then
 fi
 
 log "Launching Automatic1111..."
-$LAUNCH_SCRIPT
+A1111_PORT_ARGS=()
+[ -n "${A1111_PORT:-}" ] && A1111_PORT_ARGS+=("--port" "$A1111_PORT")
+$LAUNCH_SCRIPT "${A1111_PORT_ARGS[@]:-}"
 
 # Deactivate virtual environment on exit
 trap 'deactivate' EXIT

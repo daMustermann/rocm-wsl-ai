@@ -46,7 +46,33 @@ fi
 
 log "Creating shortcut for $TOOL_NAME at $SHORTCUT_FILE"
 
-# Use printf with \r\n to ensure DOS CRLF line endings
-printf "@echo off\r\necho Starting %s in WSL...\r\nwsl.exe %s ~ -e bash -ic \"%s\"\r\npause\r\necho Exiting...\r\n" "$TOOL_NAME" "$DISTRO_ARG" "$LAUNCH_SCRIPT" > "$SHORTCUT_FILE"
+# Generate the BAT file with correct wsl.exe syntax and CRLF line endings.
+#
+# Key fix: the old command `wsl.exe %s ~ -e bash -ic "%s"` was broken:
+#   - `~` is not a valid positional argument here (should be --cd ~)
+#   - `-e` is a wsl.exe flag meaning "execute without default shell", not a
+#     bash flag — so the shell quoting was being misinterpreted
+#
+# Correct pattern: `wsl.exe [-d Distro] -- bash -l "/path/to/script"`
+#   - `--` separates wsl.exe options from the Linux command
+#   - `bash -l` launches a login shell (sources .profile/.bashrc, loads env)
+#   - The script path is passed as a positional argument (no quoting issues)
+{
+printf '@echo off\r\n'
+printf 'title %s \x2014 ROCm AI Toolkit\r\n'                          "$TOOL_NAME"
+printf 'echo.\r\n'
+printf 'echo  ==========================================\r\n'
+printf 'echo   %s  \x2014  ROCm AI Toolkit\r\n'                       "$TOOL_NAME"
+printf 'echo  ==========================================\r\n'
+printf 'echo   Loading WSL \x2014 this may take a few seconds.\r\n'
+printf 'echo   Once started, open: http://localhost:PORT\r\n'
+printf 'echo   Close this window to stop the server.\r\n'
+printf 'echo  ==========================================\r\n'
+printf 'echo.\r\n'
+printf 'wsl.exe %s -- bash -l "%s"\r\n'                                "$DISTRO_ARG" "$LAUNCH_SCRIPT"
+printf 'echo.\r\n'
+printf 'echo  Server stopped. Press any key to close this window.\r\n'
+printf 'pause\r\n'
+} > "$SHORTCUT_FILE"
 
 success "Shortcut successfully created on your Windows Desktop!"

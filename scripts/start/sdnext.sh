@@ -12,6 +12,12 @@ VENV_NAME="genai_env"
 VENV_PATH="$HOME/$VENV_NAME"
 SDNEXT_DIR="$HOME/SD.Next"
 
+# Load persistent user settings (GPU profile, port overrides, etc.)
+if [ -f "$HOME/.config/rocm-wsl-ai/user.env" ]; then
+    # shellcheck disable=SC1090
+    source "$HOME/.config/rocm-wsl-ai/user.env"
+fi
+
 # Enable ROCDXG for WSL GPU compute
 export HSA_ENABLE_DXG_DETECTION=1
 
@@ -38,7 +44,9 @@ log "Changing to SD.Next directory: $SDNEXT_DIR"
 cd "$SDNEXT_DIR"
 
 log "Launching SD.Next with ROCm arguments..."
-./webui.sh --use-rocm --skip-torch-cuda-test --no-half --no-half-vae
+SDNEXT_PORT_ARGS=()
+[ -n "${SDNEXT_PORT:-}" ] && SDNEXT_PORT_ARGS+=("--port" "$SDNEXT_PORT")
+./webui.sh --use-rocm --skip-torch-cuda-test --no-half --no-half-vae "${SDNEXT_PORT_ARGS[@]:-}"
 
 # Deactivate virtual environment on exit
 trap 'deactivate' EXIT

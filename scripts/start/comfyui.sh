@@ -20,11 +20,17 @@ COMFYUI_DIR="$HOME/ComfyUI"
 echo "Attempting to start ComfyUI..."
 echo "---------------------------------"
 
-# Enable ROCDXG for WSL GPU compute
+# Load persistent user settings (GPU profile, port overrides, etc.)
+if [ -f "$HOME/.config/rocm-wsl-ai/user.env" ]; then
+    # shellcheck disable=SC1090
+    source "$HOME/.config/rocm-wsl-ai/user.env"
+fi
+
+# Enable ROCDXG for WSL GPU compute (user.env may already set this; ensure it's 1)
 export HSA_ENABLE_DXG_DETECTION=1
 
 # Display GPU information if available
-if [ ! -z "$HSA_OVERRIDE_GFX_VERSION" ]; then
+if [ -n "${HSA_OVERRIDE_GFX_VERSION:-}" ]; then
     echo "[INFO] Using GPU architecture: $HSA_OVERRIDE_GFX_VERSION"
 fi
 
@@ -74,8 +80,8 @@ if [ -z "$MIGRAPHX_MLIR_USE_SPECIFIC_OPS" ]; then
     export MIGRAPHX_MLIR_USE_SPECIFIC_OPS="attention"
 fi
 
-# Detect custom port or default to 8188 for the wake server
-PORT=8188
+# Detect custom port: prefer user.env override, then CLI --port arg, else default 8188
+PORT="${COMFYUI_PORT:-8188}"
 ARGS=("$@")
 for ((i=0; i<${#ARGS[@]}; i++)); do
     if [ "${ARGS[$i]}" == "--port" ]; then

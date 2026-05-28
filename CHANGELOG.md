@@ -2,6 +2,86 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.0] - 2026-05-29
+
+### ⚙️ First-Run Wizard · GPU Diagnostics · GPU Profiles · Settings · Changenotes
+
+#### ✨ Added
+- **First-Run Welcome Wizard** (`scripts/utils/first_run.sh`):
+  - Detects the very first launch of the toolkit (marker: `~/.config/rocm-wsl-ai/.first_run_done`)
+  - Shows a full-screen gum welcome screen with a 4-step Quick Start guide
+  - Automatically creates `~/.config/rocm-wsl-ai/user.env` with defaults on first run
+  - Text fallback for systems without gum
+- **GPU Diagnostics** (`scripts/utils/gpu_diag.sh`):
+  - Comprehensive health check: WSL2 env, ROCm version, ROCDXG, HSA env vars, GPU agents via rocminfo, PyTorch CUDA availability, genai_env & kohya_env venvs, user.env, Windows AMD driver (via PowerShell)
+  - Colour-coded status rows: ✔ ok (green) / ⚠ warn (orange) / ✖ fail (red) / ℹ info (blue)
+  - Runs standalone (`bash scripts/utils/gpu_diag.sh`) or via Settings → GPU Diagnostics
+- **Settings Menu** (`menu.sh` → `show_settings_menu()`):
+  - New main-menu item "7. ⚙️ Settings" — Help moved to 8
+  - Sub-menu: GPU Profile · Edit Settings · GPU Diagnostics
+- **GPU Profile Selector** (`menu.sh` → `show_gpu_profile_menu()`):
+  - Parses `rocminfo` output to list all detected AMD GPU agents with marketing name and gfx arch
+  - Choose "Auto" (clears overrides), a specific GPU (sets `ROCR_VISIBLE_DEVICES` + `HSA_OVERRIDE_GFX_VERSION`), or enter a manual gfx string
+  - Writes selection persistently to `~/.config/rocm-wsl-ai/user.env`
+- **Settings Editor** (`menu.sh` → `show_settings_editor()`):
+  - Edit all user.env keys via `gum input` with current values pre-filled
+  - Keys: `HSA_OVERRIDE_GFX_VERSION`, `ROCR_VISIBLE_DEVICES`, `HSA_ENABLE_DXG_DETECTION`, `COMFYUI_PORT`, `SDNEXT_PORT`, `A1111_PORT`, `KOHYA_PORT`
+  - Option to open `user.env` raw in `$EDITOR` / nano / vi
+- **Changenotes on Self-Update** (`menu.sh` → `_show_update_changenotes()`):
+  - After a successful `git pull`, extracts the top section of `CHANGELOG.md` and displays it in `gum pager --soft-wrap`
+- **Persistent User Settings** (`lib/common.sh` — `ensure_user_env`, `load_user_env`, `_update_user_env`):
+  - `ensure_user_env` creates `~/.config/rocm-wsl-ai/user.env` with a well-documented template on first use
+  - `load_user_env` sources user.env; called at menu.sh startup and from all launch scripts
+  - `_update_user_env KEY VALUE` safely updates a single key in user.env (sed in-place)
+  - All three functions exported via `export -f` for use in subshells / sourced scripts
+
+#### 🔄 Changed
+- `menu.sh`: Sources `first_run.sh` and `gpu_diag.sh` at startup; calls `ensure_user_env && load_user_env` before any menu is shown; calls `first_run_check` before SDK/upgrade checks
+- `scripts/start/comfyui.sh`: Sources `user.env`; port defaults to `${COMFYUI_PORT:-8188}`
+- `scripts/start/sdnext.sh`: Sources `user.env`; port defaults to `${SDNEXT_PORT:-7860}` via `--port` arg
+- `scripts/start/automatic1111.sh`: Sources `user.env`; port defaults to `${A1111_PORT:-7860}` via `--port` arg
+- `scripts/start/kohya_ss.sh`: Sources `user.env` via `load_user_env`; port defaults to `${KOHYA_PORT:-7861}`
+
+---
+
+## [3.2.0] - 2026-05-28
+
+### 🎨 kohya_ss Model Training + Self-Update + Shortcut Fix
+
+#### ✨ Added
+- **kohya_ss integration** (`scripts/install/kohya_ss.sh`, `scripts/start/kohya_ss.sh`):
+  - Install [kohya_ss](https://github.com/bmaltais/kohya_ss) for LoRA, DreamBooth, and fine-tuning directly on your AMD GPU
+  - Uses a dedicated `~/kohya_env` virtual environment to avoid dependency conflicts with inference tools
+  - Hugging Face Accelerate auto-configured for single-GPU ROCm (non-interactive)
+  - GUI starts on `http://localhost:7861`
+- **Self-Update** (`menu.sh` → Updates menu):
+  - New **Updates** main menu entry (`🔄 Updates`)
+  - **Check for Toolkit Updates**: runs `git fetch`, shows new commits, applies `git pull --rebase --autostash`
+  - **Update Installed AI Tools**: launches the Update Manager (update_ai_setup.sh)
+- **kohya_ss in Update Manager** (`update_ai_setup.sh`):
+  - `update_kohya_ss()`: pulls latest code + reinstalls requirements in kohya_env
+  - `self_update_toolkit()`: standalone self-update for when running update_ai_setup.sh directly
+  - Gum-based UI for the Update Manager (text fallback when gum is unavailable)
+
+#### 🐛 Fixed
+- **Windows Desktop Shortcuts** (`scripts/utils/create_shortcut.sh`):
+  - **Root cause**: generated `.bat` files used malformed `wsl.exe` syntax (`~ -e bash -ic "script"`) which caused the window to close immediately or the script never to run
+  - **Fix**: corrected to `wsl.exe [-d Distro] -- bash -l "/path/to/script"` — `--` properly separates wsl.exe options from the Linux command; `bash -l` ensures a login shell with all environment variables loaded
+  - Added title bar label and cleaner "Server stopped" exit message
+
+#### 📝 Updated Menus
+- **Install Tools**: added `kohya_ss (LoRA / Model Training)`
+- **Launch Tool**: added `kohya_ss (Training GUI)`
+- **Create Desktop Shortcuts**: added `kohya_ss`
+- **System Status**: shows kohya_ss installation status
+- **Help**: updated to list kohya_ss and self-update
+
+#### 📚 Documentation
+- `README.md`: new kohya_ss section, self-update section, Windows shortcut troubleshooting
+- `docs/WSL2_SETUP_GUIDE.md`: new kohya_ss chapter, self-update chapter, Windows shortcuts chapter with troubleshooting table
+
+---
+
 ## [3.1.0] - 2026-05-18
 
 ### 🔄 ROCm 7.2.3 Update

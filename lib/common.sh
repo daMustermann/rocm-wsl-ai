@@ -156,8 +156,66 @@ standard_header(){
     fi
 }
 
+# --- User Settings (.env) ---
+ROCM_AI_CONFIG_DIR="$HOME/.config/rocm-wsl-ai"
+USER_ENV="$ROCM_AI_CONFIG_DIR/user.env"
+
+load_user_env() {
+    if [ -f "$USER_ENV" ]; then
+        # shellcheck disable=SC1090
+        source "$USER_ENV"
+    fi
+}
+
+ensure_user_env() {
+    [ -f "$USER_ENV" ] && return 0
+    mkdir -p "$ROCM_AI_CONFIG_DIR"
+    cat > "$USER_ENV" << 'USERENV_EOF'
+# ============================================================
+# ROCm WSL AI Toolkit — Persistent User Settings
+# Location: ~/.config/rocm-wsl-ai/user.env
+# Edit via:  menu.sh → Settings → Edit Settings
+#            or directly with your favourite editor
+# ============================================================
+
+# --- GPU Configuration ---
+# GFX architecture override. Leave empty for ROCm auto-detection.
+# Examples: gfx1100 (RX 7900 XTX/XT), gfx1102 (RX 7700/7800 XT),
+#           gfx1200 (RX 9070 / 9070 XT)
+export HSA_OVERRIDE_GFX_VERSION=""
+
+# GPU device index for multi-GPU systems (0 = first GPU, 1 = second, …).
+# Leave empty to let ROCm use all visible GPUs.
+export ROCR_VISIBLE_DEVICES=""
+
+# WSL DXCore bridge — must be 1 for GPU compute in WSL2. Do not change.
+export HSA_ENABLE_DXG_DETECTION=1
+
+# --- Port Overrides ---
+# Override the default port each tool listens on.
+# Leave empty to use the tool's built-in default.
+export COMFYUI_PORT=""    # default: 8188
+export SDNEXT_PORT=""     # default: 7860
+export A1111_PORT=""      # default: 7860
+export KOHYA_PORT=""      # default: 7861
+USERENV_EOF
+    log "Created default user settings at $USER_ENV"
+}
+
+_update_user_env() {
+    # Usage: _update_user_env KEY VALUE
+    local key="$1" value="$2"
+    ensure_user_env
+    if grep -q "^export ${key}=" "$USER_ENV" 2>/dev/null; then
+        # Replace in-place; use | as delimiter so paths with / are safe
+        sed -i "s|^export ${key}=.*|export ${key}=\"${value}\"|" "$USER_ENV"
+    else
+        echo "export ${key}=\"${value}\"" >> "$USER_ENV"
+    fi
+}
+
 # Export functions for subshells
-export -f log warn err success headline confirm msgbox yesno is_wsl require_wsl has_rocm has_rocdxg has_windows_sdk check_not_root ensure_venv git_clone_or_update pip_install_if_exists ensure_apt_packages standard_header
+export -f log warn err success headline confirm msgbox yesno is_wsl require_wsl has_rocm has_rocdxg has_windows_sdk check_not_root ensure_venv git_clone_or_update pip_install_if_exists ensure_apt_packages standard_header load_user_env ensure_user_env _update_user_env
 
 # --- Automatic GPU Environment Detection ---
 # This ensures that any script sourcing common.sh immediately has access to 

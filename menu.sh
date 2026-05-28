@@ -32,12 +32,30 @@ else
     exit 1
 fi
 
+# Initialise and load persistent user settings (GPU profile, port overrides, …)
+ensure_user_env
+load_user_env
+
+# Source first-run wizard (defines first_run_check)
+if [ -f "$SCRIPT_DIR/scripts/utils/first_run.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/scripts/utils/first_run.sh"
+fi
+
+# Source GPU diagnostics (defines run_gpu_diag)
+if [ -f "$SCRIPT_DIR/scripts/utils/gpu_diag.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/scripts/utils/gpu_diag.sh"
+fi
+
 # Configuration
 VENV_NAME="genai_env"
 VENV_PATH="$HOME/$VENV_NAME"
 COMFYUI_DIR="$HOME/ComfyUI"
 SDNEXT_DIR="$HOME/SD.Next"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
+KOHYA_DIR="$HOME/kohya_ss"
+KOHYA_VENV="$HOME/kohya_env"
 
 # Ensure scripts are executable
 find "$SCRIPT_DIR/scripts" -type f -name "*.sh" -not -executable -exec chmod +x {} + 2>/dev/null || true
@@ -173,10 +191,12 @@ print(f'ROCm Active : \033[38;5;{color}m{rocm_ok}\033[0m')
     local c_status=$( [ -f "$COMFYUI_DIR/main.py" ] && gum style --foreground 46 "✓ Installed" || gum style --foreground 240 "✗ Missing" )
     local s_status=$( [ -f "$SDNEXT_DIR/webui.sh" ] && gum style --foreground 46 "✓ Installed" || gum style --foreground 240 "✗ Missing" )
     local a_status=$( [ -f "$AUTOMATIC1111_DIR/webui.sh" ] && gum style --foreground 46 "✓ Installed" || gum style --foreground 240 "✗ Missing" )
+    local k_status=$( [ -d "$KOHYA_DIR" ] && gum style --foreground 46 "✓ Installed" || gum style --foreground 240 "✗ Missing" )
     
     tool_info+="ComfyUI       : $c_status\n"
     tool_info+="SD.Next       : $s_status\n"
-    tool_info+="Automatic1111 : $a_status"
+    tool_info+="Automatic1111 : $a_status\n"
+    tool_info+="kohya_ss      : $k_status"
 
     # GPU Hardware
     if command -v rocminfo &> /dev/null; then
@@ -226,6 +246,7 @@ show_install_menu() {
         "3. ComfyUI" \
         "4. SD.Next" \
         "5. Automatic1111" \
+        "6. 🎨 kohya_ss (LoRA / Model Training)" \
         "0. ← Back to Main Menu")
     
     case "$CHOICE" in
@@ -234,8 +255,35 @@ show_install_menu() {
         3.*) install_tool "ComfyUI" "$SCRIPT_DIR/scripts/install/comfyui.sh" "$COMFYUI_DIR" ;;
         4.*) install_tool "SD.Next" "$SCRIPT_DIR/scripts/install/sdnext.sh" "$SDNEXT_DIR" ;;
         5.*) install_tool "Automatic1111" "$SCRIPT_DIR/scripts/install/automatic1111.sh" "$AUTOMATIC1111_DIR" ;;
+        6.*) install_kohya_ss ;;
         0.*) return ;;
     esac
+}
+
+# kohya_ss has its own dedicated venv (kohya_env) and does NOT require genai_env.
+# Therefore it cannot use the generic install_tool() which enforces check_venv.
+install_kohya_ss() {
+    if [ -d "$KOHYA_DIR" ]; then
+        msgbox "Already Installed" "kohya_ss is already installed at:\n$KOHYA_DIR\n\nTo update it: Updates → Update Installed AI Tools → kohya_ss"
+        return
+    fi
+
+    if ! is_wsl; then
+        msgbox "WSL2 Required" "kohya_ss installation requires WSL2."
+        return
+    fi
+
+    if [ -f "$SCRIPT_DIR/scripts/install/kohya_ss.sh" ]; then
+        headline "Installing kohya_ss"
+        "$SCRIPT_DIR/scripts/install/kohya_ss.sh"
+        msgbox "Success" "kohya_ss has been installed successfully!\n\nGUI starts at: http://localhost:7861\nLaunch via: Main Menu → Launch Tool → kohya_ss"
+
+        if yesno "Create Desktop Shortcut?" "Would you like to create a Windows Desktop shortcut for kohya_ss?"; then
+            "$SCRIPT_DIR/scripts/utils/create_shortcut.sh" "kohya_ss" "$SCRIPT_DIR/scripts/start/kohya_ss.sh"
+        fi
+    else
+        msgbox "Error" "Installation script not found:\n$SCRIPT_DIR/scripts/install/kohya_ss.sh"
+    fi
 }
 
 show_launch_menu() {
@@ -244,12 +292,14 @@ show_launch_menu() {
         "1. ComfyUI" \
         "2. SD.Next" \
         "3. Automatic1111" \
+        "4. 🎨 kohya_ss (Training GUI)" \
         "0. ← Back to Main Menu")
     
     case "$CHOICE" in
         1.*) launch_tool "ComfyUI" "$SCRIPT_DIR/scripts/start/comfyui.sh" "$COMFYUI_DIR/main.py" ;;
         2.*) launch_tool "SD.Next" "$SCRIPT_DIR/scripts/start/sdnext.sh" "$SDNEXT_DIR/webui.sh" ;;
         3.*) launch_tool "Automatic1111" "$SCRIPT_DIR/scripts/start/automatic1111.sh" "$AUTOMATIC1111_DIR/webui.sh" ;;
+        4.*) launch_tool "kohya_ss" "$SCRIPT_DIR/scripts/start/kohya_ss.sh" "$KOHYA_DIR" ;;
         0.*) return ;;
     esac
 }
@@ -259,6 +309,7 @@ show_shortcuts_menu() {
     [ -f "$COMFYUI_DIR/main.py" ] && options+=("ComfyUI")
     [ -f "$SDNEXT_DIR/webui.sh" ] && options+=("SD.Next")
     [ -f "$AUTOMATIC1111_DIR/webui.sh" ] && options+=("Automatic1111")
+    [ -d "$KOHYA_DIR" ] && options+=("kohya_ss")
     options+=("0. ← Back to Main Menu")
 
     if [ ${#options[@]} -eq 1 ]; then
@@ -270,15 +321,307 @@ show_shortcuts_menu() {
     CHOICE=$(gum choose --cursor="» " --header="Create Desktop Shortcut for:" "${options[@]}")
 
     case "$CHOICE" in
-        "ComfyUI") "$SCRIPT_DIR/scripts/utils/create_shortcut.sh" "ComfyUI" "$SCRIPT_DIR/scripts/start/comfyui.sh" ;;
-        "SD.Next") "$SCRIPT_DIR/scripts/utils/create_shortcut.sh" "SD.Next" "$SCRIPT_DIR/scripts/start/sdnext.sh" ;;
+        "ComfyUI")      "$SCRIPT_DIR/scripts/utils/create_shortcut.sh" "ComfyUI"      "$SCRIPT_DIR/scripts/start/comfyui.sh" ;;
+        "SD.Next")      "$SCRIPT_DIR/scripts/utils/create_shortcut.sh" "SD.Next"      "$SCRIPT_DIR/scripts/start/sdnext.sh" ;;
         "Automatic1111") "$SCRIPT_DIR/scripts/utils/create_shortcut.sh" "Automatic1111" "$SCRIPT_DIR/scripts/start/automatic1111.sh" ;;
+        "kohya_ss")     "$SCRIPT_DIR/scripts/utils/create_shortcut.sh" "kohya_ss"     "$SCRIPT_DIR/scripts/start/kohya_ss.sh" ;;
         "0."*) return ;;
     esac
 }
 
 show_help() {
-    msgbox "Quick Help" "ROCm WSL2 AI Toolkit v3.1.0\n\n$(gum style --bold GETTING STARTED:)\n1. Install Base Environment first\n2. Restart WSL2 (wsl --shutdown)\n3. Install AI tools\n4. Launch your tools!\n\n$(gum style --bold UPGRADING FROM v3.0.x:)\nInstall Tools → Upgrade from ROCm 7.2.1 → 7.2.3\n\n$(gum style --bold REQUIREMENTS:)\n• Windows 11\n• AMD Radeon RX 7000/9000 series GPU\n  or Ryzen Strix / Strix Halo APU\n• AMD Adrenalin 26.2.2+ driver (Windows)\n• Windows SDK (for ROCDXG build)\n• Ubuntu 24.04 or 22.04 in WSL2\n\nFor detailed setup instructions, see:\ndocs/WSL2_SETUP_GUIDE.md\n\nFor troubleshooting, see:\nREADME.md\n\nAMD Documentation:\nrocm.docs.amd.com/projects/radeon-ryzen/"
+    msgbox "Quick Help" "ROCm WSL2 AI Toolkit v3.2.0\n\n$(gum style --bold GETTING STARTED:)\n1. Install Base Environment first\n2. Restart WSL2 (wsl --shutdown)\n3. Install AI tools\n4. Launch your tools!\n\n$(gum style --bold AI TOOLS:)\n• ComfyUI — Node-based Stable Diffusion workflow\n• SD.Next / Automatic1111 — WebUI for Stable Diffusion\n• kohya_ss — LoRA, DreamBooth \u0026 model training (optional)\n\n$(gum style --bold UPGRADING:)\nInstall Tools → Upgrade from ROCm 7.2.1 → 7.2.3\nFor toolkit updates: Updates menu → Check for Toolkit Updates\n\n$(gum style --bold REQUIREMENTS:)\n• Windows 11\n• AMD Radeon RX 7000/9000 series GPU\n  or Ryzen Strix / Strix Halo APU\n• AMD Adrenalin 26.2.2+ driver (Windows)\n• Windows SDK (for ROCDXG build)\n• Ubuntu 24.04 or 22.04 in WSL2\n\nFor detailed setup instructions, see:\ndocs/WSL2_SETUP_GUIDE.md\n\nAMD Documentation:\nrocm.docs.amd.com/projects/radeon-ryzen/"
+}
+
+# --- Changelog helper (used by self-update) ---
+
+_show_update_changenotes() {
+    # Display the topmost version section from CHANGELOG.md in a gum pager.
+    # Called after a successful git pull so the user sees what changed.
+    command -v gum >/dev/null 2>&1 || return 0
+    local cl="$SCRIPT_DIR/CHANGELOG.md"
+    [ -f "$cl" ] || return 0
+
+    # Extract from the first ## [...] header up to (but not including) the second
+    local notes
+    notes=$(awk '/^## \[/{c++; if(c==2) exit} c==1{print}' "$cl")
+    [ -z "$notes" ] && return 0
+
+    echo ""
+    gum style --bold --foreground 212 --margin "0 2" "📋 What changed in this update:"
+    echo ""
+    echo "$notes" | gum pager --soft-wrap
+}
+
+# --- Settings Menu ---
+
+# _list_rocm_gpus: prints "IDX|Marketing Name|gfx_arch" for each GPU agent
+_list_rocm_gpus() {
+    command -v rocminfo >/dev/null 2>&1 || return 1
+    export HSA_ENABLE_DXG_DETECTION=1
+    local rocm_out
+    rocm_out=$(rocminfo 2>/dev/null) || return 1
+
+    local gpu_idx=0
+    while IFS='|' read -r mkt gfx; do
+        [ -z "$gfx" ] && continue
+        echo "${gpu_idx}|${mkt}|${gfx}"
+        ((gpu_idx++)) || true
+    done < <(echo "$rocm_out" | awk '
+        /^Agent [0-9]+/ {
+            if (is_gpu && gfx != "") printf "%s|%s\n", mkt, gfx
+            is_gpu=0; mkt=""; gfx=""
+        }
+        /Device Type:.*GPU/ { is_gpu=1 }
+        /Marketing Name:/ {
+            sub(/.*Marketing Name:[[:space:]]*/, "")
+            sub(/[[:space:]]*$/, "")
+            mkt=$0
+        }
+        /^[[:space:]]+Name:[[:space:]]+gfx[0-9]+/ {
+            match($0, /gfx[0-9]+/)
+            gfx=substr($0, RSTART, RLENGTH)
+        }
+        END { if (is_gpu && gfx != "") printf "%s|%s\n", mkt, gfx }
+    ')
+}
+
+show_gpu_profile_menu() {
+    headline "GPU Profile Selection"
+
+    # Reload current saved values
+    load_user_env
+    local cur_gfx="${HSA_OVERRIDE_GFX_VERSION:-}"
+    local cur_dev="${ROCR_VISIBLE_DEVICES:-}"
+
+    local status_line
+    if [ -z "$cur_gfx" ] && [ -z "$cur_dev" ]; then
+        status_line="Current: $(gum style --foreground 46 "Auto-detect (default)")"
+    else
+        status_line="Current: GFX=$(gum style --foreground 214 "${cur_gfx:-auto}")   DEVICE=$(gum style --foreground 214 "${cur_dev:-all}")"
+    fi
+    echo "  $status_line"
+    echo ""
+
+    # Build GPU list from rocminfo
+    local -a gpu_labels=() gpu_gfx_list=() gpu_idx_list=()
+    while IFS='|' read -r idx mkt gfx; do
+        gpu_labels+=("GPU ${idx}: ${mkt:-Unknown} (${gfx})")
+        gpu_gfx_list+=("$gfx")
+        gpu_idx_list+=("$idx")
+    done < <(_list_rocm_gpus 2>/dev/null)
+
+    local -a choices=()
+    choices+=("🔄 Auto — let ROCm detect the GPU automatically (recommended)")
+    for lbl in "${gpu_labels[@]:-}"; do
+        [ -n "$lbl" ] && choices+=("$lbl")
+    done
+    choices+=("✏️  Manual — enter HSA_OVERRIDE_GFX_VERSION manually")
+    choices+=("0. ← Back")
+
+    local CHOICE
+    CHOICE=$(gum choose --cursor="» " --header="Select GPU profile:" "${choices[@]}")
+
+    case "$CHOICE" in
+        "🔄 Auto"*)
+            _update_user_env "HSA_OVERRIDE_GFX_VERSION" ""
+            _update_user_env "ROCR_VISIBLE_DEVICES" ""
+            export HSA_OVERRIDE_GFX_VERSION=""
+            export ROCR_VISIBLE_DEVICES=""
+            msgbox "Auto-detect restored" "GPU settings cleared.\nROCm will auto-detect the GPU architecture on next launch."
+            ;;
+        "GPU "*)
+            # Match selected label to stored arrays
+            local i selected_gfx="" selected_idx=-1
+            for i in "${!gpu_labels[@]}"; do
+                if [ "${gpu_labels[$i]}" = "$CHOICE" ]; then
+                    selected_gfx="${gpu_gfx_list[$i]}"
+                    selected_idx="${gpu_idx_list[$i]}"
+                    break
+                fi
+            done
+            if [ -n "$selected_gfx" ]; then
+                _update_user_env "HSA_OVERRIDE_GFX_VERSION" "$selected_gfx"
+                _update_user_env "ROCR_VISIBLE_DEVICES" "$selected_idx"
+                export HSA_OVERRIDE_GFX_VERSION="$selected_gfx"
+                export ROCR_VISIBLE_DEVICES="$selected_idx"
+                msgbox "GPU Profile Saved" "Active GPU : GPU $selected_idx\nArchitecture: $selected_gfx\nROCR_VISIBLE_DEVICES: $selected_idx\n\nSettings stored in ~/.config/rocm-wsl-ai/user.env\nAll launch scripts will use this profile."
+            fi
+            ;;
+        "✏️  Manual"*)
+            local manual_gfx
+            manual_gfx=$(gum input \
+                --placeholder "e.g. gfx1100 or gfx1200" \
+                --value "${cur_gfx}" \
+                --header "Enter HSA_OVERRIDE_GFX_VERSION (leave empty = auto):")
+            _update_user_env "HSA_OVERRIDE_GFX_VERSION" "$manual_gfx"
+            export HSA_OVERRIDE_GFX_VERSION="$manual_gfx"
+            if [ -n "$manual_gfx" ]; then
+                msgbox "Manual Override Saved" "HSA_OVERRIDE_GFX_VERSION='$manual_gfx'\nStored in user.env."
+            else
+                _update_user_env "ROCR_VISIBLE_DEVICES" ""
+                export ROCR_VISIBLE_DEVICES=""
+                msgbox "Cleared" "HSA_OVERRIDE_GFX_VERSION cleared — auto-detect active."
+            fi
+            ;;
+        "0."*) return ;;
+    esac
+}
+
+show_settings_editor() {
+    while true; do
+        load_user_env  # always reflect latest saved values
+        local cur_gfx="${HSA_OVERRIDE_GFX_VERSION:-}"
+        local cur_dev="${ROCR_VISIBLE_DEVICES:-}"
+        local cur_dxg="${HSA_ENABLE_DXG_DETECTION:-1}"
+        local cur_cfy="${COMFYUI_PORT:-}"
+        local cur_sdn="${SDNEXT_PORT:-}"
+        local cur_a11="${A1111_PORT:-}"
+        local cur_koy="${KOHYA_PORT:-}"
+
+        local CHOICE
+        CHOICE=$(gum choose --cursor="» " \
+            --header="Edit Settings  (empty value = use default):" \
+            "1. HSA_OVERRIDE_GFX_VERSION   [${cur_gfx:-auto}]" \
+            "2. ROCR_VISIBLE_DEVICES       [${cur_dev:-all GPUs}]" \
+            "3. HSA_ENABLE_DXG_DETECTION   [${cur_dxg:-1}]" \
+            "4. ComfyUI Port               [${cur_cfy:-8188}]" \
+            "5. SD.Next Port               [${cur_sdn:-7860}]" \
+            "6. Automatic1111 Port         [${cur_a11:-7860}]" \
+            "7. kohya_ss Port              [${cur_koy:-7861}]" \
+            "8. 📁 Open user.env in editor" \
+            "0. ← Back")
+
+        local val
+        case "$CHOICE" in
+            1.*)
+                val=$(gum input --value "$cur_gfx" \
+                      --placeholder "gfx1100 | gfx1102 | gfx1200 | empty=auto" \
+                      --header "GPU Architecture (HSA_OVERRIDE_GFX_VERSION):")
+                _update_user_env "HSA_OVERRIDE_GFX_VERSION" "$val"
+                export HSA_OVERRIDE_GFX_VERSION="$val"
+                ;;
+            2.*)
+                val=$(gum input --value "$cur_dev" \
+                      --placeholder "0 | 1 | 0,1 | empty=all" \
+                      --header "GPU Device Index for multi-GPU (ROCR_VISIBLE_DEVICES):")
+                _update_user_env "ROCR_VISIBLE_DEVICES" "$val"
+                export ROCR_VISIBLE_DEVICES="$val"
+                ;;
+            3.*)
+                val=$(gum input --value "${cur_dxg:-1}" \
+                      --placeholder "1 = enabled (WSL requires this)" \
+                      --header "WSL DXCore bridge (HSA_ENABLE_DXG_DETECTION):")
+                _update_user_env "HSA_ENABLE_DXG_DETECTION" "${val:-1}"
+                export HSA_ENABLE_DXG_DETECTION="${val:-1}"
+                ;;
+            4.*)
+                val=$(gum input --value "${cur_cfy:-8188}" --placeholder "8188" \
+                      --header "ComfyUI Port:")
+                _update_user_env "COMFYUI_PORT" "$val"; export COMFYUI_PORT="$val"
+                ;;
+            5.*)
+                val=$(gum input --value "${cur_sdn:-7860}" --placeholder "7860" \
+                      --header "SD.Next Port:")
+                _update_user_env "SDNEXT_PORT" "$val"; export SDNEXT_PORT="$val"
+                ;;
+            6.*)
+                val=$(gum input --value "${cur_a11:-7860}" --placeholder "7860" \
+                      --header "Automatic1111 Port:")
+                _update_user_env "A1111_PORT" "$val"; export A1111_PORT="$val"
+                ;;
+            7.*)
+                val=$(gum input --value "${cur_koy:-7861}" --placeholder "7861" \
+                      --header "kohya_ss Port:")
+                _update_user_env "KOHYA_PORT" "$val"; export KOHYA_PORT="$val"
+                ;;
+            8.*)
+                local ed="${EDITOR:-}"
+                if [ -z "$ed" ]; then
+                    command -v nano >/dev/null 2>&1 && ed=nano
+                    command -v vi   >/dev/null 2>&1 && ed=vi
+                fi
+                if [ -n "$ed" ]; then
+                    "$ed" "$USER_ENV"
+                else
+                    msgbox "No editor found" "Set EDITOR or install nano:\n  sudo apt install nano\nThen open: $USER_ENV"
+                fi
+                ;;
+            0.*) return ;;
+        esac
+    done
+}
+
+show_settings_menu() {
+    while true; do
+        local CHOICE
+        CHOICE=$(gum choose --cursor="» " --header="⚙️  Settings:" \
+            "1. 🎮 GPU Profile  (select active GPU / fix arch detection)" \
+            "2. ✏️  Edit Settings  (ports, env vars, user.env)" \
+            "3. 🔍 GPU Diagnostics" \
+            "0. ← Back to Main Menu")
+
+        case "$CHOICE" in
+            1.*) show_gpu_profile_menu ;;
+            2.*) show_settings_editor ;;
+            3.*) run_gpu_diag ;;
+            0.*) return ;;
+        esac
+    done
+}
+
+# --- Self-Update & Updates Menu ---
+
+self_update_toolkit() {
+    headline "Toolkit Self-Update Check"
+
+    if [ ! -d "$SCRIPT_DIR/.git" ]; then
+        msgbox "Not a Git Repository" "Self-update requires a git clone.\n\nTo update manually:\n  git -C '$SCRIPT_DIR' pull"
+        return
+    fi
+
+    log "Fetching remote update information..."
+    if ! git -C "$SCRIPT_DIR" fetch origin 2>/dev/null; then
+        msgbox "Network Error" "Could not reach the remote repository.\nPlease check your internet connection."
+        return
+    fi
+
+    local branch behind
+    branch=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+    behind=$(git -C "$SCRIPT_DIR" rev-list "HEAD..origin/$branch" --count 2>/dev/null || echo "0")
+
+    if [ "$behind" = "0" ]; then
+        msgbox "Already Up to Date" "✅ The toolkit is already up to date!\n\nNo new commits on origin/$branch."
+        return
+    fi
+
+    local changelog
+    changelog=$(git -C "$SCRIPT_DIR" log "HEAD..origin/$branch" --oneline --no-merges 2>/dev/null | head -15)
+
+    if yesno "Updates Available ($behind new commit(s))" "New changes:\n\n$changelog\n\nApply updates now? (git pull --rebase)"; then
+        if git -C "$SCRIPT_DIR" pull --rebase --autostash; then
+            _show_update_changenotes
+            msgbox "Update Complete" "✅ Toolkit updated successfully!\n\nPlease restart menu.sh to apply all changes:\n  Press Ctrl+C, then run: ./menu.sh"
+        else
+            msgbox "Update Failed" "❌ git pull failed.\n\nTry manually:\n  git -C '$SCRIPT_DIR' pull"
+        fi
+    fi
+}
+
+show_updates_menu() {
+    while true; do
+        local CHOICE
+        CHOICE=$(gum choose --cursor="» " --header="🔄 Updates:" \
+            "1. 🔄 Check for Toolkit Updates (git pull)" \
+            "2. 🛠️  Update Installed AI Tools" \
+            "0. ← Back to Main Menu")
+
+        case "$CHOICE" in
+            1.*) self_update_toolkit ;;
+            2.*) "$SCRIPT_DIR/scripts/utils/update_ai_setup.sh" ;;
+            0.*) return ;;
+        esac
+    done
 }
 
 # --- Main Loop ---
@@ -287,7 +630,7 @@ main_menu() {
     while true; do
         clear
         echo ""
-        gum style --border double --margin "0 2" --padding "1 2" --border-foreground 212 --align center "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit v3.1.0")" "ROCm 7.2.3 + ROCDXG | PyTorch 2.9.1 | WSL2 Ubuntu 24.04/22.04"
+        gum style --border double --margin "0 2" --padding "1 2" --border-foreground 212 --align center "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit v3.2.0")" "ROCm 7.2.3 + ROCDXG | PyTorch 2.9.1 | WSL2 Ubuntu 24.04/22.04"
         echo ""
         
         CHOICE=$(gum choose --cursor="» " --header="$(gum style --bold 'Main Menu') (Choose an option):" \
@@ -296,7 +639,9 @@ main_menu() {
             "3. 🔗 Create Desktop Shortcuts" \
             "4. 📊 System Status" \
             "5. ✨ Magic Settings Auto-Tuner" \
-            "6. ❓ Help" \
+            "6. 🔄 Updates" \
+            "7. ⚙️  Settings" \
+            "8. ❓ Help" \
             "0. 🚪 Exit")
         
         case "$CHOICE" in
@@ -305,7 +650,9 @@ main_menu() {
             3.*) show_shortcuts_menu ;;
             4.*) show_status ;;
             5.*) "$SCRIPT_DIR/scripts/utils/auto_tuner.sh" ;;
-            6.*) show_help ;;
+            6.*) show_updates_menu ;;
+            7.*) show_settings_menu ;;
+            8.*) show_help ;;
             0.*) clear; exit 0 ;;
         esac
     done
@@ -357,6 +704,7 @@ check_upgrade_needed() {
 }
 
 # Run startup checks before showing menu
+first_run_check  2>/dev/null || true   # welcome wizard on very first launch
 check_windows_sdk_warning
 check_upgrade_needed
 

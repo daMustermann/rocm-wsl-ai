@@ -19,6 +19,8 @@ This toolkit was built to abstract away the Linux complexity. It provides a beau
 - **Seamless Windows Integration**: It generates interactive `.bat` files straight to your Windows Desktop. Double-click the icon in Windows, and it silently boots the WSL backend and launches your AI tools without you ever touching a terminal.
 - **💤 Smart Sleep VRAM Manager**: Your AI tools are automatically put into hibernation after 30 minutes of inactivity, instantly freeing 100% of your VRAM back to Windows! Simply refreshing your browser on port 8188 wakes the AI instantly back up.
 - **✨ Magic Settings Auto-Tuner**: Unsure which PyTorch optimizations make your specific GPU fastest? The built-in tuner natively sweeps your hardware against different attention and caching profiles, isolates the mathematical winner, and permanently injects it into your launch scripts.
+- **🔄 One-Click Self-Update**: The toolkit can update itself and all installed AI tools from within the menu — no manual `git pull` needed.
+- **🎨 Model Training with kohya_ss**: Optionally install [kohya_ss](https://github.com/bmaltais/kohya_ss) for LoRA, DreamBooth, and fine-tuning directly on your AMD GPU.
 - **Gorgeous Status Dashboard**: Built with Charmbracelet's `gum`, giving you a highly readable, colorful interface with real-time hardware polling so you never have to guess if ROCm is actually working.
 
 ---
@@ -84,6 +86,7 @@ Run `./menu.sh` again and install your desired tools:
 - **ComfyUI**: Node-based workflow for Stable Diffusion
 - **SD.Next**: Advanced Stable Diffusion WebUI
 - **Automatic1111**: Popular Stable Diffusion WebUI
+- **kohya_ss** *(optional)*: LoRA, DreamBooth & fine-tuning model training
 
 ### 5. Launch and Enjoy!
 
@@ -91,7 +94,63 @@ Use the **Launch Tool** menu to start your installed applications, or use the **
 
 ---
 
-## ⬆️ Upgrading from v3.0.x (ROCm 7.2.1)
+## 🎨 Optional: kohya_ss Model Training
+
+[kohya_ss](https://github.com/bmaltais/kohya_ss) is a powerful training framework for creating LoRA adapters, DreamBooth fine-tunes, and other model customizations. It runs fully on your AMD GPU via ROCm.
+
+### Install kohya_ss
+
+From the menu: **Install Tools → kohya_ss (LoRA / Model Training)**
+
+This will:
+- Clone the kohya_ss repository to `~/kohya_ss`
+- Create a **dedicated** Python virtual environment (`~/kohya_env`) to avoid dependency conflicts with your inference tools
+- Install PyTorch with ROCm support and all training dependencies
+- Pre-configure [Hugging Face Accelerate](https://huggingface.co/docs/accelerate) for single-GPU ROCm training
+
+### Launch kohya_ss
+
+From the menu: **Launch Tool → kohya_ss (Training GUI)**
+
+Or create a desktop shortcut: **Create Desktop Shortcuts → kohya_ss**
+
+The web GUI will start at **http://localhost:7861** — open this in your Windows browser.
+
+> **Note:** kohya_ss uses a separate venv (`~/kohya_env`) and does **not** share dependencies with your inference tools (`~/genai_env`). Your ComfyUI/SD.Next installations are unaffected.
+
+---
+
+## 🔄 Self-Update
+
+The toolkit can update itself and all installed AI tools without leaving the menu.
+
+### Update the Toolkit
+
+From the menu: **Updates → Check for Toolkit Updates**
+
+This will:
+1. Fetch the latest commits from the remote repository
+2. Show you a list of new changes
+3. Apply the update with `git pull --rebase` (safe — preserves local changes via autostash)
+4. Prompt you to restart `menu.sh` to apply the changes
+
+### Update AI Tools
+
+From the menu: **Updates → Update Installed AI Tools**
+
+This opens the Update Manager which lets you selectively update:
+- PyTorch + Triton
+- ComfyUI (including all custom nodes)
+- SD.Next
+- Automatic1111 (including all extensions)
+- kohya_ss
+- Ollama
+- Text Generation WebUI
+- Or update everything at once
+
+---
+
+## ⬆️ Upgrading from v3.0.x / v3.1.x
 
 If you already have the toolkit installed with ROCm 7.2.1, you can upgrade to 7.2.3 + ROCDXG **without losing any of your AI tools, models, or custom nodes**.
 
@@ -109,7 +168,7 @@ On your **Windows** machine, install these two things:
 
 ```bash
 cd rocm-wsl-ai
-git pull        # Get the latest toolkit version
+git pull        # Get the latest toolkit version  —  or use menu: Updates → Check for Toolkit Updates
 ./menu.sh
 # Select: Install Tools → Upgrade from ROCm 7.2.1 → 7.2.3 (ROCDXG)
 ```
@@ -144,31 +203,44 @@ The upgrade wizard will:
 
 ## 🛠️ What Gets Installed
 
-### Base Environment Installation
-1. **ROCm 7.2.3**: Via AMD's official `amdgpu-install` quick-start method
-   - ROCm packages installed via `apt install rocm`
-2. **ROCDXG (librocdxg)**: Built from source ([GitHub](https://github.com/ROCm/librocdxg/))
-   - User-mode WSL bridge library enabling GPU compute via DXCore
-   - Replaces the legacy `roc4wsl` approach
-3. **Python Virtual Environment**: Completely isolated in `~/genai_env`
-4. **PyTorch 2.9.1**: Official AMD wheels from repo.radeon.com
-   - `torch`, `torchvision`, `torchaudio`, `pytorch-triton-rocm`
-5. **GPU Configuration**: Automatic `HSA_OVERRIDE_GFX_VERSION` + `HSA_ENABLE_DXG_DETECTION` setup
+### Base Environment
+1. **ROCm 7.2.3** via AMD's official `amdgpu-install` quick-start
+2. **ROCDXG (librocdxg)** — built from source, WSL GPU compute bridge
+3. **Python Virtual Environment** (`~/genai_env`) — isolated from system Python
+4. **PyTorch 2.9.1** — official AMD wheels from `repo.radeon.com`
+5. **GPU Configuration** — `HSA_OVERRIDE_GFX_VERSION` + `HSA_ENABLE_DXG_DETECTION`
+
+### Optional Tools
+| Tool | Description | Port | Venv |
+|------|-------------|------|------|
+| ComfyUI | Node-based Stable Diffusion | 8188 | `~/genai_env` |
+| SD.Next | Advanced WebUI | 7860 | `~/genai_env` |
+| Automatic1111 | Popular WebUI | 7860 | `~/genai_env` |
+| kohya_ss | LoRA & model training | 7861 | `~/kohya_env` |
 
 ## ⚙️ Technical Details
 
-| Component | Version |
-|-----------|---------|
+| Component | Version / Detail |
+|-----------|------------------|
 | ROCm | 7.2.3 |
 | ROCDXG | librocdxg (built from source) |
 | PyTorch | 2.9.1+rocm7.2.3 |
 | Triton | 3.5.1+rocm7.2.3 |
-| Installation Method | amdgpu-install + apt install rocm + librocdxg |
-| WSL Bridge | ROCDXG (HSA_ENABLE_DXG_DETECTION=1) |
+| kohya_ss venv | `~/kohya_env` (separate from `~/genai_env`) |
+| Accelerate | pre-configured for single-GPU ROCm |
 
 ---
 
 ## 🔧 Troubleshooting
+
+### Desktop Shortcut Doesn't Start / Window Closes Immediately
+**Symptoms**: Double-clicking the `.bat` file on the Desktop opens a window that closes immediately, or WSL fails to start.
+
+**Solutions**:
+1. **Recreate the shortcut** — old shortcuts created before v3.2.0 used incorrect `wsl.exe` syntax. Delete the old `.bat` file and create a new one from the menu: **Create Desktop Shortcuts**
+2. **Check WSL is installed** — run `wsl --list --verbose` in PowerShell to confirm Ubuntu is available
+3. **Enable WSL interop** — run `wsl --update` in PowerShell (as Administrator)
+4. **Check the WSL distro name** — the shortcut uses `$WSL_DISTRO_NAME` which is usually `Ubuntu-24.04`. Run `echo $WSL_DISTRO_NAME` inside WSL to confirm
 
 ### GPU Not Detected
 **Symptoms**: `rocminfo` shows no GPU or PyTorch can't see ROCm
@@ -197,4 +269,5 @@ MIT License
 
 - AMD for ROCm and driver support
 - PyTorch team for ROCm integration
+- [bmaltais](https://github.com/bmaltais) for the excellent kohya_ss training framework
 - The incredible ComfyUI, SD.Next, and Automatic1111 open-source communities

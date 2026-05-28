@@ -10,10 +10,8 @@ fi
 
 # ===============================================================================
 # Update Script for ROCm AI Setup - 2026 Edition (ROCm 7.2.3 + ROCDXG)
-# Updates ROCm, PyTorch, ComfyUI, SD.Next, Automatic1111, Ollama
-# Includes Text Generation WebUI update helper
-# Note: Support for several legacy third-party tools has been removed to focus
-# on maintaining a smaller, well-tested set of ROCm-compatible installers.
+# Updates ROCm, PyTorch, ComfyUI, SD.Next, Automatic1111, kohya_ss, Ollama
+# Includes self-update for the toolkit itself (git pull)
 # ===============================================================================
 
 # --- Configuration ---
@@ -23,6 +21,10 @@ COMFYUI_DIR="$HOME/ComfyUI"
 SDNEXT_DIR="$HOME/SD.Next"
 AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
 TEXTGEN_DIR="$HOME/text-generation-webui"
+KOHYA_DIR="$HOME/kohya_ss"
+KOHYA_VENV="$HOME/kohya_env"
+# Toolkit root (two levels up from scripts/utils/)
+TOOLKIT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Map prior function names
 print_header(){ headline "$@"; }
@@ -151,6 +153,71 @@ update_ollama() {
     fi
 }
 
+update_kohya_ss() {
+    print_section "Updating kohya_ss"
+    if [ ! -d "$KOHYA_DIR" ]; then
+        print_warning "kohya_ss not installed at $KOHYA_DIR — skipping"
+        return 1
+    fi
+
+    pushd "$KOHYA_DIR" >/dev/null || return 1
+    git pull --rebase --autostash || print_warning "git pull had issues — continuing"
+
+    if [ -f "$KOHYA_VENV/bin/activate" ]; then
+        # shellcheck disable=SC1090
+        source "$KOHYA_VENV/bin/activate"
+        for req_file in requirements.txt requirements_linux.txt; do
+            [ -f "$req_file" ] && pip install -r "$req_file" --upgrade || true
+        done
+        deactivate
+    else
+        print_warning "kohya_ss venv not found at $KOHYA_VENV"
+    fi
+
+    popd >/dev/null
+    print_success "kohya_ss updated"
+}
+
+self_update_toolkit() {
+    print_section "Toolkit Self-Update (git pull)"
+
+    if [ ! -d "$TOOLKIT_DIR/.git" ]; then
+        print_warning "$TOOLKIT_DIR is not a git repository."
+        print_warning "Self-update is only available when the toolkit was installed via git clone."
+        return 1
+    fi
+
+    print_info "Fetching updates from remote..."
+    if ! git -C "$TOOLKIT_DIR" fetch origin 2>/dev/null; then
+        print_warning "Could not reach remote. Check your internet connection."
+        return 1
+    fi
+
+    local branch
+    branch=$(git -C "$TOOLKIT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+    local behind
+    behind=$(git -C "$TOOLKIT_DIR" rev-list "HEAD..origin/$branch" --count 2>/dev/null || echo "0")
+
+    if [ "$behind" = "0" ]; then
+        print_success "Toolkit is already up to date — no new commits on origin/$branch."
+        return 0
+    fi
+
+    print_info "$behind new commit(s) available on origin/$branch:"
+    git -C "$TOOLKIT_DIR" log "HEAD..origin/$branch" --oneline --no-merges | head -20
+    echo ""
+
+    if confirm "Apply these updates now? (git pull --rebase)"; then
+        if git -C "$TOOLKIT_DIR" pull --rebase --autostash; then
+            print_success "Toolkit updated! Please restart menu.sh to apply changes."
+        else
+            print_warning "git pull failed. Try manually: git -C '$TOOLKIT_DIR' pull"
+        fi
+    else
+        print_info "Update postponed."
+    fi
+}
+
     # Note: InvokeAI and Fooocus were removed from this toolkit to reduce
     # maintenance surface. If you need to re-add them, implement dedicated
     # installers and update handlers in the scripts/install and scripts/start
@@ -200,54 +267,112 @@ PY
 }
 
 show_update_menu() {
+    if command -v gum >/dev/null 2>&1; then
+        _show_update_menu_gum
+    else
+        _show_update_menu_text
+    fi
+}
+
+_show_update_menu_gum() {
     while true; do
         clear
-        print_header "AI Tools Update Menu - 2026 (ROCm 7.2.3 + ROCDXG)"
-    echo -e "${CYAN}🔄 Select what to update:${NC}\n"
-    echo -e "1.  ${YELLOW}Reinstall AMD GPU drivers${NC}"
-    echo -e "2.  Update ROCm stack"
-    echo -e "3.  Update PyTorch (ROCm) + Triton"
-    echo -e "4.  Update ComfyUI"
-    echo -e "5.  Update SD.Next"
-    echo -e "6.  Update Automatic1111"
-    echo -e "7.  Update Ollama"
-    # Legacy support entries removed where applicable.
-    echo -e "10. Update Text Generation WebUI"
-    echo ""
-    echo -e "11. ${GREEN}Update ALL AI tools (excluding drivers)${NC}"
-    echo -e "12. Clean caches"
-    echo -e "13. Verify installation"
-    echo -e "0.  Back"
+        echo ""
+        gum style --bold --foreground 212 --border normal --border-foreground 212 --padding "0 2" "🔄 Update Manager — ROCm AI Toolkit v3.2.0"
+        echo ""
+        local CHOICE
+        CHOICE=$(gum choose --cursor="» " --header="Select what to update:" \
+            "0.  🔄 Update Toolkit (self-update / git pull)" \
+            "1.  ⚠️  Reinstall AMD GPU drivers" \
+            "2.  ROCm stack" \
+            "3.  PyTorch (ROCm 7.2) + Triton" \
+            "4.  ComfyUI" \
+            "5.  SD.Next" \
+            "6.  Automatic1111" \
+            "7.  kohya_ss" \
+            "8.  Ollama" \
+            "9.  Text Generation WebUI" \
+            "10. 🚀 Update ALL AI tools (3-9, no drivers)" \
+            "11. 🧹 Clean caches" \
+            "12. ✅ Verify installations" \
+            "q.  ← Back")
+        case "$CHOICE" in
+            0.*) self_update_toolkit ;;
+            1.*) update_amdgpu_drivers ;;
+            2.*) update_rocm ;;
+            3.*) update_pytorch ;;
+            4.*) update_comfyui ;;
+            5.*) update_sdnext ;;
+            6.*) update_automatic1111 ;;
+            7.*) update_kohya_ss ;;
+            8.*) update_ollama ;;
+            9.*) update_textgen ;;
+            10.*)
+                print_header "Updating all AI tools"
+                update_pytorch; update_comfyui; update_sdnext
+                update_automatic1111; update_kohya_ss; update_ollama; update_textgen
+                cleanup_cache; verify_installations
+                print_success "All AI tools updated"
+                ;;
+            11.*) cleanup_cache ;;
+            12.*) verify_installations ;;
+            q.*|Q.*) return ;;
+        esac
+        echo ""
+        read -rp "  Press Enter to continue..."
+    done
+}
+
+_show_update_menu_text() {
+    while true; do
+        clear
+        echo -e "${CYAN}🔄 Update Manager — ROCm AI Toolkit${NC}\n"
+        echo -e "0.  ${YELLOW}🔄 Update Toolkit (self-update / git pull)${NC}"
+        echo -e "1.  ${YELLOW}Reinstall AMD GPU drivers${NC}"
+        echo -e "2.  Update ROCm stack"
+        echo -e "3.  Update PyTorch (ROCm) + Triton"
+        echo -e "4.  Update ComfyUI"
+        echo -e "5.  Update SD.Next"
+        echo -e "6.  Update Automatic1111"
+        echo -e "7.  Update kohya_ss"
+        echo -e "8.  Update Ollama"
+        echo -e "9.  Update Text Generation WebUI"
+        echo ""
+        echo -e "10. ${GREEN}Update ALL AI tools (3-9, no drivers)${NC}"
+        echo -e "11. Clean caches"
+        echo -e "12. Verify installations"
+        echo -e "q.  Back"
         echo -e "${BLUE}========================================${NC}"
-    read -p "Choice: " choice
+        read -rp "Choice: " choice
         case $choice in
+            0) self_update_toolkit ;;
             1) update_amdgpu_drivers ;;
             2) update_rocm ;;
             3) update_pytorch ;;
             4) update_comfyui ;;
             5) update_sdnext ;;
             6) update_automatic1111 ;;
-            7) update_ollama ;;
-            # removed
-            10) update_textgen ;;
-            11)
+            7) update_kohya_ss ;;
+            8) update_ollama ;;
+            9) update_textgen ;;
+            10)
                 print_header "Updating all AI tools"
-                update_pytorch; update_comfyui; update_sdnext; update_automatic1111; update_ollama; update_textgen
+                update_pytorch; update_comfyui; update_sdnext
+                update_automatic1111; update_kohya_ss; update_ollama; update_textgen
                 cleanup_cache; verify_installations
                 print_success "All AI tools updated"
                 ;;
-            12) cleanup_cache ;;
-            13) verify_installations ;;
-            0) return ;;
+            11) cleanup_cache ;;
+            12) verify_installations ;;
+            q|Q) return ;;
             *) print_error "Invalid option" ;;
         esac
-        read -p "Press Enter to continue..." _
+        read -rp "Press Enter to continue..." _
     done
 }
 
 # --- Main ---
-echo "Starting AI Tools Update Script..."
-if ! grep -q Microsoft /proc/version; then
+if ! grep -q Microsoft /proc/version 2>/dev/null; then
     print_warning "This script is optimized for WSL2; native Linux may differ."
 fi
 show_update_menu
