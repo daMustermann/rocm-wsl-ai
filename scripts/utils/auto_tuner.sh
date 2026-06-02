@@ -36,8 +36,8 @@ log "Benchmarking started. Please wait, this takes about 15-20 seconds..."
 declare -A PROFILES
 PROFILES["0_Default"]="export MIGRAPHX_MLIR_USE_SPECIFIC_OPS="
 PROFILES["1_MIGraphX_Attention"]="export MIGRAPHX_MLIR_USE_SPECIFIC_OPS=attention"
-PROFILES["2_VRAM_Caching"]="export PYTORCH_HIP_ALLOC_CONF=garbage_collection_threshold:0.8,max_split_size_mb:512; export MIGRAPHX_MLIR_USE_SPECIFIC_OPS="
-PROFILES["3_Extreme_Tuning"]="export PYTORCH_HIP_ALLOC_CONF=garbage_collection_threshold:0.8,max_split_size_mb:512; export MIGRAPHX_MLIR_USE_SPECIFIC_OPS=attention"
+PROFILES["2_VRAM_Caching"]="export PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.8,max_split_size_mb:512; export MIGRAPHX_MLIR_USE_SPECIFIC_OPS="
+PROFILES["3_Extreme_Tuning"]="export PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.8,max_split_size_mb:512; export MIGRAPHX_MLIR_USE_SPECIFIC_OPS=attention"
 
 ORDER=("0_Default" "1_MIGraphX_Attention" "2_VRAM_Caching" "3_Extreme_Tuning")
 DISPLAY_NAMES=("Default Baseline" "MIGraphX Attention Opt" "High VRAM Caching" "Extreme (Attention + Caching)")

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.1] - 2026-06-02
+
+### 🐛 Bugfix
+
+#### 🔄 Changed
+- **`scripts/utils/auto_tuner.sh`**: Replaced deprecated `PYTORCH_HIP_ALLOC_CONF` with `PYTORCH_ALLOC_CONF` in benchmark profiles `2_VRAM_Caching` and `3_Extreme_Tuning` — fixes the deprecation warning shown on PyTorch shutdown.
+
+---
+
 ## [3.3.0] - 2026-05-28
 
 ### ⚙️ First-Run Wizard · GPU Diagnostics · GPU Profiles · Settings · Changenotes
