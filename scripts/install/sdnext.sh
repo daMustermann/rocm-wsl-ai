@@ -12,7 +12,7 @@ VENV_NAME="genai_env"
 # Directory where SD.Next will be cloned
 SDNEXT_DIR="$HOME/SD.Next"
 
-SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON="$SCRIPT_DIR/../../lib/common.sh"
 [ -f "$COMMON" ] && source "$COMMON" || { echo "common.sh not found"; exit 1; }
 
@@ -37,6 +37,7 @@ fi
 
 # --- 2. Activate Virtual Environment ---
 echo "[TASK 1/4] Activating Python environment: ${VENV_NAME}"
+# shellcheck disable=SC1090
 source "$ACTIVATE_SCRIPT"
 # Verify which python is being used
 echo "Using Python: $(which python)"
@@ -63,8 +64,7 @@ print(f'PyTorch Version: {torch.__version__}')
 rocm_available = torch.cuda.is_available()
 print(f'ROCm Available via torch.cuda.is_available(): {rocm_available}')
 if not rocm_available:
-    print('[ERROR] PyTorch does not detect a compatible ROCm device.')
-    exit(1)
+    print('[WARN] PyTorch does not detect a compatible ROCm device. Continuing install anyway...')
 else:
     print(f'Detected GPU Count: {torch.cuda.device_count()}')
     print(f'Detected GPU Name [0]: {torch.cuda.get_device_name(0)}')
@@ -86,15 +86,11 @@ echo "--------------------------------------------------"
 # --- 5. Install / Upgrade SD.Next dependencies ---
 echo "[TASK 4/4] Installing / upgrading SD.Next dependencies"
 cd "$SDNEXT_DIR"
-# Use toolkit venv to upgrade requirements if present
-if ensure_venv "$VENV_NAME" ; then
-    if [ -f requirements.txt ]; then
-        pip install -r requirements.txt --upgrade || warn "Failed to install SD.Next requirements"
-    else
-        warn "No requirements.txt found for SD.Next"
-    fi
+# Venv is already active from Task 1; install requirements directly
+if [ -f requirements.txt ]; then
+    pip install -r requirements.txt --upgrade || warn "Failed to install SD.Next requirements"
 else
-    warn "Toolkit virtualenv not found at $VENV_PATH; please activate your environment and run manual upgrade if necessary"
+    warn "No requirements.txt found for SD.Next"
 fi
 
 # Run a non-destructive quick test if available

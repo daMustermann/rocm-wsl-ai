@@ -19,7 +19,7 @@ first_run_check() {
         gum style \
             --border double --margin "1 2" --padding "1 3" \
             --border-foreground 212 --align center \
-            "$(gum style --bold --foreground 212 "👋 Welcome to ROCm WSL2 AI Toolkit v3.2.0")" \
+            "$(gum style --bold --foreground 212 "👋 Welcome to ROCm WSL2 AI Toolkit v3.4.0")" \
             "$(gum style --foreground 240 "First run detected  —  here is how to get started:")"
         echo ""
 
@@ -51,7 +51,7 @@ $(gum style --foreground 240 "  💡 Settings → GPU Diagnostics if something i
             "Edit them anytime via: Main Menu → ⚙️ Settings → Edit Settings"
     else
         echo "==========================="
-        echo " ROCm WSL AI Toolkit v3.2.0"
+        echo " ROCm WSL AI Toolkit v3.4.0"
         echo "==========================="
         echo ""
         echo "First run — Quick Start:"

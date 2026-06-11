@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON="$SCRIPT_DIR/../../lib/common.sh"
 [ -f "$COMMON" ] && source "$COMMON" || { echo "common.sh not found"; exit 1; }
 

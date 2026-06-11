@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.0] - 2026-06-11
+
+### 🔧 Bugfixes · 🤖 Smart Update
+
+#### ✨ Added
+- **Smart Update** (`scripts/utils/smart_update.sh`):
+  - Scans every installed component automatically and shows a colour-coded status table
+  - ROCm: compares `/opt/rocm/.info/version` against target 7.2.3
+  - ROCDXG: checks for `/opt/rocm/lib/librocdxg.so`
+  - PyTorch: activates `genai_env` in a sub-shell, reads `torch.__version__` and compares against target 2.9.1
+  - ComfyUI / SD.Next / Automatic1111 / kohya_ss / TextGen WebUI: `git fetch` + `rev-list HEAD..origin/<branch> --count` (shows exact number of commits behind)
+  - Ollama: compares installed version against GitHub releases API (5 s timeout, non-fatal)
+  - Three modes: **Update all** (one keystroke) · **Pick** (gum multi-select or numbered plain-text) · **Cancel**
+  - Optional re-scan after update run to verify everything is now up to date
+  - Borrows existing `update_*` functions from `update_ai_setup.sh` via source-guard — no duplication
+- **`update_ai_setup.sh`**: New menu entry `s. 🤖 Smart Update` at the top of both gum and text menus
+
+#### 🐛 Fixed
+- **`update_ai_setup.sh`**: Added missing `update_rocm` function — running "Update ROCm stack" previously crashed with `command not found` on line 302
+- **`update_ai_setup.sh`**: Removed dead duplicate `update_pytorch` definition (old nightly variant) — second definition silently overwrote the first; only the ROCm 7.2.3 variant is now active
+- **`update_ai_setup.sh`**: Added source-guard at bottom so the script can be sourced by `smart_update.sh` without launching its interactive menu
+- **`scripts/install/automatic1111.sh`**: `TORCH_COMMAND` corrected from `torch==2.8.0` → `torch==2.9.1` to match the toolkit target version
+- **`scripts/install/automatic1111.sh`**: `SCRIPT_DIR` changed from relative `$(dirname "$0")` to absolute `$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)` — prevents broken paths when called from a different working directory
+- **`scripts/install/comfyui.sh`**: Same `SCRIPT_DIR` fix as above
+- **`scripts/install/sdnext.sh`**: Same `SCRIPT_DIR` fix as above
+- **`scripts/install/sdnext.sh`**: PyTorch verification block no longer calls `exit(1)` when ROCm is not yet present — prints a warning and continues installation instead of aborting
+- **`scripts/install/sdnext.sh`**: Removed redundant second venv activation (`ensure_venv` was called after the venv was already manually activated)
+
+---
+
 ## [3.3.1] - 2026-06-02
 
 ### 🐛 Bugfix

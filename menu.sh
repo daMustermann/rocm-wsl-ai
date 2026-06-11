@@ -330,7 +330,7 @@ show_shortcuts_menu() {
 }
 
 show_help() {
-    msgbox "Quick Help" "ROCm WSL2 AI Toolkit v3.3.1\n\n$(gum style --bold GETTING STARTED:)\n1. Install Base Environment first\n2. Restart WSL2 (wsl --shutdown)\n3. Install AI tools\n4. Launch your tools!\n\n$(gum style --bold AI TOOLS:)\n• ComfyUI — Node-based Stable Diffusion workflow\n• SD.Next / Automatic1111 — WebUI for Stable Diffusion\n• kohya_ss — LoRA, DreamBooth \u0026 model training (optional)\n\n$(gum style --bold UPGRADING:)\nInstall Tools → Upgrade from ROCm 7.2.1 → 7.2.3\nFor toolkit updates: Updates menu → Check for Toolkit Updates\n\n$(gum style --bold REQUIREMENTS:)\n• Windows 11\n• AMD Radeon RX 7000/9000 series GPU\n  or Ryzen Strix / Strix Halo APU\n• AMD Adrenalin 26.2.2+ driver (Windows)\n• Windows SDK (for ROCDXG build)\n• Ubuntu 24.04 or 22.04 in WSL2\n\nFor detailed setup instructions, see:\ndocs/WSL2_SETUP_GUIDE.md\n\nAMD Documentation:\nrocm.docs.amd.com/projects/radeon-ryzen/"
+    msgbox "Quick Help" "ROCm WSL2 AI Toolkit v3.4.0\n\n$(gum style --bold GETTING STARTED:)\n1. Install Base Environment first\n2. Restart WSL2 (wsl --shutdown)\n3. Install AI tools\n4. Launch your tools!\n\n$(gum style --bold AI TOOLS:)\n• ComfyUI — Node-based Stable Diffusion workflow\n• SD.Next / Automatic1111 — WebUI for Stable Diffusion\n• kohya_ss — LoRA, DreamBooth \u0026 model training (optional)\n\n$(gum style --bold UPGRADING:)\nInstall Tools → Upgrade from ROCm 7.2.1 → 7.2.3\nFor toolkit updates: Updates menu → Check for Toolkit Updates\n\n$(gum style --bold REQUIREMENTS:)\n• Windows 11\n• AMD Radeon RX 7000/9000 series GPU\n  or Ryzen Strix / Strix Halo APU\n• AMD Adrenalin 26.2.2+ driver (Windows)\n• Windows SDK (for ROCDXG build)\n• Ubuntu 24.04 or 22.04 in WSL2\n\nFor detailed setup instructions, see:\ndocs/WSL2_SETUP_GUIDE.md\n\nAMD Documentation:\nrocm.docs.amd.com/projects/radeon-ryzen/"
 }
 
 # --- Changelog helper (used by self-update) ---
@@ -630,7 +630,7 @@ main_menu() {
     while true; do
         clear
         echo ""
-        gum style --border double --margin "0 2" --padding "1 2" --border-foreground 212 --align center "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit v3.3.1")" "ROCm 7.2.3 + ROCDXG | PyTorch 2.9.1 | WSL2 Ubuntu 24.04/22.04"
+        gum style --border double --margin "0 2" --padding "1 2" --border-foreground 212 --align center "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit v3.4.0")" "ROCm 7.2.3 + ROCDXG | PyTorch 2.9.1 | WSL2 Ubuntu 24.04/22.04"
         echo ""
         
         CHOICE=$(gum choose --cursor="» " --header="$(gum style --bold 'Main Menu') (Choose an option):" \

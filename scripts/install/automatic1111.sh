@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON="$SCRIPT_DIR/../../lib/common.sh"
 [ -f "$COMMON" ] && source "$COMMON" || { echo "common.sh not found"; exit 1; }
 
@@ -35,7 +35,7 @@ export GPU_FORCE_64BIT_PTR=1
 export GPU_MAX_HEAP_SIZE="100%"
 export GPU_MAX_ALLOC_PERCENT="100%"
 export GPU_USE_SYNC_OBJECTS=1
-export TORCH_COMMAND="pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2"
+export TORCH_COMMAND="pip install torch==2.9.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2"
 export PYTORCH_CUDA_ALLOC_CONF=""
 export PYTORCH_ROCM_ALLOW_UNALIGNED_ACCESS=1
 EOF
