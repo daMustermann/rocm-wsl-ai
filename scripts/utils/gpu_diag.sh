@@ -133,7 +133,11 @@ run_gpu_diag() {
     if [ -n "$gfx_val" ]; then
         _diag_row "HSA_OVERRIDE_GFX_VERSION"  ok   "=\"$gfx_val\" (manual override)"
     else
-        _diag_row "HSA_OVERRIDE_GFX_VERSION"  info "Not set — ROCm auto-detects arch"
+        # Not set is only a problem when PyTorch/ROCm can't auto-detect the arch
+        _diag_row "HSA_OVERRIDE_GFX_VERSION"  warn "Not set — if PyTorch can't see GPU, set this!"
+        _diag_row "  RX 7900 XTX/XT"          info "Settings → GPU Profile  or: export HSA_OVERRIDE_GFX_VERSION=11.0.0"
+        _diag_row "  RX 7800/7700 XT"         info "export HSA_OVERRIDE_GFX_VERSION=11.0.2"
+        _diag_row "  RX 9070 / 9070 XT"       info "export HSA_OVERRIDE_GFX_VERSION=12.0.0"
     fi
 
     local dev_val="${ROCR_VISIBLE_DEVICES:-}"
@@ -154,16 +158,19 @@ run_gpu_diag() {
         local rocm_out
         rocm_out=$(rocminfo 2>/dev/null) || rocm_out=""
 
-        # Extract (marketing_name, gfx_arch) pairs for GPU agents only
+        # Extract GPU agents — accept entries with UUID even if Marketing Name / gfx arch
+        # are missing (DXCore/WSL agents often omit those fields).
         local gpu_count=0
-        while IFS='|' read -r mkt gfx; do
-            [ -z "$gfx" ] && continue
-            _diag_row "GPU $gpu_count detected"   ok   "${mkt:-Unknown} (${gfx})"
+        while IFS='|' read -r mkt gfx uuid; do
+            local label="${mkt:-Unknown GPU}"
+            [ -n "$gfx"  ] && label="$label ($gfx)"
+            [ -n "$uuid" ] && label="$label [${uuid}]"
+            _diag_row "GPU $gpu_count detected"   ok   "$label"
             ((gpu_count++)) || true
         done < <(echo "$rocm_out" | awk '
             /^Agent [0-9]+/ {
-                if (is_gpu && gfx != "") printf "%s|%s\n", mkt, gfx
-                is_gpu=0; mkt=""; gfx=""
+                if (is_gpu) printf "%s|%s|%s\n", mkt, gfx, uuid
+                is_gpu=0; mkt=""; gfx=""; uuid=""
             }
             /Device Type:.*GPU/ { is_gpu=1 }
             /Marketing Name:/ {
@@ -175,8 +182,13 @@ run_gpu_diag() {
                 match($0, /gfx[0-9]+/)
                 gfx=substr($0, RSTART, RLENGTH)
             }
-            END { if (is_gpu && gfx != "") printf "%s|%s\n", mkt, gfx }
-        ')
+            /Uuid:/ {
+                sub(/.*Uuid:[[:space:]]*/, "")
+                sub(/[[:space:]]*$/, "")
+                uuid=$0
+            }
+            END { if (is_gpu) printf "%s|%s|%s\n", mkt, gfx, uuid }
+        ' | grep -v "^||$")   # skip empty lines (CPU-only output)
 
         if [ "$gpu_count" -gt 0 ]; then
             gpu_found=true
