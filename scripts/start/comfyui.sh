@@ -55,9 +55,63 @@ fi
 
 # --- 2. Activate Virtual Environment ---
 echo "Activating Python environment: ${VENV_NAME}"
+# shellcheck disable=SC1090
 source "$ACTIVATE_SCRIPT"
-# Optional: Verify which python is being used
-# echo "Using Python: $(which python)"
+
+# --- 2b. GPU Pre-flight check ---
+# Run before launching ComfyUI so the user gets a clear fix hint instead of a Python traceback.
+_gpu_preflight() {
+    local ok=true
+
+    # ROCDXG bridge check (WSL only)
+    if [ -f /proc/version ] && grep -qi microsoft /proc/version 2>/dev/null; then
+        if [ ! -f "/opt/rocm/lib/librocdxg.so" ]; then
+            echo ""
+            echo "[ERROR] ROCDXG (librocdxg.so) is NOT installed."
+            echo "        Without it ROCm cannot access the GPU inside WSL2."
+            echo ""
+            echo "  Fix: run the upgrade/install script:"
+            echo "       bash ~/rocm-wsl-ai/scripts/install/upgrade_to_rocdxg.sh"
+            echo ""
+            ok=false
+        fi
+    fi
+
+    # Quick PyTorch HIP check
+    local hip_check
+    hip_check=$(python3 -c "
+import torch, sys
+if not torch.cuda.is_available():
+    print('FAIL')
+    sys.exit(1)
+print('OK')
+" 2>/dev/null) || hip_check="FAIL"
+
+    if [ "$hip_check" != "OK" ]; then
+        echo ""
+        echo "[ERROR] PyTorch cannot see any HIP/ROCm GPU."
+        echo ""
+        echo "  Common causes and fixes:"
+        echo "  1. WSL was never restarted after ROCm install:"
+        echo "       In Windows PowerShell: wsl --shutdown   then restart Ubuntu"
+        echo "  2. ROCDXG not installed (see above)"
+        echo "  3. HSA_ENABLE_DXG_DETECTION not set:"
+        echo "       export HSA_ENABLE_DXG_DETECTION=1   (already done here — check user.env)"
+        echo "  4. AMD Windows driver too old — requires Adrenalin 26.2.2 or newer"
+        echo "  5. Run the GPU diagnostics for a full health check:"
+        echo "       bash ~/rocm-wsl-ai/scripts/utils/gpu_diag.sh"
+        echo ""
+        ok=false
+    fi
+
+    if ! $ok; then
+        echo "[ABORT] ComfyUI was NOT started. Resolve the issues above and try again."
+        exit 1
+    fi
+
+    echo "[OK] GPU detected — proceeding to launch ComfyUI."
+}
+_gpu_preflight
 
 # --- 3. Navigate to ComfyUI Directory ---
 echo "Navigating to ComfyUI directory: ${COMFYUI_DIR}"
@@ -68,8 +122,14 @@ echo "Launching ComfyUI with Smart Sleep VRAM Manager..."
 echo "Idle timeout is 30 minutes. The GPU will free up automatically."
 
 # Load Auto-Tuned Magic Settings (if the user ran Auto-Tuner)
-if [ -f "$HOME/.genai_opt_profile" ]; then 
+# Also auto-migrate the deprecated PYTORCH_HIP_ALLOC_CONF variable if it is still present.
+if [ -f "$HOME/.genai_opt_profile" ]; then
+    if grep -q "PYTORCH_HIP_ALLOC_CONF" "$HOME/.genai_opt_profile" 2>/dev/null; then
+        sed -i 's/PYTORCH_HIP_ALLOC_CONF/PYTORCH_ALLOC_CONF/g' "$HOME/.genai_opt_profile"
+        echo "[INFO] Auto-migrated ~/.genai_opt_profile: PYTORCH_HIP_ALLOC_CONF -> PYTORCH_ALLOC_CONF"
+    fi
     echo "[INFO] Loading Magic Settings from ~/.genai_opt_profile"
+    # shellcheck disable=SC1090
     source "$HOME/.genai_opt_profile"
 fi
 
