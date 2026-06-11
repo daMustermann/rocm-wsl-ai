@@ -182,11 +182,14 @@ ensure_user_env() {
 # GFX architecture override. Leave empty for ROCm auto-detection.
 # Examples: gfx1100 (RX 7900 XTX/XT), gfx1102 (RX 7700/7800 XT),
 #           gfx1200 (RX 9070 / 9070 XT)
-export HSA_OVERRIDE_GFX_VERSION=""
+# NOTE: Do NOT export an empty string — ROCm treats it as invalid.
+# With ROCm 7.x + ROCDXG, leave this unset; gpu_config.sh handles detection.
+# export HSA_OVERRIDE_GFX_VERSION="gfx1100"
 
 # GPU device index for multi-GPU systems (0 = first GPU, 1 = second, …).
-# Leave empty to let ROCm use all visible GPUs.
-export ROCR_VISIBLE_DEVICES=""
+# Leave empty / unset to let ROCm use all visible GPUs.
+# NOTE: exporting an empty string hides all GPUs — keep commented unless needed.
+# export ROCR_VISIBLE_DEVICES="0"
 
 # WSL DXCore bridge — must be 1 for GPU compute in WSL2. Do not change.
 export HSA_ENABLE_DXG_DETECTION=1
@@ -204,12 +207,21 @@ USERENV_EOF
 
 _update_user_env() {
     # Usage: _update_user_env KEY VALUE
+    # When VALUE is empty, writes 'unset KEY' so an empty export never hides ROCm devices.
     local key="$1" value="$2"
     ensure_user_env
-    if grep -q "^export ${key}=" "$USER_ENV" 2>/dev/null; then
+    if [ -z "$value" ]; then
+        # Remove any existing export line and ensure the key is unset
+        sed -i "/^export ${key}=/d" "$USER_ENV"
+        if ! grep -q "^unset ${key}" "$USER_ENV" 2>/dev/null; then
+            echo "unset ${key}" >> "$USER_ENV"
+        fi
+    elif grep -q "^export ${key}=" "$USER_ENV" 2>/dev/null; then
         # Replace in-place; use | as delimiter so paths with / are safe
         sed -i "s|^export ${key}=.*|export ${key}=\"${value}\"|" "$USER_ENV"
     else
+        # Remove stale unset line if present, then append export
+        sed -i "/^unset ${key}/d" "$USER_ENV"
         echo "export ${key}=\"${value}\"" >> "$USER_ENV"
     fi
 }
