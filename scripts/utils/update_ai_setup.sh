@@ -120,6 +120,17 @@ update_rocm() {
     print_info "WSL restart recommended after ROCm update: wsl --shutdown"
 }
 
+# Install a requirements.txt while deliberately skipping torch/torchvision/torchaudio.
+# Without this guard, pip resolves torch from PyPI and downloads the CUDA build
+# (1+ GB of nvidia_* packages) instead of keeping the installed ROCm wheels.
+_pip_req() {
+    local req_file="$1"
+    [ -f "$req_file" ] || return 0
+    # Strip torch, torchvision, torchaudio (and their extras) from the file before passing to pip
+    grep -ivE '^[[:space:]]*(torch|torchvision|torchaudio)([>=<!;@# ]|$)' "$req_file" \
+        | pip install --upgrade -r /dev/stdin || true
+}
+
 update_pytorch() {
     print_section "Updating PyTorch (ROCm 7.2.3) + Triton"
     check_venv
@@ -137,12 +148,12 @@ update_comfyui() {
     check_venv
     pushd "$dir" >/dev/null || return 1
     git pull || print_warning "Git pull failed"
-    [ -f requirements.txt ] && pip install -r requirements.txt --upgrade || true
+    _pip_req requirements.txt
     # Update Manager and custom nodes
     for node_dir in custom_nodes/*/; do
         [ -d "$node_dir/.git" ] || continue
         pushd "$node_dir" >/dev/null; git pull || true
-        [ -f requirements.txt ] && pip install -r requirements.txt --upgrade || true
+        _pip_req requirements.txt
         popd >/dev/null
     done
     popd >/dev/null
@@ -168,7 +179,7 @@ update_automatic1111() {
     check_venv
     pushd "$dir" >/dev/null || return 1
     git pull || print_warning "Git pull failed"
-    [ -f requirements.txt ] && pip install -r requirements.txt --upgrade || true
+    _pip_req requirements.txt
     # Update extensions
     for ext_dir in extensions/*/; do
         [ -d "$ext_dir/.git" ] || continue
@@ -202,7 +213,7 @@ update_kohya_ss() {
         # shellcheck disable=SC1090
         source "$KOHYA_VENV/bin/activate"
         for req_file in requirements.txt requirements_linux.txt; do
-            [ -f "$req_file" ] && pip install -r "$req_file" --upgrade || true
+            _pip_req "$req_file"
         done
         deactivate
     else
