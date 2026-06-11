@@ -333,7 +333,7 @@ _show_update_menu_gum() {
             "12. ✅ Verify installations" \
             "q.  ← Back")
         case "$CHOICE" in
-            s.*|S.*) "$SCRIPT_DIR/scripts/utils/smart_update.sh" ;;
+            s.*|S.*) "$TOOLKIT_DIR/scripts/utils/smart_update.sh" ;;
             0.*) self_update_toolkit ;;
             1.*) update_amdgpu_drivers ;;
             2.*) update_rocm ;;
@@ -383,7 +383,7 @@ _show_update_menu_text() {
         echo -e "${BLUE}========================================${NC}"
         read -rp "Choice: " choice
         case $choice in
-            s|S) "$SCRIPT_DIR/scripts/utils/smart_update.sh" ;;
+            s|S) "$TOOLKIT_DIR/scripts/utils/smart_update.sh" ;;
             0) self_update_toolkit ;;
             1) update_amdgpu_drivers ;;
             2) update_rocm ;;
