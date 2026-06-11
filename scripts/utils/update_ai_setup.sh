@@ -344,13 +344,7 @@ _show_update_menu_gum() {
             7.*) update_kohya_ss ;;
             8.*) update_ollama ;;
             9.*) update_textgen ;;
-            10.*)
-                print_header "Updating all AI tools"
-                update_pytorch; update_comfyui; update_sdnext
-                update_automatic1111; update_kohya_ss; update_ollama; update_textgen
-                cleanup_cache; verify_installations
-                print_success "All AI tools updated"
-                ;;
+            10.*) "$TOOLKIT_DIR/scripts/utils/smart_update.sh" ;;
             11.*) cleanup_cache ;;
             12.*) verify_installations ;;
             q.*|Q.*) return ;;
@@ -394,13 +388,7 @@ _show_update_menu_text() {
             7) update_kohya_ss ;;
             8) update_ollama ;;
             9) update_textgen ;;
-            10)
-                print_header "Updating all AI tools"
-                update_pytorch; update_comfyui; update_sdnext
-                update_automatic1111; update_kohya_ss; update_ollama; update_textgen
-                cleanup_cache; verify_installations
-                print_success "All AI tools updated"
-                ;;
+            10) "$TOOLKIT_DIR/scripts/utils/smart_update.sh" ;;
             11) cleanup_cache ;;
             12) verify_installations ;;
             q|Q) return ;;
