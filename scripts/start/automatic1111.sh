@@ -20,6 +20,10 @@ fi
 
 # Enable ROCDXG for WSL GPU compute
 export HSA_ENABLE_DXG_DETECTION=1
+# With ROCm 7.x + ROCDXG, HSA_OVERRIDE_GFX_VERSION breaks DXCore GPU detection
+if [ -f "/opt/rocm/lib/librocdxg.so" ]; then
+    unset HSA_OVERRIDE_GFX_VERSION
+fi
 
 # --- Main Logic ---
 headline "Starting Automatic1111 SD-WebUI"

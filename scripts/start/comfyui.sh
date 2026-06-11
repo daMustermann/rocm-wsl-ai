@@ -35,6 +35,12 @@ fi
 
 # Enable ROCDXG for WSL GPU compute (user.env may already set this; ensure it's 1)
 export HSA_ENABLE_DXG_DETECTION=1
+# HSA_OVERRIDE_GFX_VERSION must NOT be set with ROCm 7.x + ROCDXG — DXCore detects
+# the GPU architecture automatically. Setting it causes topology_sysfs_get_node_props
+# to reject the value and the GPU becomes invisible to PyTorch.
+if [ -f "/opt/rocm/lib/librocdxg.so" ]; then
+    unset HSA_OVERRIDE_GFX_VERSION
+fi
 
 # Display GPU information if available
 if [ -n "${HSA_OVERRIDE_GFX_VERSION:-}" ]; then

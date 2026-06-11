@@ -59,7 +59,33 @@ _detect_gpu_arch_pre_rocm() {
 }
 
 detect_and_export_rocm_env(){
-  # If user has already set HSA_OVERRIDE_GFX_VERSION, respect it.
+  # With ROCm 7.x + ROCDXG (librocdxg.so), DXCore enumerates the GPU and
+  # determines the architecture automatically.  Setting HSA_OVERRIDE_GFX_VERSION
+  # in this code path causes topology_sysfs_get_node_props to reject the value
+  # and the GPU becomes invisible to PyTorch.  Skip the override entirely when
+  # ROCDXG is installed.
+  local rocdxg_present=false
+  [ -f "/opt/rocm/lib/librocdxg.so" ] && rocdxg_present=true
+
+  if $rocdxg_present; then
+    export HSA_ENABLE_DXG_DETECTION=1
+    export PYTORCH_ROCM_ARCH="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102"
+    # Explicitly clear any stale override so it cannot break DXCore detection
+    unset HSA_OVERRIDE_GFX_VERSION
+
+    mkdir -p "$(dirname "$GPU_ENV_FILE")"
+    {
+      echo "# Auto-generated GPU environment ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+      echo "# ROCDXG detected — HSA_OVERRIDE_GFX_VERSION must NOT be set"
+      echo "export PYTORCH_ROCM_ARCH=\"$PYTORCH_ROCM_ARCH\""
+      echo "export HSA_ENABLE_DXG_DETECTION=1"
+      echo "unset HSA_OVERRIDE_GFX_VERSION"
+    } >"$GPU_ENV_FILE.tmp" && mv "$GPU_ENV_FILE.tmp" "$GPU_ENV_FILE"
+    success "GPU env written: $GPU_ENV_FILE (ROCDXG mode — HSA_OVERRIDE_GFX_VERSION cleared)"
+    return 0
+  fi
+
+  # --- Non-ROCDXG path (native Linux): honour user override if set ---
   if [ -n "${HSA_OVERRIDE_GFX_VERSION-}" ]; then
     # Validate user-provided override: must be RDNA3+ (gfx11xx or gfx12xx)
     local numeric_override
@@ -131,7 +157,7 @@ detect_and_export_rocm_env(){
   mkdir -p "$(dirname "$GPU_ENV_FILE")"
   {
     echo "# Auto-generated GPU environment ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
-    echo "# Detected arch: $arch"
+    echo "# Detected arch: $arch (native Linux — no ROCDXG)"
     echo "export PYTORCH_ROCM_ARCH=\"$PYTORCH_ROCM_ARCH\""
     echo "export HSA_OVERRIDE_GFX_VERSION=\"$hsa_override_val\""
     echo "export HSA_ENABLE_DXG_DETECTION=1"
