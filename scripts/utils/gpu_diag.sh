@@ -86,8 +86,37 @@ run_gpu_diag() {
 
     if has_rocdxg; then
         _diag_row "ROCDXG (librocdxg)"        ok   "/opt/rocm/lib/librocdxg.so ✓"
+        # Check the .so actually links without missing symbols
+        local ldd_out
+        ldd_out=$(ldd /opt/rocm/lib/librocdxg.so 2>&1)
+        if echo "$ldd_out" | grep -q "not found"; then
+            local missing
+            missing=$(echo "$ldd_out" | grep "not found" | awk '{print $1}' | tr '\n' ' ')
+            _diag_row "ROCDXG link check"     fail "Missing libraries: $missing — rebuild ROCDXG"
+        else
+            _diag_row "ROCDXG link check"     ok   "All shared libraries resolved ✓"
+        fi
     else
         _diag_row "ROCDXG (librocdxg)"        fail "Missing — GPU compute unavailable in WSL2"
+    fi
+
+    # /dev/dxg is the DXCore bridge device — without it ROCm cannot see the GPU
+    if [ -e "/dev/dxg" ]; then
+        _diag_row "/dev/dxg (DXCore bridge)"  ok   "Present ✓"
+    else
+        _diag_row "/dev/dxg (DXCore bridge)"  fail "Missing — Windows driver not exposing DXCore to WSL"
+        _diag_row "  Fix"                     warn "Update AMD Adrenalin driver on Windows (26.2.2+)"
+        _diag_row "  Fix"                     warn "Run in PowerShell: wsl --update  then wsl --shutdown"
+    fi
+
+    # User must be in render + video groups to access /dev/dxg
+    local missing_groups=""
+    id -nG 2>/dev/null | grep -qw "render" || missing_groups="${missing_groups}render "
+    id -nG 2>/dev/null | grep -qw "video"  || missing_groups="${missing_groups}video"
+    if [ -z "$missing_groups" ]; then
+        _diag_row "User groups (render/video)" ok  "$(id -nG | tr ' ' ',')"
+    else
+        _diag_row "User groups (render/video)" fail "Missing: ${missing_groups% } — run: sudo usermod -a -G render,video \$USER  then wsl --shutdown"
     fi
 
     # ── Environment Variables ────────────────────────────────────────────────
