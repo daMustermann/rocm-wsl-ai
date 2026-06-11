@@ -156,7 +156,9 @@ run_gpu_diag() {
     if command -v rocminfo >/dev/null 2>&1; then
         export HSA_ENABLE_DXG_DETECTION=1
         local rocm_out
-        rocm_out=$(rocminfo 2>/dev/null) || rocm_out=""
+        # Capture stdout + stderr: some HSA/DXG messages arrive on stderr
+        # and must not be discarded so the awk parser sees all agent data.
+        rocm_out=$(rocminfo 2>&1 | tr -d '\r') || rocm_out=""
 
         # Extract GPU agents — accept entries with UUID even if Marketing Name / gfx arch
         # are missing (DXCore/WSL agents often omit those fields).

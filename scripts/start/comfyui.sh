@@ -25,6 +25,13 @@ if [ -f "$HOME/.config/rocm-wsl-ai/user.env" ]; then
     # shellcheck disable=SC1090
     source "$HOME/.config/rocm-wsl-ai/user.env"
 fi
+# Also load the auto-detected GPU environment (written by gpu_config.sh).
+# This ensures HSA_OVERRIDE_GFX_VERSION is set even if user.env was never
+# configured via the Settings menu.
+if [ -f "$HOME/.config/rocm-wsl-ai/gpu.env" ]; then
+    # shellcheck disable=SC1090
+    source "$HOME/.config/rocm-wsl-ai/gpu.env"
+fi
 
 # Enable ROCDXG for WSL GPU compute (user.env may already set this; ensure it's 1)
 export HSA_ENABLE_DXG_DETECTION=1
