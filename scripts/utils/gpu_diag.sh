@@ -117,6 +117,9 @@ run_gpu_diag() {
     # ── GPU Detection via rocminfo ───────────────────────────────────────────
     _diag_section "GPU Detection (rocminfo)"
 
+    # gpu_found is set at function scope so the summary block can read it
+    local gpu_found=false
+
     if command -v rocminfo >/dev/null 2>&1; then
         export HSA_ENABLE_DXG_DETECTION=1
         local rocm_out
@@ -146,12 +149,15 @@ run_gpu_diag() {
             END { if (is_gpu && gfx != "") printf "%s|%s\n", mkt, gfx }
         ')
 
-        if [ "$gpu_count" -eq 0 ]; then
+        if [ "$gpu_count" -gt 0 ]; then
+            gpu_found=true
+        else
             _diag_row "GPU Detection"             fail "No AMD GPU found by rocminfo"
             if is_wsl; then
-                _diag_row "  Possible fix"        info "Install AMD Adrenalin 26.2.2+ on Windows"
-                _diag_row "  Possible fix"        info "Ensure HSA_ENABLE_DXG_DETECTION=1"
-                _diag_row "  Possible fix"        info "Run: wsl --update  (in PowerShell)"
+                _diag_row "  Most likely fix"      warn "Run in PowerShell: wsl --shutdown  then restart Ubuntu"
+                _diag_row "  Check driver"         info "Requires AMD Adrenalin 26.2.2+ on Windows"
+                _diag_row "  WSL kernel"           info "Run in PowerShell: wsl --update"
+                _diag_row "  DXG bridge"           info "Ensure HSA_ENABLE_DXG_DETECTION=1 (already set here)"
             fi
         fi
     else
@@ -250,9 +256,10 @@ if (\$vc) { Write-Output \"\$(\$vc.Name)|\$(\$vc.DriverVersion)\" }
     # ── Summary ──────────────────────────────────────────────────────────────
     echo ""
     local core_ok=true
-    command -v rocminfo >/dev/null 2>&1 || core_ok=false
-    has_rocdxg                          || core_ok=false
+    command -v rocminfo >/dev/null 2>&1  || core_ok=false
+    has_rocdxg                           || core_ok=false
     [ -f "$HOME/genai_env/bin/activate" ] || core_ok=false
+    $gpu_found                           || core_ok=false   # GPU must actually be visible
 
     if $core_ok; then
         if command -v gum >/dev/null 2>&1; then
@@ -262,11 +269,21 @@ if (\$vc) { Write-Output \"\$(\$vc.Name)|\$(\$vc.DriverVersion)\" }
             echo "  [OK] Core stack looks healthy."
         fi
     else
-        if command -v gum >/dev/null 2>&1; then
-            gum style --foreground 214 --bold --margin "0 2" \
-                "⚠  Issues detected — check the FAIL/WARN items above."
+        if ! $gpu_found && command -v rocminfo >/dev/null 2>&1; then
+            # Special case: everything installed but GPU invisible — most actionable hint
+            if command -v gum >/dev/null 2>&1; then
+                gum style --foreground 196 --bold --margin "0 2" \
+                    "✖  GPU not visible — run in Windows PowerShell:  wsl --shutdown"
+            else
+                echo "  [FAIL] GPU not visible. In Windows PowerShell: wsl --shutdown  then restart Ubuntu."
+            fi
         else
-            echo "  [WARN] Issues detected — see FAIL/WARN items above."
+            if command -v gum >/dev/null 2>&1; then
+                gum style --foreground 214 --bold --margin "0 2" \
+                    "⚠  Issues detected — check the FAIL/WARN items above."
+            else
+                echo "  [WARN] Issues detected — see FAIL/WARN items above."
+            fi
         fi
     fi
 
