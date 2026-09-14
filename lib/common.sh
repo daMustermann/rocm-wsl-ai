@@ -126,39 +126,13 @@ headline() {
 # ------------------------------------------------------------------------------
 # Interaction
 # ------------------------------------------------------------------------------
-# Styling for gum selectors.
+# Styling for selectors.
 #
-# Two deliberate choices here:
-#
-#   * --label-delimiter=':' — gum treats "key:Label" as value:display, so the
-#     menu shows only the label while the command returns the key. Without it the
-#     internal "key|Label" format is printed literally to the user, which is what
-#     the toolkit used to do.
-#   * ANSI colours are embedded in the label text itself, on top of the flag-provided
-#     background. Flag colours go through lipgloss, which silently degrades to no
-#     styling on a terminal it thinks cannot handle colour — and then the menu has
-#     no visible selection at all. Escape sequences written directly into the label
-#     are passed through verbatim, so the cursor line stays distinguishable even on
-#     a monochrome or misconfigured terminal.
-#
-# Flag names verified against `gum choose --help` on gum 0.16: the available ones
-# are --cursor{,.foreground,.background}, --item.foreground/--item.background,
-# --selected.foreground/--selected.background and --header.foreground. There is
-# deliberately no --unselected.* — using that makes gum print its help instead of
-# the menu.
-_ROCM_AI_ANSI_ON=$'\033[7m'
-_ROCM_AI_ANSI_OFF=$'\033[0m'
-
-_rocm_ai_sel_flags() {
-    printf '%s\n' \
-        --cursor='> ' \
-        --cursor.foreground=0 \
-        --cursor.background=14 \
-        --selected.foreground=0 \
-        --selected.background=14 \
-        --item.foreground=252 \
-        --label-delimiter=:
-}
+# The menu is drawn by us with ANSI escapes, so the highlight is carried by a
+# reverse-video sequence rather than by a library's colour flags. That matters:
+# terminal-capability detection in styling libraries silently drops colours on
+# a terminal it misjudges, which leaves a menu with no visible selection at all.
+# Escape sequences written straight into the output cannot be dropped that way.
 
 # ------------------------------------------------------------------------------
 # Interactive selection
