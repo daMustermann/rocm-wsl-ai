@@ -68,3 +68,8 @@ tmp/
 .probe-*.sh
 .verify*.sh
 .final*.sh
+
+# Development harnesses. Written at the repo root as dotfiles during testing;
+# they must never be published. This pattern would also hide a legitimate
+# dotfile script, which is not something this project has.
+.*.sh
