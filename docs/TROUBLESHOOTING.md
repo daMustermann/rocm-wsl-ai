@@ -292,6 +292,73 @@ If `torch.version.hip` is `None`, reinstall the base environment.
 
 ---
 
+## ComfyUI-Manager and the toolkit's Python environment
+
+ComfyUI-Manager installs Python packages into `~/genai_env` and may restart
+ComfyUI to "reapply dependency installation". It is worth knowing how far that can
+reach.
+
+### Your environment is isolated, and that protects you
+
+The toolkit builds `~/genai_env` as a virtual environment, and its `sys.path` is:
+
+```text
+/usr/lib/python310.zip
+/usr/lib/python3.10
+/usr/lib/python3.10/lib-dynload
+/home/mauder/genai_env/lib/python3.10/site-packages
+```
+
+The user site-packages directory (`~/.local/lib/python3.10/site-packages`) is
+**not** on that path, so packages installed with `pip3 --user` — including any
+`nvidia-*` CUDA packages that may be present system-wide — are invisible to
+ComfyUI and to torch. Verified on a real installation with 15 such packages
+present: `pip list` inside the venv reported zero, and `import nvidia.cublas`
+failed.
+
+So a stray CUDA package elsewhere on the machine cannot contaminate the toolkit's
+environment. That is by design.
+
+### The one thing Manager *can* do
+
+Manager resolves requirements with plain pip and does not know about the ROCm
+constraints the toolkit applies. The guard the toolkit uses is stripping `torch`,
+`torchvision`, `torchaudio` and `pytorch-triton-rocm` from every requirements file
+before calling pip, because otherwise pip resolves `torch` from PyPI and downloads
+the CUDA build. Manager does not do this.
+
+Check after any Manager-driven dependency install:
+
+```bash
+source ~/genai_env/bin/activate
+python3 -c "import torch; print(torch.__version__, torch.version.hip)"
+# expect: 2.10.0+rocm7.2.4...  and a HIP version, never None
+```
+
+If `torch.version.hip` is `None`, or the version has no `+rocm`, the ROCm build has
+been replaced. Restore it without rebuilding everything:
+
+```bash
+./menu.sh          # Updates -> Update one AI tool -> ComfyUI
+```
+
+That reinstalls ComfyUI's requirements *and* every custom node's requirements with
+the ROCm guards applied.
+
+### Cleaning up stray CUDA packages elsewhere
+
+If `pip3 list` (outside the venv) shows `nvidia-*` packages you do not want, they
+are inert for AMD work and safe to remove from the user site-packages:
+
+```bash
+pip3 uninstall -y $(pip3 list 2>/dev/null | awk '/^nvidia-/{print $1}')
+```
+
+This does not touch `~/genai_env`, and cannot affect torch: the venv has its own
+copies of everything it needs.
+
+---
+
 ## Upgrading
 
 ### What does the upgrade actually change?
