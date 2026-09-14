@@ -44,8 +44,24 @@ ROCM_AI_PERF_ENV="$ROCM_AI_CONFIG_DIR/perf.env"
 ROCM_AI_PREFLIGHT_CACHE="$ROCM_AI_CONFIG_DIR/.preflight"
 ROCM_AI_LOG_DIR="$ROCM_AI_CONFIG_DIR/logs"
 
-# --- Colours (only when attached to a terminal) ------------------------------
-if [ -t 1 ]; then
+# --- Colours (only when the terminal can show them) --------------------------
+# Note this is not simply an isatty check: TERM=dumb is a tty but renders no
+# escape sequences at all, which would leave prompts with no visible selection.
+_rocm_ai_launch_colours_ok() {
+    [ -n "${NO_COLOR:-}" ] && return 1
+    case "${TERM:-dumb}" in ""|dumb|unknown) return 1 ;; esac
+    if command -v tput >/dev/null 2>&1; then
+        local n
+        n="$(tput colors 2>/dev/null || echo "")"
+        if [ -n "$n" ]; then
+            [ "$n" -ge 8 ] 2>/dev/null && return 0 || return 1
+        fi
+    fi
+    case "${TERM:-}" in *color*|*256*|xterm*|screen*|tmux*|rxvt*|linux|vt100|ansi|cygwin) return 0 ;; esac
+    return 1
+}
+
+if [ -t 1 ] && _rocm_ai_launch_colours_ok; then
     _C_RESET=$'\033[0m'; _C_DIM=$'\033[2m'; _C_BOLD=$'\033[1m'
     _C_OK=$'\033[38;5;46m'; _C_WARN=$'\033[38;5;214m'; _C_ERR=$'\033[38;5;196m'
     _C_ACC=$'\033[38;5;212m'; _C_INFO=$'\033[38;5;117m'

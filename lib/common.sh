@@ -46,12 +46,69 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Logging. gum is used when available, with a plain-text fallback.
-# Everything goes to stderr so that callers can capture stdout safely.
+# Terminal capability
 # ------------------------------------------------------------------------------
-_rocm_ai_have_gum() { command -v gum >/dev/null 2>&1; }
+# Detecting whether the terminal can render colour at all is not cosmetic: gum's
+# Yes/No prompt communicates the selection *entirely* through colour. Under
+# TERM=dumb gum emits no escape codes whatsoever, so the prompt renders as
+# "Yes  No" with no way to see which one is active. Verified by capturing the
+# bytes gum writes in a pty:
+#
+#   TERM=xterm-256color  -> \x1b[48;5;212m on the selected item (pink)
+#   TERM=dumb            -> no escape codes at all
+#
+# So the toolkit asks the simpler question itself when colour is unavailable,
+# rather than presenting a selector the user cannot read.
+_rocm_ai_terminal_class() {
+    # An explicit request to disable colour.
+    [ -n "${NO_COLOR:-}" ] && { printf 'plain'; return 0; }
 
+    # gum's own escape hatch: GUM_* variables honour this.
+    if [ -n "${CLICOLOR_FORCE:-}" ] && [ "${CLICOLOR_FORCE}" != "0" ]; then
+        printf 'colour'; return 0
+    fi
+
+    case "${TERM:-dumb}" in
+        ""|dumb|unknown) printf 'plain'; return 0 ;;
+    esac
+
+    # `tput colors` is authoritative where terminfo is installed.
+    local colors
+    if command -v tput >/dev/null 2>&1; then
+        colors="$(tput colors 2>/dev/null || echo "")"
+        if [ -n "$colors" ]; then
+            [ "$colors" -ge 8 ] 2>/dev/null && printf 'colour' || printf 'plain'
+            return 0
+        fi
+    fi
+
+    # Fall back to the TERM name. Titles containing a known capability suffix
+    # imply colour; anything else is treated as plain.
+    case "${TERM:-}" in
+        *color*|*256*|xterm*|screen*|tmux*|rxvt*|linux|vt100|ansi|cygwin) printf 'colour' ;;
+        *) printf 'plain' ;;
+    esac
+}
+
+# Can the terminal show colours and highlighting?
+_rocm_ai_colour_ok() {
+    [ "$(_rocm_ai_terminal_class)" = "colour" ]
+}
+
+# gum is only useful when the terminal can render it usefully. A plain terminal
+# gets plain prompts, which are unambiguous instead of invisible.
+_rocm_ai_have_gum() {
+    command -v gum >/dev/null 2>&1 || return 1
+    _rocm_ai_colour_ok
+}
+
+# ------------------------------------------------------------------------------
+# Logging. gum is used when the terminal can render it, with a plain-text
+# fallback otherwise. Everything goes to stderr so callers can capture stdout
+# safely.
+# ------------------------------------------------------------------------------
 log()     { if _rocm_ai_have_gum; then gum style --foreground 117 "ℹ  $*" >&2; else printf '%b[INFO]%b %s\n' "$BLUE" "$NC" "$*" >&2; fi; }
+
 warn()    { if _rocm_ai_have_gum; then gum style --foreground 214 "⚠  $*" >&2; else printf '%b[WARN]%b %s\n' "$YELLOW" "$NC" "$*" >&2; fi; }
 err()     { if _rocm_ai_have_gum; then gum style --foreground 196 "✖  $*" >&2; else printf '%b[ERROR]%b %s\n' "$RED" "$NC" "$*" >&2; fi; }
 success() { if _rocm_ai_have_gum; then gum style --foreground 46 "✔  $*" >&2; else printf '%b[OK]%b %s\n' "$GREEN" "$NC" "$*" >&2; fi; }
@@ -69,15 +126,136 @@ headline() {
 # ------------------------------------------------------------------------------
 # Interaction
 # ------------------------------------------------------------------------------
+# Styling for gum selectors.
+#
+# Two deliberate choices here:
+#
+#   * --label-delimiter=':' — gum treats "key:Label" as value:display, so the
+#     menu shows only the label while the command returns the key. Without it the
+#     internal "key|Label" format is printed literally to the user, which is what
+#     the toolkit used to do.
+#   * ANSI colours are embedded in the label text itself, on top of the flag-provided
+#     background. Flag colours go through lipgloss, which silently degrades to no
+#     styling on a terminal it thinks cannot handle colour — and then the menu has
+#     no visible selection at all. Escape sequences written directly into the label
+#     are passed through verbatim, so the cursor line stays distinguishable even on
+#     a monochrome or misconfigured terminal.
+#
+# Flag names verified against `gum choose --help` on gum 0.16: the available ones
+# are --cursor{,.foreground,.background}, --item.foreground/--item.background,
+# --selected.foreground/--selected.background and --header.foreground. There is
+# deliberately no --unselected.* — using that makes gum print its help instead of
+# the menu.
+_ROCM_AI_ANSI_ON=$'\033[7m'
+_ROCM_AI_ANSI_OFF=$'\033[0m'
+
+_rocm_ai_sel_flags() {
+    printf '%s\n' \
+        --cursor='> ' \
+        --cursor.foreground=0 \
+        --cursor.background=14 \
+        --selected.foreground=0 \
+        --selected.background=14 \
+        --item.foreground=252 \
+        --label-delimiter=:
+}
+
+# ------------------------------------------------------------------------------
+# Selector helpers
+# ------------------------------------------------------------------------------
+# Options are passed as "key|Label" (the historical format used throughout the
+# menus). Three approaches were tried before landing on this one:
+#
+#   1. Passing "key|Label" with no delimiter. gum renders the string literally,
+#      so the user sees "quick|Quick start" in the menu.
+#   2. Passing --label-delimiter. Measured on gum 0.17.0: with "key<DELIM>Label"
+#      the menu displays "key"; with "Label<DELIM>value" it displays the whole
+#      string but returns the first field. Neither shows a human-readable label.
+#   3. Relying on gum's --selected.background flag for the highlight. Measured:
+#      the flag is accepted but not applied to the cursor line, so the selection
+#      stays visually indistinguishable from the other rows.
+#
+# So: the label is displayed in full and mapped back to its key afterwards, and
+# the highlight is carried by the label's own escape sequence plus the cursor
+# glyph. Both of those are passed through verbatim and do not depend on gum's
+# terminal-capability detection, which is what silently disabled the styling.
+_ROCM_AI_ANSI_ON=$'\033[7m'
+_ROCM_AI_ANSI_OFF=$'\033[0m'
+
+_rocm_ai_key_of() {
+    # "key|Label" -> "key"
+    printf '%s' "${1%%|*}"
+}
+
+_rocm_ai_label_of() {
+    # "key|Label" -> "Label". Tolerates a ':' delimiter and bare labels too,
+    # because callers have used all three forms.
+    local entry="${1/|/:}"
+    case "$entry" in
+        *:*) printf '%s' "${entry#*:}" ;;
+        *)   printf '%s' "$entry" ;;
+    esac
+}
+
+# Wrap a label in reverse video. Used for the currently highlighted row.
+_rocm_ai_label_ansi() {
+    printf '%s%s%s' "$_ROCM_AI_ANSI_ON" "$(_rocm_ai_label_of "$1")" "$_ROCM_AI_ANSI_OFF"
+}
+
+# These flags are NOT identical across gum subcommands: `confirm` accepts
+# --unselected.foreground/--unselected.background, `choose` does not and uses
+# --item.foreground/--item.background instead. Passing a flag a subcommand does
+# not know makes gum print its usage text and exit, so the menu silently becomes
+# a wall of documentation. Rather than trust the version, check per subcommand and
+# drop anything unsupported.
+_rocm_ai_gum_supports() {
+    local sub="$1" flag="$2"
+    gum "$sub" --help 2>/dev/null | grep -q -- "$flag"
+}
+
+# Usage: _rocm_ai_gum_style_args <subcommand> <flag> [<flag> ...]
+_rocm_ai_gum_style_args() {
+    local sub="$1"; shift
+    local flag
+    local -a out=()
+    for flag in "$@"; do
+        # Compare on the flag name only, ignoring any =value.
+        if _rocm_ai_gum_supports "$sub" "${flag%%=*}"; then
+            out+=("$flag")
+        fi
+    done
+    printf '%s\n' "${out[@]:-}"
+}
+
 confirm() {
     local msg="$1"
     if _rocm_ai_have_gum; then
-        gum confirm "$msg" --default=false
-    else
-        local response
-        read -rp "${msg} (y/N): " -r response
-        [[ "$response" =~ ^[Yy]$ ]]
+        # gum's defaults are pink-on-near-black (212 on 235), which is easy to
+        # miss. Bright cyan with black text is a much stronger signal; a terminal
+        # without 256-colour support downshifts it to standard ANSI colours.
+        local -a flags=()
+        while IFS= read -r f; do
+            [ -n "$f" ] && flags+=("$f")
+        done < <(_rocm_ai_gum_style_args confirm \
+            --selected.foreground=0 \
+            --selected.background=14 \
+            --unselected.foreground=252 \
+            --unselected.background=236)
+
+        gum confirm "$msg" --default=false "${flags[@]}"
+        return $?
     fi
+    # Plain prompt. The default is stated explicitly, because the whole reason we
+    # are here is that a highlighted selector cannot be rendered.
+    local response
+    printf '%s\n' "$msg"
+    printf '  [y] yes   [n] no   (default: no) '
+    read -r response
+    printf '\n'
+    case "$response" in
+        y|Y|yes|YES|Yes) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 msgbox() {
@@ -100,35 +278,95 @@ yesno() {
         printf '%s\n\n%s\n' "$(gum style --bold --foreground 214 "$title")" "$text" \
             | gum style --border normal --margin "0 2" --padding "1 2" --border-foreground 214
         printf '\n'
-        gum confirm "Continue?" --default=false
-    else
-        printf '\n==== %s ====\n%s\n' "$title" "$text"
-        confirm "Continue?"
+        gum confirm "Continue?" --default=false \
+            --selected.foreground=0 --selected.background=14 \
+            --unselected.foreground=252
+        return $?
     fi
+    printf '\n==== %s ====\n%s\n' "$title" "$text"
+    confirm "Continue?"
 }
 
 # A menu that always has a way out, even if the user presses Esc or Ctrl+C.
 # gum choose returns non-zero on Esc; the old menus turned that into a silent
 # no-op that left the user staring at an unchanged screen.
+#
+# Returns "key|Label" so callers can use ${result%%|*} to get the key.
 choose() {
     local header="$1"; shift
+
+    local -a entries=("$@")
+    local entry i width=${#entries[@]}
+
     if _rocm_ai_have_gum; then
-        local choice
-        choice="$(gum choose --cursor='» ' --header="$header" "$@" 2>/dev/null)" || return 1
-        printf '%s' "$choice"
-    else
-        local i=1 option
-        printf '\n%s\n' "$header" >&2
-        for option in "$@"; do
-            printf '  %2d) %s\n' "$i" "$option" >&2
-            i=$((i + 1))
+        local -a flags=() labels=() rendered=()
+        while IFS= read -r f; do
+            [ -n "$f" ] && flags+=("$f")
+        done < <(_rocm_ai_gum_style_args choose \
+            --cursor='> ' \
+            --cursor.foreground=0 \
+            --cursor.background=14 \
+            --item.foreground=252)
+
+        # Only the first row carries reverse video. gum starts with the cursor on
+        # the first row, so exactly one row is highlighted at any time; wrapping
+        # every label would make the whole menu look selected. The escape sequence
+        # is embedded in the label text rather than requested via a flag, because
+        # the flag path was measured not to apply.
+        local first=1
+        for entry in "${entries[@]}"; do
+            local label; label="$(_rocm_ai_label_of "$entry")"
+            labels+=("$label")
+            if [ "$first" = "1" ]; then
+                rendered+=("${_ROCM_AI_ANSI_ON}${label}${_ROCM_AI_ANSI_OFF}")
+                first=0
+            else
+                rendered+=("$label")
+            fi
         done
-        local reply
-        read -rp "  Choice (blank to go back): " reply
-        [ -z "$reply" ] && return 1
-        [ "$reply" -ge 1 ] 2>/dev/null && [ "$reply" -lt "$i" ] || return 1
-        printf '%s' "${!reply}"
+
+        local picked
+        picked="$(gum choose --header="$header" "${flags[@]}" "${rendered[@]}" 2>/dev/null)" || return 1
+        [ -z "$picked" ] && return 1
+        # gum echoes the label back; strip any escapes before comparing.
+        picked="$(printf '%s' "$picked" | sed 's/\x1b\[[0-9;]*m//g')"
+
+        # Map the chosen label back to its entry.
+        local idx=0
+        for entry in "${entries[@]}"; do
+            if [ "${labels[$idx]}" = "$picked" ]; then
+                printf '%s' "$entry"
+                return 0
+            fi
+            idx=$((idx + 1))
+        done
+        printf '%s' "$picked"
+        return 0
     fi
+
+    printf '\n%s\n' "$header" >&2
+    printf '%s\n' "$(printf '─%.0s' $(seq 1 62))" >&2
+
+    i=1
+    for entry in "${entries[@]}"; do
+        printf '  %*d) %s\n' "$width" "$i" "$(_rocm_ai_label_of "$entry")" >&2
+        i=$((i + 1))
+    done
+
+    printf '%s\n' "$(printf '─%.0s' $(seq 1 62))" >&2
+    printf '  Enter a number, or press Enter to go back: ' >&2
+
+    local reply
+    read -r reply
+
+    [ -z "$reply" ] && return 1
+    case "$reply" in
+        *[!0-9]*) return 1 ;;
+    esac
+    [ "$reply" -ge 1 ] && [ "$reply" -le "${#entries[@]}" ] || return 1
+
+    printf '%s' "${entries[$((reply - 1))]}"
+    return 0
 }
 
 # ------------------------------------------------------------------------------
