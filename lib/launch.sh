@@ -157,6 +157,35 @@ ai_require_venv() {
     return 0
 }
 
+# Which interpreter should be used to test for a working GPU?
+#
+# This matters more than it looks. The preflight runs *before* a tool's
+# environment has been activated, so `python3` on PATH is the SYSTEM interpreter,
+# which normally has no torch installed at all. Testing that reports
+# "PyTorch cannot see any ROCm GPU" when the truth is "torch is not installed
+# here" — and a user with a perfectly healthy machine is told to restart WSL
+# forever. The toolkit's own environment is therefore preferred explicitly.
+ai_probe_python() {
+    local candidate
+    for candidate in \
+        "${ROCM_AI_PROBE_VENV:-$HOME/genai_env}/bin/python3" \
+        "$HOME/kohya_env/bin/python3" \
+        "$(command -v python3 2>/dev/null)"
+    do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+    printf '%s' "python3"
+}
+
+# Does this interpreter have torch at all? "No GPU" and "no torch" are different
+# problems with completely different fixes, so never conflate them.
+ai_probe_has_torch() {
+    "$1" -c 'import torch' >/dev/null 2>&1
+}
+
 # ==============================================================================
 # Preflight (cached)
 # ==============================================================================
@@ -170,7 +199,7 @@ PREFLIGHT_TTL="${ROCM_AI_PREFLIGHT_TTL:-900}"
 
 ai_preflight_signature() {
     local torch_ver driver sig
-    torch_ver="$(python3 -c 'import torch;print(torch.__version__)' 2>/dev/null || echo none)"
+    torch_ver="$(ai_probe_python -c 'import torch;print(torch.__version__)' 2>/dev/null || echo none)"
     driver=""
     if command -v powershell.exe >/dev/null 2>&1; then
         driver="$(powershell.exe -NoProfile -Command \
@@ -193,7 +222,12 @@ ai_preflight() {
         if [ -n "$stamp" ]; then
             now="$(date +%s)"
             age=$(( now - stamp ))
-            if [ "$status" = "ok" ] && [ "$age" -ge 0 ] && [ "$age" -lt "$PREFLIGHT_TTL" ]; then
+            # "notorch" is a valid cached outcome too: it means the interpreter
+            # has no PyTorch, which is not a GPU fault and must not re-run a
+            # multi-second probe on every launch. It is re-evaluated whenever the
+            # signature changes, i.e. when torch is installed.
+            if { [ "$status" = "ok" ] || [ "$status" = "notorch" ]; } \
+               && [ "$age" -ge 0 ] && [ "$age" -lt "$PREFLIGHT_TTL" ]; then
                 return 0
             fi
         fi
@@ -205,16 +239,18 @@ ai_preflight() {
     if [ "$force" != "force" ] && [ -f "$ROCM_AI_PREFLIGHT_CACHE" ]; then
         cached_sig="$(sed -n '1p' "$ROCM_AI_PREFLIGHT_CACHE" 2>/dev/null)"
         cached_status="$(sed -n '2p' "$ROCM_AI_PREFLIGHT_CACHE" 2>/dev/null)"
-        if [ "$cached_sig" = "$sig" ] && [ "$cached_status" = "ok" ]; then
+        if [ "$cached_sig" = "$sig" ] && { [ "$cached_status" = "ok" ] || [ "$cached_status" = "notorch" ]; }; then
             # Environment unchanged and previously healthy: refresh the
             # timestamp and skip the expensive check.
-            printf '%s\nok\n%s\n' "$sig" "$(date +%s)" > "$ROCM_AI_PREFLIGHT_CACHE"
+            printf '%s\n%s\n%s\n' "$sig" "$cached_status" "$(date +%s)" > "$ROCM_AI_PREFLIGHT_CACHE"
             return 0
         fi
         [ "$cached_sig" = "$sig" ] && sig_changed=0
     fi
 
     local status="ok"
+    local probe_py
+    probe_py="$(ai_probe_python)"
 
     if ai_is_wsl && ! ai_has_rocdxg; then
         ai_err "ROCDXG (librocdxg.so) is missing — ROCm cannot reach the GPU in WSL2."
@@ -222,8 +258,19 @@ ai_preflight() {
         status="fail"
     fi
 
-    local hip_out
-    hip_out="$(python3 - <<'PY' 2>/dev/null
+    # Distinguish "no torch" from "no GPU" before saying anything. Checking the
+    # wrong interpreter used to produce "PyTorch cannot see any ROCm GPU" on a
+    # perfectly healthy machine, because the system python3 has no torch at all.
+    if ! ai_probe_has_torch "$probe_py"; then
+        ai_warn "PyTorch is not available in $probe_py"
+        ai_say  "     This is not a GPU problem — there is no PyTorch to ask."
+        ai_say  "     Install the base environment:  ./menu.sh  ->  Install"
+        # Not a GPU failure, so it must not block launching: the tool's own
+        # environment may well have torch even when the shared one does not.
+        status="notorch"
+    else
+        local hip_out
+        hip_out="$("$probe_py" - <<'PY' 2>/dev/null
 import torch
 try:
     if torch.cuda.is_available():
@@ -235,31 +282,34 @@ except Exception as exc:
 PY
 )" || hip_out="ERR|python failed"
 
-    case "${hip_out%%|*}" in
-        OK)
-            ai_ok "GPU ready: $(printf '%s' "$hip_out" | cut -d'|' -f2)  (torch $(printf '%s' "$hip_out" | cut -d'|' -f3))"
-            ;;
-        NOGPU)
-            ai_err "PyTorch cannot see any HIP/ROCm GPU."
-            ai_say ""
-            ai_say "  ${_C_BOLD}Most likely fixes, in order:${_C_RESET}"
-            ai_say "   1. In Windows PowerShell:  wsl --shutdown     then reopen Ubuntu"
-            ai_say "      (group membership and the DXCore bridge need a restart)"
-            ai_say "   2. AMD Adrenalin 26.2.2 or newer on Windows"
-            ai_say "   3. Full diagnosis:  ./menu.sh  ->  Settings  ->  GPU Diagnostics"
-            ai_say ""
-            status="fail"
-            ;;
-        *)
-            ai_err "PyTorch import failed: $(printf '%s' "$hip_out" | cut -d'|' -f2)"
-            status="fail"
-            ;;
-    esac
+        case "${hip_out%%|*}" in
+            OK)
+                ai_ok "GPU ready: $(printf '%s' "$hip_out" | cut -d'|' -f2)  (torch $(printf '%s' "$hip_out" | cut -d'|' -f3))"
+                ;;
+            NOGPU)
+                ai_err "PyTorch cannot see any HIP/ROCm GPU."
+                ai_say ""
+                ai_say "  ${_C_BOLD}Most likely fixes, in order:${_C_RESET}"
+                ai_say "   1. In Windows PowerShell:  wsl --shutdown     then reopen Ubuntu"
+                ai_say "      (group membership and the DXCore bridge need a restart)"
+                ai_say "   2. AMD Adrenalin 26.2.2 or newer on Windows"
+                ai_say "   3. Full diagnosis:  ./menu.sh  ->  Settings  ->  GPU Diagnostics"
+                ai_say ""
+                status="fail"
+                ;;
+            *)
+                ai_err "PyTorch import failed: $(printf '%s' "$hip_out" | cut -d'|' -f2)"
+                status="fail"
+                ;;
+        esac
+    fi
 
+    # Only a genuine failure is cached. A missing torch is recorded so the next
+    # run does not re-probe, but it must never be treated as "GPU broken".
     mkdir -p "$ROCM_AI_CONFIG_DIR" 2>/dev/null || true
     printf '%s\n%s\n%s\n' "$sig" "$status" "$(date +%s)" > "$ROCM_AI_PREFLIGHT_CACHE" 2>/dev/null || true
 
-    [ "$status" = "ok" ]
+    [ "$status" != "fail" ]
 }
 
 # ==============================================================================

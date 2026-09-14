@@ -135,16 +135,17 @@ install_base() {
         msgbox "WSL2 required" "This toolkit targets WSL2. On native Linux, use AMD's official ROCm docs."
         return 1
     fi
-    if ! yesno "Install ROCm 7.2.3 + ROCDXG + PyTorch" \
+    if ! yesno "Install the base environment" \
         "This will:\n\
- • Install AMD ROCm 7.2.3 from AMD's official repository\n\
+ • Install the newest AMD ROCm release published for your Ubuntu version\n\
  • Build and install ROCDXG (librocdxg), the WSL GPU bridge\n\
  • Create an isolated Python environment in ~/genai_env\n\
- • Install PyTorch 2.9.1 with ROCm support\n\n\
+ • Install the matching AMD PyTorch wheels\n\n\
  Requires on Windows:\n\
  • AMD Adrenalin 26.2.2 or newer\n\
  • Windows SDK (needed to build ROCDXG)\n\n\
- Takes 10-20 minutes. Afterwards you must restart WSL2."; then
+ Takes 10-20 minutes. Afterwards you must restart WSL2.\n\n\
+ Run ./upgrade.sh --check to see exactly which versions are current."; then
         return 0
     fi
 
