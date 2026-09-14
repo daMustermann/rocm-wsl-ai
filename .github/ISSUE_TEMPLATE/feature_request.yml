@@ -1,0 +1,82 @@
+name: Feature request
+description: Suggest a capability, a new supported tool, or a change in behaviour.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are welcome, but this project has a narrow scope on purpose:
+        **WSL2 + ROCm on RDNA3/RDNA4 Radeon cards and supported Ryzen APUs**. Requests
+        for native Linux support, Windows-native ROCm, or non-AMD hardware will be
+        closed — not because they are bad ideas, but because the toolkit is built
+        around the ROCDXG WSL bridge and cannot be honest about hardware it cannot
+        test.
+
+        Two things speed a request up enormously:
+
+        * Saying what you tried today and why it was annoying. "Add flag X" is hard to
+          evaluate; "I have to hand-edit the launch script every time I want X" is not.
+        * Numbers, if the request is about speed. Claims are held to measurement in
+          this project — see [docs/PERFORMANCE.md](https://github.com/daMustermann/rocm-wsl-ai/blob/main/docs/PERFORMANCE.md)
+          for how the engine measures and which levers turned out to be real.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Describe the situation, not the API. What are you trying to do, and what does
+        the toolkit make awkward or impossible right now?
+      placeholder: |
+        I run two different models on the same card and have to stop one server before
+        the other fits in VRAM. I would like ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: |
+        What you would like to happen, and where it would live (`menu.sh`, a new
+        `scripts/start/*.sh`, the registry in `lib/tools.sh`, a `perf_engine.py`
+        subcommand, ...). Sketches and rough command lines are fine.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: |
+        Including what you do instead today — a manual workaround, another tool, or
+        nothing. If a workaround exists, say why it is not good enough.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: pr
+    attributes:
+      label: Would you be willing to submit a pull request for this?
+      description: |
+        "No" is a perfectly good answer, and a well-scoped request with no patch is more
+        useful than an abandoned one. If yes, read CONTRIBUTING.md first — most changes
+        are small, but anything touching `perf_engine.py` needs measurements.
+      options:
+        - Yes, I have or can write the code
+        - Yes, but I would need guidance on the approach
+        - No, I am only suggesting the idea
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: |
+        Your GPU and ROCm setup, links to upstream documentation, screenshots, or a
+        related issue. Optional.
+    validations:
+      required: false

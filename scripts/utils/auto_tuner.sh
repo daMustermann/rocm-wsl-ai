@@ -1,89 +1,116 @@
 #!/bin/bash
-set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# ==============================================================================
+# Performance Auto-Tuner (menu front-end for perf_engine.py)
+# ==============================================================================
+# The measurement, scoring and honest-verdict logic all live in
+# scripts/utils/perf_engine.py. This script only drives the UI around it.
+#
+# What the previous version did, and why it was replaced:
+#   It benchmarked 4096x4096 fp32 matmul + softmax four times and attributed the
+#   differences to MIGRAPHX_MLIR_USE_SPECIFIC_OPS and PYTORCH_ALLOC_CONF.
+#   Neither variable affects PyTorch's HIP backend (MIGRAPHX is a separate
+#   runtime that torch does not use unless torch_migraphx is installed), so the
+#   "winner" was noise. It also wrote ~/.genai_opt_profile, which the launch
+#   scripts then sourced for every tool.
+# ==============================================================================
+set -uo pipefail
 
-if [ -f "$SCRIPT_DIR/lib/common.sh" ]; then
-    source "$SCRIPT_DIR/lib/common.sh"
-else
-    echo "common.sh missing"
-    exit 1
-fi
+TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export TOOLKIT_ROOT
+# shellcheck disable=SC1091
+. "$TOOLKIT_ROOT/lib/launch.sh"
+
+ENGINE="$TOOLKIT_ROOT/scripts/utils/perf_engine.py"
+VENV_PY="$HOME/genai_env/bin/python3"
 
 clear
-echo ""
-headline "✨ Magic Settings Auto-Tuner"
-echo -e "$(gum style --foreground 117 "This will test different ROCm memory and attention profiles to find")\n$(gum style --foreground 117 "the fastest PyTorch combination for your specific GPU.")\n"
+ai_banner "Performance Auto-Tuner"
 
-if ! is_wsl; then
-    err "The Auto-Tuner is currently designed for WSL2."
-    read -rp "Press Enter to return..."
+if [ ! -f "$ENGINE" ]; then
+    ai_err "perf_engine.py not found at $ENGINE"
+    read -rp "  Press Enter to return..."
     exit 1
 fi
 
-VENV_PATH="$HOME/genai_env"
-if [ ! -f "$VENV_PATH/bin/activate" ]; then
-    msgbox "Environment Not Found" "Virtual environment not found. Please install the Base Environment first."
+if [ ! -x "$VENV_PY" ]; then
+    ai_err "The base environment is not installed (no ~/genai_env)."
+    ai_say "     Install it first:  ./menu.sh  ->  Install  ->  Base Environment"
+    echo ""
+    read -rp "  Press Enter to return..."
     exit 1
 fi
 
-# We don't want to crash if HSA_OVERRIDE_GFX_VERSION is missing during bash strict mode
-source "$VENV_PATH/bin/activate"
-export HSA_OVERRIDE_GFX_VERSION="${HSA_OVERRIDE_GFX_VERSION:-11.0.0}" 
+# --- Explain what is about to happen -----------------------------------------
+cat <<'EOF'
+  This measures several candidate configurations on YOUR GPU and keeps the one
+  that actually wins. It runs short bursts of diffusion-shaped work
+  (convolutions, attention, and a multi-step denoising loop) and compares them.
 
-log "Benchmarking started. Please wait, this takes about 15-20 seconds..."
-
-# Define Profiles
-declare -A PROFILES
-PROFILES["0_Default"]="export MIGRAPHX_MLIR_USE_SPECIFIC_OPS="
-PROFILES["1_MIGraphX_Attention"]="export MIGRAPHX_MLIR_USE_SPECIFIC_OPS=attention"
-PROFILES["2_VRAM_Caching"]="export PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.8,max_split_size_mb:512; export MIGRAPHX_MLIR_USE_SPECIFIC_OPS="
-PROFILES["3_Extreme_Tuning"]="export PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.8,max_split_size_mb:512; export MIGRAPHX_MLIR_USE_SPECIFIC_OPS=attention"
-
-ORDER=("0_Default" "1_MIGraphX_Attention" "2_VRAM_Caching" "3_Extreme_Tuning")
-DISPLAY_NAMES=("Default Baseline" "MIGraphX Attention Opt" "High VRAM Caching" "Extreme (Attention + Caching)")
-
-BEST_INDEX=-1
-BEST_TIME=999999.0
-
+  It takes roughly 2-5 minutes. Do not start a game or another GPU workload
+  while it runs — that makes the numbers unreliable, and the tuner will say so
+  rather than guess.
+EOF
 echo ""
-gum style --bold "Running PyTorch AMD Optimizations:"
-echo "--------------------------------------------------------"
 
-for i in "${!ORDER[@]}"; do
-    profile_key="${ORDER[$i]}"
-    display_name="${DISPLAY_NAMES[$i]}"
-    env_vars="${PROFILES[$profile_key]}"
-    
-    # Evaluate environment variables and launch the benchmark
-    OUTPUT=$(eval "$env_vars && python $SCRIPT_DIR/scripts/utils/benchmark.py" 2>&1 || echo "SCORE: 9999.0")
-    
-    SCORE=$(echo "$OUTPUT" | grep "SCORE:" | awk '{print $2}' || echo "9999.0")
-    
-    gum style --foreground 212 "Testing [${display_name}] ... Time: ${SCORE}s"
-    
-    # Floating point comparison using awk
-    if awk -v score="$SCORE" -v best="$BEST_TIME" 'BEGIN {exit !(score < best)}'; then
-        BEST_TIME=$SCORE
-        BEST_INDEX=$i
-    fi
-done
-
-echo ""
-if [ $BEST_INDEX -ge 0 ] && [ $(awk -v score="$BEST_TIME" 'BEGIN {print (score < 9900 ? 1 : 0)}') -eq 1 ]; then
-    WINNER_NAME="${DISPLAY_NAMES[$BEST_INDEX]}"
-    WINNER_KEY="${ORDER[$BEST_INDEX]}"
-    
-    gum style --border rounded --padding "1 2" --border-foreground 46 "$(gum style --bold --foreground 46 "🏆 Winner: $WINNER_NAME")" "Benchmark Time: ${BEST_TIME}s"
-    
-    if yesno "Apply Optimizations?" "Permanently save this optimized profile as your new default?"; then
-        BEST_VARS="${PROFILES[$WINNER_KEY]}"
-        
-        echo "# Auto-Generated PyTorch ROCm Profile" > "$HOME/.genai_opt_profile"
-        echo "$BEST_VARS" | tr ';' '\n' | sed 's/^ *//' >> "$HOME/.genai_opt_profile"
-        
-        msgbox "Applied!" "Your backend is now permanently tuned for maximum performance on your hardware!\n\nLaunch scripts will now automatically load these settings."
-    fi
-else
-    err "Benchmark completely failed on all profiles. Check your PyTorch installation."
-    read -rp "Press Enter to return..."
+if ! ai_preflight; then
+    echo ""
+    ai_err "The GPU is not ready, so there is nothing to measure."
+    read -rp "  Press Enter to return..."
+    exit 1
 fi
+
+# --- Choose how thorough to be -----------------------------------------------
+MODE="standard"
+if command -v gum >/dev/null 2>&1; then
+    MODE="$(gum choose --cursor='» ' --header="How thorough should the tuning be?" \
+        "quick    — about 1 minute, fewer samples" \
+        "standard — about 3 minutes, recommended" \
+        "thorough — about 8 minutes, best accuracy" 2>/dev/null || echo standard)"
+    MODE="${MODE%% *}"
+fi
+case "$MODE" in
+    quick)    ENGINE_FLAGS=(--quick) ;;
+    thorough) ENGINE_FLAGS=(--iters 80 --warmup 8) ;;
+    *)        ENGINE_FLAGS=() ; MODE="standard" ;;
+esac
+
+echo ""
+ai_info "Starting the $MODE measurement run."
+ai_dim  "  Candidates are measured in separate processes, so a bad one cannot"
+ai_dim  "  take down the whole run."
+echo ""
+
+# Run it. Output is streamed so the user sees progress.
+set +e
+"$VENV_PY" "$ENGINE" bench --save-report "${ENGINE_FLAGS[@]}"
+ENGINE_RC=$?
+set -e
+
+echo ""
+case "$ENGINE_RC" in
+    0)
+        ai_ok "Tuning complete. The profile is now applied to every tool."
+        ;;
+    3)
+        ai_err "No candidate produced a valid measurement."
+        ai_say "     Usually this means another GPU workload was running, or the"
+        ai_say "     GPU needs a restart (in PowerShell: wsl --shutdown)."
+        ;;
+    2)
+        ai_err "The GPU was not visible to PyTorch."
+        ai_say "     Run:  ./menu.sh  ->  Settings  ->  GPU Diagnostics"
+        ;;
+    *)
+        ai_err "The tuner exited with code $ENGINE_RC."
+        ai_say "     Full report (if produced): $ROCM_AI_CONFIG_DIR/last_benchmark.json"
+        ;;
+esac
+
+# --- Show the resulting profile ----------------------------------------------
+if [ "$ENGINE_RC" = "0" ]; then
+    echo ""
+    "$VENV_PY" "$ENGINE" show | sed 's/^/  /'
+fi
+
+echo ""
+read -rp "  Press Enter to return to the menu..."

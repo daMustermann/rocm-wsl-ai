@@ -1,0 +1,70 @@
+# --- Toolkit state -----------------------------------------------------------
+# Everything under ~/.config/rocm-wsl-ai is per-machine. None of it belongs in
+# a repository: it contains local paths, a benchmark result specific to one GPU,
+# and (for tools.local) whatever third-party repositories the user registered.
+#
+#   perf.env / perf_profile.json   tuned profile + measurements
+#   tools.local                    user-registered third-party tools
+#   miopen/                        MIOpen convolution tuning database
+#   logs/                          launcher logs
+#   user.env                       local settings
+user.env
+perf.env
+perf_profile.json
+perf_profile.json.tmp
+perf.env.tmp
+gpu.env
+tools.local
+miopen/
+logs/
+last_benchmark.json
+.preflight
+.first_run_done
+.gpu_summary
+.engine_summary
+shim/
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Editor and OS -----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Local scratch ------------------------------------------------------------
+# Notes, test harnesses and throwaway scripts that should not be published.
+.dsh-tmp-checks/
+scratch/
+tmp/
+*.local
+*.log
+
+# Ad-hoc verification and probe scripts used during development. Kept deliberately
+# broad so a stray harness cannot be committed by accident.
+.precommit*.sh
+.test-*.sh
+.probe-*.sh
+.verify*.sh
+.final*.sh

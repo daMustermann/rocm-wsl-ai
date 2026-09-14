@@ -1,57 +1,47 @@
 #!/bin/bash
-set -euo pipefail
+# ==============================================================================
+# Start SD.Next
+# ==============================================================================
+# SD.Next performs its own ROCm detection and manages its own virtual
+# environment through webui.sh. We provide the GPU environment and the tuned
+# profile, then hand over.
+#
+# On precision flags:
+#   The previous version always passed `--no-half --no-half-vae`. Those are
+#   workarounds for specific AMD situations, and `--no-half` in particular forces
+#   fp32 everywhere, which is a large slowdown on cards that handle bf16 well
+#   (RDNA3 in particular has weak fp16 throughput relative to its fp32, so the
+#   historical workarounds are easy to get backwards).
+#   SD.Next's own defaults are now ROCm-aware, so this script passes only what
+#   is required to select the ROCm backend and leaves precision to SD.Next.
+#   If you see black or NaN images, add the workarounds yourself via
+#   ~/.config/rocm-wsl-ai/user.env:
+#       export SDNEXT_EXTRA_ARGS="--no-half-vae"
+# ==============================================================================
+set -uo pipefail
 
-# Get the script's directory and source the common library
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export TOOLKIT_ROOT
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/../../lib/common.sh"
+. "$TOOLKIT_ROOT/lib/launch.sh"
 
-# --- Configuration ---
-# Name of the Python virtual environment
-VENV_NAME="genai_env"
-VENV_PATH="$HOME/$VENV_NAME"
-SDNEXT_DIR="$HOME/SD.Next"
+ai_load_env >/dev/null 2>&1 || true
 
-# Load persistent user settings (GPU profile, port overrides, etc.)
-if [ -f "$HOME/.config/rocm-wsl-ai/user.env" ]; then
-    # shellcheck disable=SC1090
-    source "$HOME/.config/rocm-wsl-ai/user.env"
-fi
-
-# Enable ROCDXG for WSL GPU compute
-export HSA_ENABLE_DXG_DETECTION=1
-# With ROCm 7.x + ROCDXG, HSA_OVERRIDE_GFX_VERSION breaks DXCore GPU detection
-if [ -f "/opt/rocm/lib/librocdxg.so" ]; then
-    unset HSA_OVERRIDE_GFX_VERSION
-fi
-
-# --- Main Logic ---
-headline "Starting SD.Next"
+SDNEXT_DIR="${SDNEXT_DIR:-$HOME/SD.Next}"
+PORT="${SDNEXT_PORT:-7860}"
 
 if [ ! -f "$SDNEXT_DIR/webui.sh" ]; then
-    err "SD.Next not found at $SDNEXT_DIR"
-    err "Please install it first via the main menu."
+    ai_err "SD.Next is not installed (missing $SDNEXT_DIR/webui.sh)."
+    ai_say "     Install it:  ./menu.sh  ->  Install  ->  SD.Next"
     exit 1
 fi
 
-if [ ! -f "$VENV_PATH/bin/activate" ]; then
-    err "Python virtual environment not found at $VENV_PATH"
-    err "Please run the base installation first."
-    exit 1
-fi
-
-log "Activating Python virtual environment..."
-# shellcheck disable=SC1091
-source "$VENV_PATH/bin/activate"
-
-log "Changing to SD.Next directory: $SDNEXT_DIR"
-cd "$SDNEXT_DIR"
-
-log "Launching SD.Next with ROCm arguments..."
-SDNEXT_PORT_ARGS=()
-[ -n "${SDNEXT_PORT:-}" ] && SDNEXT_PORT_ARGS+=("--port" "$SDNEXT_PORT")
-./webui.sh --use-rocm --skip-torch-cuda-test --no-half --no-half-vae "${SDNEXT_PORT_ARGS[@]:-}"
-
-# Deactivate virtual environment on exit
-trap 'deactivate' EXIT
-success "SD.Next has been launched."
+# SD.Next manages its own venv, so no --venv here. The preflight still runs,
+# because it is better to show the GPU fix checklist than a wall of Python.
+ai_launch \
+    --name "SD.Next" \
+    --dir "$SDNEXT_DIR" \
+    --command "./webui.sh --use-rocm --port $PORT ${SDNEXT_EXTRA_ARGS:-}" \
+    --port "$PORT" \
+    --allow-extra-args \
+    -- "$@"

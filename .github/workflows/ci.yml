@@ -1,0 +1,240 @@
+# ==============================================================================
+# ROCm WSL2 AI Toolkit — continuous integration
+# ==============================================================================
+# The toolkit is bash + Python 3 only; there is no compiled component in this
+# repository (the ROCDXG bridge is built from AMD's own ROCm/librocdxg), so CI is
+# cheap: syntax, lint, and a GPU-less self-check of the performance engine.
+#
+# Nothing here needs a GPU, installs ROCm, or touches the network beyond apt and
+# the GitHub Actions runner images. Every command below can be reproduced on your
+# own machine — see CONTRIBUTING.md.
+#
+# Runners are plain Ubuntu machines with no /dev/kfd and no AMD GPU, which is
+# what shapes the `doctor` step in the python job. Read the comment there before
+# changing it.
+# ==============================================================================
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# CI only ever reads the repository.
+permissions:
+  contents: read
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # 1. ShellCheck — warnings and above are failures.
+  # ----------------------------------------------------------------------------
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck --version
+
+      # EXCLUSION LIST — READ THIS BEFORE EDITING IT.
+      #
+      # `shellcheck -S warning` was run over every *.sh in this tree with
+      # shellcheck 0.8.0 (the version in Ubuntu 22.04), 0.9.0 and 0.10.0 before
+      # this workflow was written. Six codes account for every finding in the
+      # existing code; each one is explained below. The list is a measured
+      # baseline, not a blanket `-e`.
+      #
+      # The list is meant to shrink. When you fix a finding, delete its code from
+      # the `-e` argument below and this job starts enforcing it again. Do not add
+      # a code without running shellcheck first and writing down why here.
+      #
+      # The apt version is not pinned, so a future runner image could ship a
+      # shellcheck that reports a new code. The correct response is to fix the
+      # finding (or extend this list with a written reason) — not to lower -S.
+      #
+      #   SC1090 — "ShellCheck can't follow non-constant source."
+      #            Every script loads its library through a computed path
+      #            (`. "$TOOLKIT_ROOT/lib/launch.sh"`), which is deliberate: the
+      #            checkout is relocatable and is often read through /mnt/f. New
+      #            code should prefer a `# shellcheck source=...` directive, but
+      #            the existing pattern is not a defect.
+      #
+      #   SC2010 — "Don't use ls | grep."
+      #            Three sites parse `ls -1` of the Windows SDK `Include`
+      #            directory to pick the newest `10.x` version. A directory-listing
+      #            portability nit on a fixed, well-known Windows path — not a
+      #            correctness bug, and rewriting it is a separate cleanup.
+      #
+      #   SC2034 — "appears unused."
+      #            Two different situations, both pre-existing. lib/common.sh is
+      #            *sourced*, so ROCM_AI_VERSION, GPU_ENV, ROCM_AI_LOG_DIR and the
+      #            colour variables are read by other files that shellcheck cannot
+      #            see while analysing one file at a time — those are false
+      #            positives. The rest (`sig_changed` in lib/launch.sh, the
+      #            accepted but never-read `--health` option, `dxg` in menu.sh) are
+      #            genuinely dead locals and are worth deleting — which is exactly
+      #            when this code should leave the list.
+      #
+      #   SC2088 — "Tilde does not expand in quotes."
+      #            One user-facing hint message deliberately prints the literal
+      #            path a user should type, including the `~`.
+      #
+      #   SC2155 — "Declare and assign separately to avoid masking return values."
+      #            `local x="$(cmd)"` hides `cmd`'s exit status. The single site
+      #            does not test that status; it is a style call, not a bug.
+      #
+      #   SC2163 — "This does not export '<name>'."
+      #            `export -f "$_fn"` in lib/common.sh re-exports a list of helper
+      #            functions by name so that `bash -c` children can use them.
+      #            ShellCheck cannot see through the indirection; the code is
+      #            correct bash.
+      - name: Lint every shell script
+        run: |
+          set -uo pipefail
+
+          # Every *.sh in the tree except .git — Git ships shell-script hook
+          # samples that are not ours to fix.
+          mapfile -t scripts < <(find . -path ./.git -prune -o -name '*.sh' -print | sort)
+
+          echo "shellcheck $(shellcheck --version | awk '/^version:/ {print $2}')"
+          echo "Linting ${#scripts[@]} script(s):"
+          printf '  %s\n' "${scripts[@]}"
+          echo
+
+          # -S warning : warnings, errors and fatal parse failures fail the job;
+          #              style/info notices stay advisory.
+          # -f gcc     : file:line:col: level: message, which GitHub annotates.
+          shellcheck -S warning \
+            -e SC1090,SC2010,SC2034,SC2088,SC2155,SC2163 \
+            -f gcc \
+            "${scripts[@]}"
+
+  # ----------------------------------------------------------------------------
+  # 2. The performance engine — stdlib-only Python, no GPU required.
+  # ----------------------------------------------------------------------------
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Python 3.10 is the floor (Ubuntu 22.04's interpreter) and 3.12 is what
+      # Ubuntu 24.04 ships. Knowing that 3.10 broke while 3.12 passed is the whole
+      # point of the matrix, so a failure in one leg must not cancel the other.
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.12"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Byte-compile every Python file
+        run: |
+          set -uo pipefail
+          find . -path ./.git -prune -o -name '*.py' -print0 \
+            | xargs -0 python3 -m compileall -q
+          echo "compileall: OK"
+
+      - name: The engine reports its version
+        run: |
+          set -uo pipefail
+          version="$(python3 scripts/utils/perf_engine.py --version)"
+          echo "perf_engine.py --version -> $version"
+          printf '%s\n' "$version" \
+            | grep -Eq '^perf_engine [0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "::error::perf_engine.py --version printed '$version', which is not an engine version"; exit 1; }
+
+      - name: The CLI is usable
+        run: python3 scripts/utils/perf_engine.py --help
+
+      # run_doctor() records "nothing to measure here" as a *problem* and returns
+      # 1 for it: on a GitHub runner there is no AMD GPU and usually no PyTorch,
+      # so it prints either
+      #     GPU              : not visible to PyTorch
+      #     status           : engine is fine; fix GPU visibility first
+      # or
+      #     PyTorch probe    : torch import failed: No module named 'torch'
+      #     status           : engine is fine; PyTorch is not usable yet
+      # and exits 1. Both are correct behaviour on a runner, so the job tolerates
+      # exactly those two verdicts — and nothing else. Engine-level problems
+      # (a profile that fails to build, the PYTORCH_HIP_ALLOC_CONF regression
+      # guard, a broken embedded worker) always fail the job.
+      - name: Engine self-check (doctor)
+        run: |
+          set -uo pipefail
+
+          set +e
+          python3 scripts/utils/perf_engine.py doctor > doctor.log 2>&1
+          doctor_rc=$?
+          set -e
+          cat doctor.log
+          echo "doctor exit code: $doctor_rc"
+
+          # 1. The engine must name its own version whatever the hardware is.
+          grep -q '^engine version   : ' doctor.log \
+            || { echo "::error::doctor did not report an engine version"; exit 1; }
+
+          # 2. Engine-level regressions fail the job regardless of the machine.
+          if grep -Eq 'failed to build|regression in the engine itself|embedded worker has a syntax error|cannot create config dir|torch failed to boot under a profile environment' doctor.log; then
+            echo "::error::perf_engine.py doctor reported an engine-level problem"
+            exit 1
+          fi
+
+          # 3. The good case: a machine with a visible GPU.
+          if grep -q 'All checks passed\.' doctor.log; then
+            echo "doctor: all checks passed"
+            exit 0
+          fi
+
+          # 4. The expected CI case: the engine is fine, the hardware is absent.
+          if grep -qE 'engine is fine; (fix GPU visibility first|PyTorch is not usable yet)' doctor.log; then
+            echo "doctor: engine is healthy — no usable AMD GPU on this machine (expected on CI)"
+            exit 0
+          fi
+
+          echo "::error::doctor failed for an unexpected reason (exit ${doctor_rc})"
+          exit 1
+
+  # ----------------------------------------------------------------------------
+  # 3. Syntax — the cheapest possible regression net, independent of the linters.
+  # ----------------------------------------------------------------------------
+  syntax:
+    name: Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: bash -n on every shell script
+        run: |
+          set -uo pipefail
+          rc=0
+          while IFS= read -r -d '' script; do
+            if ! bash -n "$script"; then
+              echo "::error file=${script}::bash syntax error in ${script}"
+              rc=1
+            fi
+          done < <(find . -path ./.git -prune -o -name '*.sh' -print0)
+          exit "$rc"
+
+      - name: py_compile on every Python file
+        run: |
+          set -uo pipefail
+          rc=0
+          while IFS= read -r -d '' module; do
+            if ! python3 -m py_compile "$module"; then
+              echo "::error file=${module}::Python syntax error in ${module}"
+              rc=1
+            fi
+          done < <(find . -path ./.git -prune -o -name '*.py' -print0)
+          exit "$rc"

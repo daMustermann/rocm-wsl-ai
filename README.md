@@ -1,273 +1,375 @@
+<div align="center">
+
 # ROCm WSL2 AI Toolkit
 
-**The painless, automated way to run stable, high-performance AI on AMD hardware.**
+**Run Stable Diffusion, ComfyUI and local LLMs on an AMD Radeon GPU — fast, and without the setup pain.**
 
-![ROCm WSL2 AI Toolkit Preview](docs/assets/preview.png)
+[![CI](https://github.com/daMustermann/rocm-wsl-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/daMustermann/rocm-wsl-ai/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-4.1.0-blue.svg)](CHANGELOG.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Platform: WSL2](https://img.shields.io/badge/platform-WSL2-0078D4.svg)](#requirements)
+[![ROCm latest](https://img.shields.io/badge/ROCm-latest%20auto--detected-ED1C24.svg)](docs/UPGRADING.md)
+[![PyTorch ROCm](https://img.shields.io/badge/PyTorch-rocm-EE4C2C.svg)](https://pytorch.org/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-## 🛑 The Problem: AMD AI on Windows is a Headache
-If you've ever tried running Stable Diffusion or ComfyUI on an AMD Radeon graphics card in Windows, you know the struggle:
-- **Native Windows ROCm** is often unsupported, lagging behind Linux in features, or fundamentally unstable.
-- **WSL2 (Windows Subsystem for Linux)** is drastically faster and more stable, but requires complex terminal wizardry to properly pass-through the GPU and manually configure the drivers.
-- **Dependency Hell**: Tracking down the exact python wheels, `HSA_OVERRIDE_GFX_VERSION` variables, and PyTorch builds that actually work together takes hours of forum searching.
-- **VRAM Hostage Situations**: Forgetting to close a terminal window means Python permanently hogs your card's VRAM, completely crippling your Windows gaming or rendering performance until you hunt down the process.
+<img src="docs/assets/preview.png" alt="ROCm WSL2 AI Toolkit menu" width="820">
 
-## ⭐ The Solution: Make it Effortless
-This toolkit was built to abstract away the Linux complexity. It provides a beautiful, keyboard-driven smart dashboard that fully automates the installation of AMD's ROCm 7.2.3 stack with ROCDXG and PyTorch 2.9.1 inside WSL2. 
-
-**Why this makes your life easier:**
-- **Zero Guesswork Installation**: It automatically queries your OS, downloads the exact AMD-official PyTorch wheels, and silos everything in an isolated virtual environment. You literally just press "Install".
-- **Seamless Windows Integration**: It generates interactive `.bat` files straight to your Windows Desktop. Double-click the icon in Windows, and it silently boots the WSL backend and launches your AI tools without you ever touching a terminal.
-- **💤 Smart Sleep VRAM Manager**: Your AI tools are automatically put into hibernation after 30 minutes of inactivity, instantly freeing 100% of your VRAM back to Windows! Simply refreshing your browser on port 8188 wakes the AI instantly back up.
-- **✨ Magic Settings Auto-Tuner**: Unsure which PyTorch optimizations make your specific GPU fastest? The built-in tuner natively sweeps your hardware against different attention and caching profiles, isolates the mathematical winner, and permanently injects it into your launch scripts.
-- **🔄 One-Click Self-Update**: The toolkit can update itself and all installed AI tools from within the menu — no manual `git pull` needed.
-- **🎨 Model Training with kohya_ss**: Optionally install [kohya_ss](https://github.com/bmaltais/kohya_ss) for LoRA, DreamBooth, and fine-tuning directly on your AMD GPU.
-- **Gorgeous Status Dashboard**: Built with Charmbracelet's `gum`, giving you a highly readable, colorful interface with real-time hardware polling so you never have to guess if ROCm is actually working.
+</div>
 
 ---
 
-## 🎯 Supported GPUs
-
-- AMD Radeon RX 7000 series (RDNA3)
-- AMD Radeon RX 9000 series (RDNA4)
-- AMD Ryzen Strix / Strix Halo APUs (NEW in 3.0.0)
-- **Note**: Only RDNA3+ (gfx1100+) GPUs and supported Ryzen APUs are supported
-
-## 📋 Prerequisites
-
-### Windows Requirements
-- Windows 11
-- [AMD Adrenalin Edition 26.2.2 **or newer**](https://www.amd.com/en/support/download/drivers.html) driver installed
-- [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) installed (required for ROCDXG build)
-- WSL2 enabled and configured
-
-### WSL2 Requirements
-- Ubuntu 24.04 (recommended) **or** Ubuntu 22.04
-- At least 20GB free disk space
-- Internet connection for downloads
+> ### ⬆️ Already using an older version? One command:
+>
+> ```bash
+> cd ~/rocm-wsl-ai && ./upgrade.sh
+> ```
+>
+> Updates the toolkit, upgrades ROCm to the newest release, rebuilds PyTorch,
+> repairs settings older versions left harmful, and re-tunes performance.
+> Your models and custom nodes are never touched.
+>
+> Not sure? `./upgrade.sh --check` changes nothing and tells you what would happen.
+> Full details in **[docs/UPGRADING.md](docs/UPGRADING.md)**.
 
 ---
 
-## 🚀 Quick Start
+## Why this exists
 
-### 0. Absolute Beginner? (Windows 1-Click Setup)
-If you have absolutely no idea how to install WSL2 or Ubuntu, we wrote an automated Windows wizard for you.
-Simply right-click the `Install_WSL_Ubuntu.bat` file in this repository and select **"Run as administrator"**. It will completely configure WSL2 and download Ubuntu 24.04 directly to your PC.
+Running AI on an AMD card under Windows is genuinely unpleasant:
 
-Once inside your new Ubuntu terminal, continue below:
+| The problem | What this toolkit does |
+|---|---|
+| Native Windows ROCm support lags Linux and is often unstable | Runs everything in **WSL2**, which is dramatically faster and more reliable |
+| WSL2 needs a GPU bridge, exact driver versions, and matching wheels | Installs **ROCm + ROCDXG + PyTorch** end to end, in one menu choice |
+| Every ROCm release invalidates a hand-written installer | **Resolves the newest release from AMD's repositories at run time** — no pinned versions to rot |
+| `HSA_OVERRIDE_GFX_VERSION`, `PYTORCH_ROCM_ARCH`, MIOpen caches — endless env var archaeology | Detects your GPU and configures all of it automatically |
+| "PyTorch can't see my GPU" with no useful error | A cached preflight that tells you *which* of the five usual causes applies |
+| Upgrading means reinstalling everything by hand | **One command** updates the toolkit, ROCm, PyTorch, your tools, and repairs old settings |
+| A forgotten terminal holds 24 GB of VRAM hostage, wrecking your games | Idle hibernation frees **100% of VRAM** back to Windows; a browser refresh wakes it |
+| Launch flags copied from a 2023 blog post make a 24 GB card behave like an 8 GB one | A tuner that **measures your actual GPU** and derives the flags from the result |
 
-### 1. Clone the Repository
+---
+
+## Measured, not guessed
+
+Most "optimised for AMD" guides are folklore. This toolkit's tuner runs real
+diffusion-shaped work — grouped convolutions, attention, and a multi-step
+denoising loop — on your hardware, then keeps the configuration that actually won.
+
+Real output from an **RX 7900 XTX (gfx1100, 24 GB)** running WSL2 + ROCm 7.2.3:
+
+```
+profile                     score  vs stock  cold start     step  status
+----------------------------------------------------------------------
+ComfyUI default VRAM       127.95     +0.0%     2213 ms  17.0 ms  ok
+Resident models            130.24     +1.8%     2262 ms  16.9 ms  ok
+Resident + MIOpen fast      60.36    -52.8%     1025 ms   8.9 ms  ok
+Resident + 1GB headroom     56.97    -55.5%      955 ms   9.0 ms  WINNER
+MIOpen cache fast-path      60.29    -52.9%     1048 ms   7.7 ms  ok
+Aggressive residency        61.30    -52.1%     1045 ms   8.8 ms  ok
+Lean VRAM (chunked)        125.31     -2.1%     2182 ms  16.0 ms  ok
+----------------------------------------------------------------------
+drift check: reference configuration varied 5% across the run (tolerance 25%)
+```
+
+**Cold start** is the wait before your first image; **step** is per denoising step.
+Both roughly halve. The clearest evidence that the old flags were hurting: `--lowvram`,
+which the toolkit used to force on everyone, is the slowest row in the table.
+
+Three things this tuner does that matter more than the numbers:
+
+- **It refuses to invent wins.** If the best candidate is within measurement noise of
+  the defaults, it says so and applies nothing. When several profiles tie, it picks
+  the *safest* one rather than whichever sampled 1% faster. It also detects GPU
+  drift during a run and throws the whole result away rather than reporting it.
+- **It caught real bugs in this toolkit.** Building it surfaced that
+  `PYTORCH_HIP_ALLOC_CONF` **segfaults** PyTorch 2.9.1+rocm7.2.3 on import — a
+  variable the previous version actively migrated users toward — that the old
+  auto-tuner was tuning two environment variables which do not affect PyTorch's HIP
+  backend at all, and three separate ways its own first version was measuring the
+  wrong thing. See [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+
+---
+
+## Quick start
+
+### Windows one-time prerequisites
+
+| Requirement | Why |
+|---|---|
+| **Windows 11** with WSL2 | The whole toolkit targets WSL2 |
+| **AMD Adrenalin 26.2.2 or newer** | Exposes the DXCore GPU bridge to WSL |
+| **Windows SDK** | Needed to build `librocdxg`, the WSL GPU bridge |
+
+> Missing either of the last two is the most common cause of a failed install.
+> Let the toolkit check for you: **Settings → GPU diagnostics**.
+
+### Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/daMustermann/rocm-wsl-ai/main/install.sh | bash
+```
+
+Prefer to read what you run first? That is entirely reasonable:
 
 ```bash
 git clone https://github.com/daMustermann/rocm-wsl-ai.git
 cd rocm-wsl-ai
+./install.sh
 ```
 
-### 2. Run the Menu
+Don't have WSL2 or Ubuntu yet? Right-click **`Install_WSL_Ubuntu.bat`** and choose
+*Run as administrator*. It installs WSL2 and Ubuntu 24.04 for you.
+
+### Then
+
+Pick **Quick start** in the menu. It works out what your machine is missing and
+does it in order: base environment → (you restart WSL) → first tool → tuning.
+
+> **The WSL restart is not optional.** Run `wsl --shutdown` in PowerShell after the
+> base install. That is what applies your group membership and activates the
+> DXCore bridge — without it, PyTorch cannot see your GPU.
+
+---
+
+## Upgrading
 
 ```bash
-chmod +x menu.sh
-./menu.sh
+cd ~/rocm-wsl-ai && ./upgrade.sh
 ```
 
-### 3. Install Base Environment
+One command that brings an older installation fully up to date:
 
-1. From the menu, select **Install** → **Base Environment**
-2. Wait for installation to complete (10-20 minutes)
-3. **IMPORTANT**: Restart WSL2
-   ```powershell
-   # In Windows PowerShell or CMD:
-   wsl --shutdown
-   ```
-4. Restart your Ubuntu terminal
+- updates the toolkit and **restarts itself with the new code**
+- upgrades **ROCm** to the newest release AMD publishes for your Ubuntu version
+- rebuilds the **ROCDXG** WSL GPU bridge from the newest tag
+- rebuilds `~/genai_env` with the matching **PyTorch** wheels
+- **migrates settings that older versions left behind** — including
+  `PYTORCH_HIP_ALLOC_CONF`, which segfaults current PyTorch, and a stale
+  `HSA_OVERRIDE_GFX_VERSION`, which hides your GPU entirely
+- reinstalls your tools' dependencies and **re-measures performance**
 
-### 4. Install AI Tools
-
-Run `./menu.sh` again and install your desired tools:
-- **ComfyUI**: Node-based workflow for Stable Diffusion
-- **SD.Next**: Advanced Stable Diffusion WebUI
-- **Automatic1111**: Popular Stable Diffusion WebUI
-- **kohya_ss** *(optional)*: LoRA, DreamBooth & fine-tuning model training
-
-### 5. Launch and Enjoy!
-
-Use the **Launch Tool** menu to start your installed applications, or use the **Create Desktop Shortcuts** option to add icons directly to your Windows desktop!
-
----
-
-## 🎨 Optional: kohya_ss Model Training
-
-[kohya_ss](https://github.com/bmaltais/kohya_ss) is a powerful training framework for creating LoRA adapters, DreamBooth fine-tunes, and other model customizations. It runs fully on your AMD GPU via ROCm.
-
-### Install kohya_ss
-
-From the menu: **Install Tools → kohya_ss (LoRA / Model Training)**
-
-This will:
-- Clone the kohya_ss repository to `~/kohya_ss`
-- Create a **dedicated** Python virtual environment (`~/kohya_env`) to avoid dependency conflicts with your inference tools
-- Install PyTorch with ROCm support and all training dependencies
-- Pre-configure [Hugging Face Accelerate](https://huggingface.co/docs/accelerate) for single-GPU ROCm training
-
-### Launch kohya_ss
-
-From the menu: **Launch Tool → kohya_ss (Training GUI)**
-
-Or create a desktop shortcut: **Create Desktop Shortcuts → kohya_ss**
-
-The web GUI will start at **http://localhost:7861** — open this in your Windows browser.
-
-> **Note:** kohya_ss uses a separate venv (`~/kohya_env`) and does **not** share dependencies with your inference tools (`~/genai_env`). Your ComfyUI/SD.Next installations are unaffected.
-
----
-
-## 🔄 Self-Update
-
-The toolkit can update itself and all installed AI tools without leaving the menu.
-
-### Update the Toolkit
-
-From the menu: **Updates → Check for Toolkit Updates**
-
-This will:
-1. Fetch the latest commits from the remote repository
-2. Show you a list of new changes
-3. Apply the update with `git pull --rebase` (safe — preserves local changes via autostash)
-4. Prompt you to restart `menu.sh` to apply the changes
-
-### Update AI Tools
-
-From the menu: **Updates → Update Installed AI Tools**
-
-This opens the Update Manager which lets you selectively update:
-- PyTorch + Triton
-- ComfyUI (including all custom nodes)
-- SD.Next
-- Automatic1111 (including all extensions)
-- kohya_ss
-- Ollama
-- Text Generation WebUI
-- Or update everything at once
-
----
-
-## ⬆️ Upgrading from v3.0.x / v3.1.x
-
-If you already have the toolkit installed with ROCm 7.2.1, you can upgrade to 7.2.3 + ROCDXG **without losing any of your AI tools, models, or custom nodes**.
-
-### Before You Upgrade
-
-On your **Windows** machine, install these two things:
-
-1. **AMD Adrenalin 26.2.2+ driver or newer** — [Download here](https://www.amd.com/en/support/download/drivers.html)
-2. **Windows SDK** — [Download here](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
-   *(During installation, check **"Windows SDK for Desktop C++ amd64 Apps"**. It will automatically select a few required dependencies—leave those checked, but you can uncheck everything else to save space).*
-   
-   <img src="docs/assets/winsdkinstall.png" width="600" alt="Windows SDK Installation Options">
-
-### Run the Upgrade
+Every file it changes is backed up, the migration is idempotent, and the previous
+Python environment is moved aside rather than deleted. Models, custom nodes,
+extensions and datasets are never touched.
 
 ```bash
-cd rocm-wsl-ai
-git pull        # Get the latest toolkit version  —  or use menu: Updates → Check for Toolkit Updates
-./menu.sh
-# Select: Install Tools → Upgrade from ROCm 7.2.1 → 7.2.3 (ROCDXG)
+./upgrade.sh --check    # what would change? (changes nothing)
+./upgrade.sh --yes      # unattended
 ```
 
-The upgrade wizard will:
-- ✅ **Back up** your old Python virtual environment (you can delete it later)
-- ✅ **Install** ROCm 7.2.3 and build ROCDXG (librocdxg) from source
-- ✅ **Create** a fresh venv with PyTorch 2.9.1+rocm7.2.3
-- ✅ **Reinstall** all dependencies for your installed AI tools (ComfyUI, SD.Next, etc.)
-- ✅ **Preserve** all your models, custom nodes, extensions, and configurations
+Full guide, including troubleshooting and version-specific notes:
+**[docs/UPGRADING.md](docs/UPGRADING.md)**
 
-> **Your models are SAFE.** They live in `~/ComfyUI/models/`, `~/stable-diffusion-webui/models/`, etc. — completely outside the Python environment. The upgrade never touches them.
+### ROCm versions are discovered, not pinned
 
-### After the Upgrade
+Older releases hardcoded wheel filenames like
+`torch-2.9.1+rocm7.2.3.lw.gitebc02d69-cp310-cp310-linux_x86_64.whl`. That hash
+changes with every ROCm patch, so a new AMD release broke the installer until
+someone edited it by hand.
 
-1. Restart WSL: `wsl --shutdown` (in PowerShell)
-2. Relaunch Ubuntu and run `./menu.sh`
-3. Launch your AI tools as usual — everything should work with the new ROCm 7.2.3 + ROCDXG stack
-
-### What Changed (Technical)
-
-| | Before (v3.0.x) | After (v3.1.0) |
-|---|---|---|
-| ROCm | 7.2.1 | 7.2.3 |
-| WSL Bridge | Legacy roc4wsl | **ROCDXG (librocdxg)** |
-| Install method | `amdgpu-install --usecase=wsl,rocm` | `apt install rocm` + librocdxg |
-| Windows driver | Adrenalin 26.1.1 | **Adrenalin 26.2.2+** |
-| Env var | — | `HSA_ENABLE_DXG_DETECTION=1` |
-| GPU support | RDNA3+ discrete | + **Ryzen Strix/Halo APUs** |
+The toolkit now reads AMD's repository index at run time and picks the newest
+release that has an apt repository for your Ubuntu version **and** PyTorch wheels
+for your Python version. New ROCm releases therefore work without a toolkit
+update — `./upgrade.sh --check` will offer them as soon as AMD publishes them.
+Offline machines fall back to a known-good version.
 
 ---
 
-## 🛠️ What Gets Installed
+## What you get
 
-### Base Environment
-1. **ROCm 7.2.3** via AMD's official `amdgpu-install` quick-start
-2. **ROCDXG (librocdxg)** — built from source, WSL GPU compute bridge
-3. **Python Virtual Environment** (`~/genai_env`) — isolated from system Python
-4. **PyTorch 2.9.1** — official AMD wheels from `repo.radeon.com`
-5. **GPU Configuration** — `HSA_OVERRIDE_GFX_VERSION` + `HSA_ENABLE_DXG_DETECTION`
+### Performance engine
 
-### Optional Tools
-| Tool | Description | Port | Venv |
-|------|-------------|------|------|
-| ComfyUI | Node-based Stable Diffusion | 8188 | `~/genai_env` |
-| SD.Next | Advanced WebUI | 7860 | `~/genai_env` |
-| Automatic1111 | Popular WebUI | 7860 | `~/genai_env` |
-| kohya_ss | LoRA & model training | 7861 | `~/kohya_env` |
+```bash
+scripts/utils/perf_engine.py probe      # what does this machine actually support?
+scripts/utils/perf_engine.py bench      # measure candidates, apply the winner
+scripts/utils/perf_engine.py show       # what tuning is active right now
+scripts/utils/perf_engine.py doctor     # self-check, no GPU required
+```
 
-## ⚙️ Technical Details
+It tunes only levers that measurably change GPU behaviour, and reports the ones
+that turned out to be noise instead of pretending otherwise.
 
-| Component | Version / Detail |
-|-----------|------------------|
-| ROCm | 7.2.3 |
-| ROCDXG | librocdxg (built from source) |
-| PyTorch | 2.9.1+rocm7.2.3 |
-| Triton | 3.5.1+rocm7.2.3 |
-| kohya_ss venv | `~/kohya_env` (separate from `~/genai_env`) |
-| Accelerate | pre-configured for single-GPU ROCm |
+### Unified launcher
+
+Every tool launches through `lib/launch.sh`, which:
+
+- Sets the GPU environment **before Python starts** (the single most common cause
+  of a silently invisible GPU — see below).
+- Applies your tuned profile, validating each ComfyUI flag against the installed
+  version's real `--help` output, so a flag from a newer release can't break launch.
+- Caches the GPU preflight: **~4 ms** warm instead of a full `import torch` on
+  every launch.
+- Hibernates after 30 minutes idle and gives **all** VRAM back to Windows.
+
+### Any tool you want
+
+The toolkit ships ComfyUI, SD.Next, Automatic1111, kohya_ss and Text Generation
+WebUI — and it can manage **any** git repository as a first-class tool. Point it at
+a repo (GitHub, Codeberg, self-hosted), give it a start command, and it gets cloned,
+installed, launched, updated and added to your Windows desktop like a built-in.
+
+**Install → Add a third-party tool**, or see [`docs/ADDING_TOOLS.md`](docs/ADDING_TOOLS.md).
+
+> The built-in registry deliberately does not list face-swap or
+> likeness-manipulation applications, even though the generic mechanism runs them
+> fine. GitHub's Acceptable Use Policies prohibit non-consensual intimate imagery
+> and synthetic media intended to mislead, and repositories shipping installers for
+> named face-swap apps get taken down regardless of the tool's legality. The
+> registry is generic precisely so the toolkit stays useful without putting the
+> project — or you — in that position.
 
 ---
 
-## 🔧 Troubleshooting
+## The GPU-visibility trap
 
-### Desktop Shortcut Doesn't Start / Window Closes Immediately
-**Symptoms**: Double-clicking the `.bat` file on the Desktop opens a window that closes immediately, or WSL fails to start.
+Worth stating plainly, because it explains a large share of "AMD ROCm doesn't work"
+reports. On this exact stack:
 
-**Solutions**:
-1. **Recreate the shortcut** — old shortcuts created before v3.2.0 used incorrect `wsl.exe` syntax. Delete the old `.bat` file and create a new one from the menu: **Create Desktop Shortcuts**
-2. **Check WSL is installed** — run `wsl --list --verbose` in PowerShell to confirm Ubuntu is available
-3. **Enable WSL interop** — run `wsl --update` in PowerShell (as Administrator)
-4. **Check the WSL distro name** — the shortcut uses `$WSL_DISTRO_NAME` which is usually `Ubuntu-24.04`. Run `echo $WSL_DISTRO_NAME` inside WSL to confirm
+```text
+$ python3 -c "import torch; print(torch.cuda.is_available())"
+False                                    # no HSA_ENABLE_DXG_DETECTION
 
-### GPU Not Detected
-**Symptoms**: `rocminfo` shows no GPU or PyTorch can't see ROCm
-**Solutions**:
-1. Verify AMD Adrenalin 26.2.2 or newer is installed on Windows
-2. Verify `HSA_ENABLE_DXG_DETECTION=1` is set in your environment
-3. Check librocdxg is installed: `ls /opt/rocm/lib/librocdxg.so`
-4. Restart WSL2: `wsl --shutdown` (in PowerShell)
-5. Check GPU in Windows: Open Radeon Software
-6. Verify WSL2 is up to date: `wsl --update`
+$ HSA_ENABLE_DXG_DETECTION=1 python3 -c "import torch; print(torch.cuda.is_available())"
+True                                     # GPU present
+```
 
-### PyTorch Import Error
-**Symptoms**: `ImportError` when importing torch
-**Solutions**:
-1. Ensure virtual environment is activated:
-   ```bash
-   source ~/genai_env/bin/activate
-   ```
-2. Reinstall base environment from menu
+`rocminfo` reports your GPU either way, so every diagnostic says the hardware is
+fine while PyTorch sees nothing. The previous version of this toolkit appended the
+variable to the virtualenv's `activate` script — so the GPU appeared only if you
+remembered to activate that venv first, and vanished in a fresh shell, from an IDE,
+or from a script.
 
-## 📄 License
+The launcher now exports the full GPU environment before anything else runs, and
+`perf_engine.py doctor` verifies that PyTorch can actually boot under a real
+profile environment.
 
-MIT License
+---
 
-## 🙏 Acknowledgments
+## Requirements
 
-- AMD for ROCm and driver support
-- PyTorch team for ROCm integration
-- [bmaltais](https://github.com/bmaltais) for the excellent kohya_ss training framework
-- The incredible ComfyUI, SD.Next, and Automatic1111 open-source communities
+- **GPU**: AMD Radeon RX 7000 series (RDNA3), RX 9000 series (RDNA4), or Ryzen
+  Strix / Strix Halo APUs — `gfx1100` and newer
+- **OS**: Windows 11 + WSL2 with Ubuntu 22.04 or 24.04
+- **Windows driver**: AMD Adrenalin 26.2.2 or newer
+- **Windows SDK**: required to build the ROCDXG bridge
+- **Disk**: ~20 GB free (ROCm and PyTorch are large)
+- **Python**: 3.10 (Ubuntu 22.04) or 3.12 (Ubuntu 24.04) — handled automatically
+
+RDNA2 and older (`gfx1030` and below) are **not supported**: AMD does not ship the
+required ROCm components for WSL2 on those architectures.
+
+---
+
+## What gets installed
+
+| Component | Version |
+|---|---|
+| **ROCm** | The newest release AMD publishes with wheels for your Python — resolved at run time |
+| **ROCDXG** (`librocdxg`) | The newest release tag, built from source |
+| **PyTorch** | The newest AMD ROCm wheel matching your ROCm and Python version |
+| **Triton** | The matching AMD build |
+| **Python env** | Isolated in `~/genai_env`, so nothing touches system Python |
+
+There is no pinned version to go stale. Run `./upgrade.sh --check` to see exactly
+which versions are current and which are available for your machine.
+
+### Optional tools
+
+| Tool | What it is | Default port | Environment |
+|---|---|---|---|
+| ComfyUI | Node-based diffusion workflows | 8188 | `~/genai_env` |
+| SD.Next | Feature-rich Stable Diffusion WebUI | 7860 | own |
+| Automatic1111 | The original Stable Diffusion WebUI | 7860 | own |
+| kohya_ss | LoRA / DreamBooth training | 7861 | `~/kohya_env` |
+| Text Generation WebUI | Local LLM chat | 5000 | `~/genai_env` |
+| *anything else* | Any git repository you register | — | your choice |
+
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/UPGRADING.md`](docs/UPGRADING.md) | **Upgrading from an older version — start here if you already use this toolkit** |
+| [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) | What the tuner measures, which levers are real, and which are folklore |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Symptom-first fixes for the failures people actually hit |
+| [`docs/ADDING_TOOLS.md`](docs/ADDING_TOOLS.md) | Registering your own tools and writing start scripts |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How the libraries, engine and menu fit together |
+| [`docs/WSL2_SETUP_GUIDE.md`](docs/WSL2_SETUP_GUIDE.md) | Manual WSL2 setup, for when you want to understand the plumbing |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed, version by version |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup and how to help |
+
+---
+
+## Command reference
+
+| Command | Purpose |
+|---|---|
+| `./menu.sh` | Interactive menu — start here |
+| `./upgrade.sh` | **Upgrade everything automatically** (`--check`, `--yes`, `--force`) |
+| `./install.sh` | One-line installer; detects an existing install and upgrades it |
+| `scripts/utils/perf_engine.py <cmd>` | `probe` · `profiles` · `bench` · `apply` · `show` · `doctor` |
+| `scripts/utils/gpu_diag.sh` | Full GPU/ROCm health check |
+| `scripts/utils/smart_update.sh` | Scan installed tools, update what is out of date |
+| `scripts/start/comfyui.sh` | Launch ComfyUI directly (same for the other tools) |
+
+### Where your settings live
+
+Everything is under `~/.config/rocm-wsl-ai/` and nothing else is touched:
+
+```text
+user.env            your settings — ports, idle timeout, GPU overrides
+perf.env            the applied tuning profile (generated)
+perf_profile.json   full tuning result and provenance (generated)
+tools.local         your third-party tools (generated)
+miopen/             persistent convolution tuning database
+logs/               launcher logs
+```
+
+---
+
+## Troubleshooting quick index
+
+| Symptom | First thing to try |
+|---|---|
+| `torch.cuda.is_available()` is `False` | `wsl --shutdown` in PowerShell, then reopen Ubuntu |
+| ComfyUI window closes instantly | Recreate the desktop shortcut from the menu |
+| First image takes forever, then it's fast | Normal once; run the tuner to cut it further |
+| VRAM not released after closing a tool | **Launch → Stop all AI servers and free VRAM** |
+| Everything is slow | Check nothing else is using the GPU, then re-run the tuner |
+| Install fails at the ROCDXG step | Windows SDK is missing — see Settings → GPU diagnostics |
+
+Full details in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
+
+---
+
+## Roadmap
+
+- [ ] In-app model browser so the first checkpoint can be downloaded from the menu
+- [ ] Per-model VRAM presets (SD1.5 / SDXL / Flux fit differently on the same card)
+- [ ] Bake the tuned MIOpen database into first-run so the first generation is fast immediately
+- [ ] Automatic report sharing for the tuner, so users can compare across GPUs
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+## Acknowledgements
+
+This toolkit automates and glues together other people's excellent work:
+
+- **AMD** — [ROCm](https://www.amd.com/en/products/software/rocm.html) and the
+  [librocdxg](https://github.com/ROCm/librocdxg) WSL bridge
+- **The PyTorch team** — ROCm integration and the SDPA attention kernels
+- **[ComfyUI](https://github.com/comfyanonymous/ComfyUI)** · **[SD.Next](https://github.com/vladmandic/sdnext)** ·
+  **[Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui)** ·
+  **[kohya_ss](https://github.com/bmaltais/kohya_ss)** ·
+  **[Text Generation WebUI](https://github.com/oobabooga/text-generation-webui)** — the tools themselves
+- **[Charm](https://charm.sh)** — `gum`, which makes the terminal UI pleasant
+
+Each bundled tool is a separate project with its own licence and maintainers; the
+toolkit only installs and configures them.

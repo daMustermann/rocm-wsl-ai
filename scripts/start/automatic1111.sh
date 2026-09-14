@@ -1,64 +1,40 @@
 #!/bin/bash
-set -euo pipefail
+# ==============================================================================
+# Start Automatic1111 (stable-diffusion-webui)
+# ==============================================================================
+# A1111's own webui.sh creates and manages its virtual environment, and its
+# `launch.py` re-installs torch if it thinks it is missing — which on ROCm can
+# replace the ROCm build with a CUDA one. The tuned environment (and the
+# PYTORCH_ROCM_ARCH / HSA settings from lib/launch.sh) is what keeps it honest.
+# ==============================================================================
+set -uo pipefail
 
-# Get the script's directory and source the common library
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export TOOLKIT_ROOT
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/../../lib/common.sh"
+. "$TOOLKIT_ROOT/lib/launch.sh"
 
-# --- Configuration ---
-# Name of the Python virtual environment
-VENV_NAME="genai_env"
-VENV_PATH="$HOME/$VENV_NAME"
-AUTOMATIC1111_DIR="$HOME/stable-diffusion-webui"
+ai_load_env >/dev/null 2>&1 || true
 
-# Load persistent user settings (GPU profile, port overrides, etc.)
-if [ -f "$HOME/.config/rocm-wsl-ai/user.env" ]; then
-    # shellcheck disable=SC1090
-    source "$HOME/.config/rocm-wsl-ai/user.env"
-fi
+A1111_DIR="${A1111_DIR:-$HOME/stable-diffusion-webui}"
+PORT="${A1111_PORT:-7860}"
 
-# Enable ROCDXG for WSL GPU compute
-export HSA_ENABLE_DXG_DETECTION=1
-# With ROCm 7.x + ROCDXG, HSA_OVERRIDE_GFX_VERSION breaks DXCore GPU detection
-if [ -f "/opt/rocm/lib/librocdxg.so" ]; then
-    unset HSA_OVERRIDE_GFX_VERSION
-fi
-
-# --- Main Logic ---
-headline "Starting Automatic1111 SD-WebUI"
-
-if [ ! -f "$AUTOMATIC1111_DIR/webui.sh" ]; then
-    err "Automatic1111 not found at $AUTOMATIC1111_DIR"
-    err "Please install it first via the main menu."
+if [ ! -f "$A1111_DIR/webui.sh" ]; then
+    ai_err "Automatic1111 is not installed (missing $A1111_DIR/webui.sh)."
+    ai_say "     Install it:  ./menu.sh  ->  Install  ->  Automatic1111"
     exit 1
 fi
 
-if [ ! -f "$VENV_PATH/bin/activate" ]; then
-    err "Python virtual environment not found at $VENV_PATH"
-    err "Please run the base installation first."
-    exit 1
+# The community ROCm launcher takes precedence when present.
+LAUNCHER="./webui.sh"
+if [ -f "$A1111_DIR/launch_webui_rocm.sh" ]; then
+    LAUNCHER="./launch_webui_rocm.sh"
 fi
 
-log "Activating Python virtual environment..."
-# shellcheck disable=SC1091
-source "$VENV_PATH/bin/activate"
-
-log "Changing to Automatic1111 directory: $AUTOMATIC1111_DIR"
-cd "$AUTOMATIC1111_DIR"
-
-# Check for the custom ROCm launch script, otherwise use the standard one
-LAUNCH_SCRIPT="./webui.sh"
-if [ -f "./launch_webui_rocm.sh" ]; then
-    LAUNCH_SCRIPT="./launch_webui_rocm.sh"
-    log "Found custom ROCm launch script."
-fi
-
-log "Launching Automatic1111..."
-A1111_PORT_ARGS=()
-[ -n "${A1111_PORT:-}" ] && A1111_PORT_ARGS+=("--port" "$A1111_PORT")
-$LAUNCH_SCRIPT "${A1111_PORT_ARGS[@]:-}"
-
-# Deactivate virtual environment on exit
-trap 'deactivate' EXIT
-success "Automatic1111 has been launched."
+ai_launch \
+    --name "Automatic1111" \
+    --dir "$A1111_DIR" \
+    --command "$LAUNCHER --skip-torch-cuda-test --skip-version-check --port $PORT ${A1111_EXTRA_ARGS:-}" \
+    --port "$PORT" \
+    --allow-extra-args \
+    -- "$@"

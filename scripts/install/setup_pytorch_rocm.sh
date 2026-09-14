@@ -8,12 +8,26 @@ if [ -f "$SCRIPT_DIR_INSTALL/../../lib/common.sh" ]; then
 else
     echo "common.sh not found, cannot proceed." >&2; exit 1
 fi
+# Version discovery: resolves the newest ROCm release and the matching PyTorch
+# wheels from AMD's repositories at run time. Nothing here is hardcoded, so a new
+# ROCm release becomes installable without editing this script.
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR_INSTALL/../../lib/version.sh"
 
 # ==============================================================================
-# Base Environment Installer: ROCm 7.2.3 + ROCDXG + PyTorch 2.9.1
+# Base Environment Installer
 #
-# AMD's official WSL instructions require building librocdxg from source
-# to bridge the Windows DXCore driver to the WSL ROCm runtime.
+# Installs the newest ROCm release that AMD publishes for this Ubuntu version,
+# builds librocdxg (the WSL GPU bridge), and installs the matching AMD PyTorch
+# wheels. Every version is resolved from AMD's repositories at run time by
+# lib/version.sh — nothing in this file is pinned, so a new ROCm release works
+# without editing the script.
+#
+# Official AMD documentation:
+# - ROCDXG WSL guide: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/howto_wsl.html
+# - librocdxg:        https://github.com/ROCm/librocdxg/
+# - ROCm quick start: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/quick-start.html
+# - PyTorch wheels:   https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-pytorch.html
 # ==============================================================================
 
 # Force PIP to ignore global user install flags which break virtual environments
@@ -27,14 +41,10 @@ export PIP_USER=0
 
 # --- Configuration ---
 VENV_NAME="genai_env"
-ROCM_VERSION="7.2.3"
-AMDGPU_INSTALL_VERSION="7.2.3.70203-1"
-PYTORCH_VERSION="2.9.1+rocm7.2.3"
 LIBROCDXG_REPO="https://github.com/ROCm/librocdxg.git"
 LIBROCDXG_DIR="/tmp/librocdxg"
 
 # --- Script Start ---
-headline "ROCm ${ROCM_VERSION} + ROCDXG + PyTorch ${PYTORCH_VERSION} Setup for WSL2"
 
 if ! is_wsl; then
     err "This script is designed specifically for WSL2 environments."
@@ -45,7 +55,7 @@ fi
 log "Running in Windows Subsystem for Linux (WSL2)"
 
 # --- Detect Ubuntu Version and Python Version ---
-headline "TASK 1/8: Detecting Ubuntu Version"
+headline "TASK 1/8: Detecting Ubuntu and resolving versions"
 UBUNTU_VERSION=$(lsb_release -rs)
 UBUNTU_CODENAME=$(lsb_release -cs)
 
@@ -67,55 +77,142 @@ else
     exit 1
 fi
 
+# --- Resolve which ROCm release to install ---
+# AMD publishes several ROCm releases; we want the newest one that has both an
+# apt repository for this Ubuntu release AND PyTorch wheels for this Python.
+# Ask the repositories rather than trusting a version baked into this script.
+log "Querying AMD's repositories for the newest release ..."
+
+ROCM_NEWEST="$(va_latest_rocm "$UBUNTU_CODENAME")"
+ROCM_VERSION="$(va_best_installable_rocm "$WHEEL_SUFFIX")"
+
+if [ -z "$ROCM_VERSION" ]; then
+    warn "Could not reach AMD's repositories. Falling back to ROCm ${ROCM_AI_FALLBACK_ROCM}."
+    ROCM_VERSION="$ROCM_AI_FALLBACK_ROCM"
+elif va_lt "$ROCM_VERSION" "$ROCM_NEWEST"; then
+    success "ROCm ${ROCM_VERSION} selected (newest with wheels for ${WHEEL_SUFFIX}; ${ROCM_NEWEST} is published but has none yet)"
+else
+    success "Using the newest ROCm release: ${ROCM_VERSION}"
+fi
+
+# Resolve exact wheel filenames for this release + Python. The filenames embed a
+# git hash that changes with every ROCm patch, which is why nothing is pinned.
+WHEELS=""
+if ! WHEELS="$(va_resolve_torch_wheels "$ROCM_VERSION" "$WHEEL_SUFFIX")"; then
+    err "Could not resolve PyTorch wheels for ROCm ${ROCM_VERSION} / ${WHEEL_SUFFIX}."
+    err "Check:  https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/"
+    err ""
+    err "If you are offline, install with a known-good version by editing this"
+    err "script's ROCM_VERSION after the resolve step, or run:  ./upgrade.sh --check"
+    exit 1
+fi
+
+ROCM_REL="" TORCH_VERSION="" TORCH_WHEEL="" TORCHVISION_WHEEL="" TORCHAUDIO_WHEEL="" TRITON_WHEEL=""
+eval "$WHEELS"
+
+PYTORCH_VERSION="${TORCH_VERSION}+rocm${ROCM_REL}"
+LIBROCDXG_TAG="$(va_latest_librocdxg)"
+
+headline "Installing ROCm ${ROCM_VERSION} + ROCDXG ${LIBROCDXG_TAG} + PyTorch ${PYTORCH_VERSION}"
+printf '\n'
+log "This will install:"
+log "  ROCm       ${ROCM_VERSION}"
+log "  ROCDXG     ${LIBROCDXG_TAG} (built from source)"
+log "  PyTorch    ${TORCH_VERSION}"
+printf '\n'
+
+if [ "${ROCM_AI_ASSUME_YES:-0}" != "1" ] && ! confirm "Proceed with the installation?"; then
+    log "Cancelled."
+    exit 0
+fi
+
 # --- 2. System Update and Prerequisites ---
 headline "TASK 2/8: System Update and Prerequisites"
 ensure_apt_packages wget build-essential git python3-pip python3-venv libnuma-dev pkg-config cmake gcc
 success "System update and prerequisites installation complete."
 
-# --- 3. Install ROCm via amdgpu-install (new method for 7.2.3) ---
+# --- 3. Install ROCm from AMD's signed apt repository ---
 headline "TASK 3/8: Installing ROCm ${ROCM_VERSION}"
 
 if command -v rocminfo &> /dev/null && [ -f "/opt/rocm/bin/rocminfo" ]; then
-    warn "ROCm appears to be already installed (found /opt/rocm/bin/rocminfo)."
-    if confirm "Do you want to skip ROCm installation?"; then
-        success "ROCm installation skipped."
+    ROCM_PRESENT="$(va_rocm_installed 2>/dev/null || echo unknown)"
+    if [ "$ROCM_PRESENT" = "$ROCM_VERSION" ]; then
+        success "ROCm ${ROCM_VERSION} is already installed."
     else
-        warn "Proceeding with ROCm installation. This may overwrite existing installation."
+        warn "ROCm ${ROCM_PRESENT} is installed; this installer targets ${ROCM_VERSION}."
+        if confirm "Upgrade ROCm to ${ROCM_VERSION}?"; then
+            INSTALL_ROCM=1
+        else
+            success "Keeping the installed ROCm."
+        fi
     fi
 else
-    log "Downloading amdgpu-install package for Ubuntu ${UBUNTU_CODENAME}..."
-    
-    # Download the appropriate amdgpu-install package (7.2.3)
-    AMDGPU_INSTALL_DEB="amdgpu-install_${AMDGPU_INSTALL_VERSION}_all.deb"
-    AMDGPU_INSTALL_URL="https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/${UBUNTU_CODENAME}/${AMDGPU_INSTALL_DEB}"
-    
-    wget -q "$AMDGPU_INSTALL_URL" -O "/tmp/${AMDGPU_INSTALL_DEB}" || {
-        err "Failed to download amdgpu-install package from: ${AMDGPU_INSTALL_URL}"
-        err "Please check your internet connection and the AMD repository status."
+    INSTALL_ROCM=1
+fi
+
+if [ "${INSTALL_ROCM:-0}" = "1" ]; then
+    # --- apt source, not amdgpu-install --------------------------------------
+    # The amdgpu-install .deb path required guessing a build number that changes
+    # independently of the ROCm version (e.g. 7.2.3.70203-1) and broke whenever
+    # AMD republished. Adding the signed repository directly and installing the
+    # `rocm` metapackage is what AMD's own quick-start recommends, and it lets
+    # apt resolve dependencies and produce sensible upgrade paths.
+    KEYRING="/etc/apt/keyrings/rocm.gpg"
+
+    if [ ! -f "$KEYRING" ]; then
+        log "Installing AMD's repository signing key..."
+        sudo mkdir -p /etc/apt/keyrings
+        wget -qO- https://repo.radeon.com/rocm/rocm.gpg.key \
+            | gpg --dearmor | sudo tee "$KEYRING" >/dev/null || {
+                err "Failed to install the ROCm signing key."
+                err "Please check your internet connection."
+                exit 1
+            }
+    fi
+
+    # Amend an existing source rather than adding a second, conflicting one.
+    EXISTING_SRC="$(grep -rl 'repo.radeon.com/rocm/apt' /etc/apt/sources.list.d/ 2>/dev/null | head -1)"
+    if [ -n "$EXISTING_SRC" ]; then
+        log "Updating the ROCm apt source to ${ROCM_VERSION} ..."
+        sudo sed -i -E "s|https://repo\.radeon\.com/rocm/apt/[0-9.]+|https://repo.radeon.com/rocm/apt/${ROCM_VERSION}|g" "$EXISTING_SRC" \
+            || warn "Could not rewrite $EXISTING_SRC"
+    else
+        log "Adding the ROCm ${ROCM_VERSION} apt source..."
+        printf 'deb [arch=amd64 signed-by=%s] https://repo.radeon.com/rocm/apt/%s %s main\n' \
+            "$KEYRING" "$ROCM_VERSION" "$UBUNTU_CODENAME" \
+            | sudo tee /etc/apt/sources.list.d/rocm.list >/dev/null || {
+                err "Could not write the ROCm apt source."
+                exit 1
+            }
+    fi
+
+    # The graphics repository carries userspace pieces ROCm depends on.
+    if _va_curl -o /dev/null "https://repo.radeon.com/graphics/${ROCM_VERSION}/ubuntu/dists/${UBUNTU_CODENAME}/Release"; then
+        GRAPHICS_SRC="$(grep -rl 'repo.radeon.com/graphics' /etc/apt/sources.list.d/ 2>/dev/null | head -1)"
+        if [ -n "$GRAPHICS_SRC" ]; then
+            sudo sed -i -E "s|repo\.radeon\.com/graphics/[0-9.]+|repo.radeon.com/graphics/${ROCM_VERSION}|g" "$GRAPHICS_SRC" || true
+        else
+            printf 'deb [arch=amd64 signed-by=%s] https://repo.radeon.com/graphics/%s/ubuntu %s main\n' \
+                "$KEYRING" "$ROCM_VERSION" "$UBUNTU_CODENAME" \
+                | sudo tee /etc/apt/sources.list.d/rocm-graphics.list >/dev/null || true
+        fi
+    fi
+
+    log "Refreshing package lists..."
+    sudo apt-get update -y >/dev/null 2>&1 || {
+        err "apt-get update failed. The ROCm ${ROCM_VERSION} repository may be unreachable."
         exit 1
     }
-    
-    log "Installing amdgpu-install package..."
-    sudo apt install -y "/tmp/${AMDGPU_INSTALL_DEB}"
-    rm -f "/tmp/${AMDGPU_INSTALL_DEB}"
-    
-    log "Updating package lists..."
-    sudo apt update -y
-    
-    log "Installing python3-setuptools and python3-wheel..."
-    sudo apt install -y python3-setuptools python3-wheel
-    
-    log "Installing ROCm packages..."
-    log "This may take several minutes. Please be patient..."
-    
-    # New ROCm 7.2.3 install method: use 'apt install rocm' instead of 'amdgpu-install --usecase=wsl,rocm'
-    sudo apt install -y rocm || {
+
+    log "Installing ROCm packages (several GB; this takes a while)..."
+    sudo apt-get install -y python3-setuptools python3-wheel >/dev/null 2>&1 || true
+    sudo apt-get install -y rocm || {
         err "ROCm installation failed. Please check the error messages above."
         err "For troubleshooting, see: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/"
         exit 1
     }
-    
-    success "ROCm ${ROCM_VERSION} installation completed."
+
+    success "ROCm $(va_rocm_installed 2>/dev/null || echo "$ROCM_VERSION") installation completed."
 fi
 
 # --- 4. User Group Configuration ---
@@ -141,13 +238,16 @@ log "It enables ROCm GPU compute inside WSL via Microsoft's DXCore interface."
 
 # Check if librocdxg is already installed
 if [ -f "/opt/rocm/lib/librocdxg.so" ]; then
-    warn "librocdxg.so already found at /opt/rocm/lib/librocdxg.so"
-    if confirm "Do you want to skip ROCDXG build/install?"; then
-        success "ROCDXG installation skipped."
+    ROCDXG_PRESENT="$(va_rocdxg_installed 2>/dev/null || echo unknown)"
+    if confirm "ROCDXG ${ROCDXG_PRESENT} is installed. Rebuild it as ${LIBROCDXG_TAG}?"; then
+        warn "Proceeding with the ROCDXG rebuild."
     else
-        warn "Proceeding with ROCDXG rebuild."
+        success "ROCDXG installation skipped."
+        SKIP_ROCDXG=1
     fi
-else
+fi
+
+if [ "${SKIP_ROCDXG:-0}" != "1" ]; then
     log "Step 5a: Detecting Windows SDK path..."
     WIN_SDK_PATH=""
     
@@ -169,12 +269,16 @@ else
         exit 1
     fi
     
-    log "Step 5b: Cloning librocdxg repository..."
+    log "Step 5b: Cloning librocdxg (${LIBROCDXG_TAG}) ..."
     rm -rf "$LIBROCDXG_DIR"
-    git clone --depth=1 "$LIBROCDXG_REPO" "$LIBROCDXG_DIR" || {
-        err "Failed to clone librocdxg repository."
-        exit 1
-    }
+    # Prefer the resolved release tag; fall back to the default branch.
+    if ! git clone --depth=1 --branch "$LIBROCDXG_TAG" "$LIBROCDXG_REPO" "$LIBROCDXG_DIR" 2>/dev/null; then
+        warn "Tag ${LIBROCDXG_TAG} unavailable; using the default branch."
+        git clone --depth=1 "$LIBROCDXG_REPO" "$LIBROCDXG_DIR" || {
+            err "Failed to clone librocdxg repository."
+            exit 1
+        }
+    fi
     
     log "Step 5c: Verifying ROCm installation for librocdxg build..."
     if [ ! -d "/opt/rocm" ]; then
@@ -234,34 +338,23 @@ headline "TASK 7/8: Installing PyTorch ${PYTORCH_VERSION} via official AMD wheel
 log "Python version: $(python3 --version)"
 log "Target wheel suffix: ${WHEEL_SUFFIX}"
 
-# Define wheel URLs from AMD's official repository (ROCm 7.2.3)
-PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.3"
+# Wheel names, versions and the ROCm release directory were all resolved from
+# AMD's repository index at the top of this script (see va_resolve_torch_wheels).
+PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_REL}"
 
-# Wheel filenames with proper local versions (+) - ROCm 7.2.3 git hashes
-TORCH_WHEEL="torch-2.9.1+rocm7.2.3.lw.gitebc02d69-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHVISION_WHEEL="torchvision-0.24.0+rocm7.2.3.gitb919bd0c-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TORCHAUDIO_WHEEL="torchaudio-2.9.0+rocm7.2.3.gite3c6ee2b-${WHEEL_SUFFIX}-linux_x86_64.whl"
-TRITON_WHEEL="triton-3.5.1+rocm7.2.3.gita272dfa8-${WHEEL_SUFFIX}-linux_x86_64.whl"
+log "Downloading PyTorch wheels from repo.radeon.com ..."
+WHEEL_TMP="$(mktemp -d /tmp/rocm-wheels.XXXXXX)"
+cd "$WHEEL_TMP" || exit 1
 
-log "Downloading PyTorch wheels from repo.radeon.com..."
-cd /tmp || exit 1
-
-wget -q "${PYTORCH_BASE_URL}/${TORCH_WHEEL//+/%2B}" -O "${TORCH_WHEEL}" || {
-    err "Failed to download torch wheel. Please check the URL and your connection."
-    exit 1
-}
-wget -q "${PYTORCH_BASE_URL}/${TORCHVISION_WHEEL//+/%2B}" -O "${TORCHVISION_WHEEL}" || {
-    err "Failed to download torchvision wheel."
-    exit 1
-}
-wget -q "${PYTORCH_BASE_URL}/${TORCHAUDIO_WHEEL//+/%2B}" -O "${TORCHAUDIO_WHEEL}" || {
-    err "Failed to download torchaudio wheel."
-    exit 1
-}
-wget -q "${PYTORCH_BASE_URL}/${TRITON_WHEEL//+/%2B}" -O "${TRITON_WHEEL}" || {
-    err "Failed to download pytorch_triton_rocm wheel."
-    exit 1
-}
+for w in "$TORCH_WHEEL" "$TORCHVISION_WHEEL" "$TORCHAUDIO_WHEEL" "$TRITON_WHEEL"; do
+    log "  $(printf '%s' "$w" | cut -c1-64)"
+    wget -q "${PYTORCH_BASE_URL}/${w//+/%2B}" -O "$w" || {
+        err "Failed to download: $w"
+        err "URL: ${PYTORCH_BASE_URL}/${w//+/%2B}"
+        err "Please check your internet connection."
+        exit 1
+    }
+done
 
 success "All PyTorch wheels downloaded successfully."
 
@@ -269,10 +362,10 @@ log "Uninstalling any existing PyTorch packages..."
 pip3 uninstall -y torch torchvision torchaudio pytorch-triton-rocm triton 2>/dev/null || true
 
 log "Installing PyTorch wheels..."
-pip3 install "${TORCH_WHEEL}" "${TORCHVISION_WHEEL}" "${TORCHAUDIO_WHEEL}" "${TRITON_WHEEL}"
+pip3 install "$TORCH_WHEEL" "$TORCHVISION_WHEEL" "$TORCHAUDIO_WHEEL" "$TRITON_WHEEL"
 
 log "Installing SageAttention..."
-pip3 install sageattention
+pip3 install sageattention || warn "SageAttention not installed (optional)"
 
 # Clean up downloaded wheels
 rm -f /tmp/*.whl
@@ -292,11 +385,19 @@ else
     warn "WSL library fix may be required manually."
 fi
 
-# Inject ROCDXG and GPU configuration into venv activation script
+# Inject the GPU environment into venv activation script.
+#
+# Deliberately minimal. The real GPU environment is applied by lib/launch.sh
+# before Python starts, and these two lines are a convenience for people who
+# activate the venv by hand.
+#
+# Notably absent: HSA_OVERRIDE_GFX_VERSION. Version 3.x wrote it here if it
+# happened to be set, and with ROCDXG installed an override makes the runtime
+# reject the device — the GPU then disappears from PyTorch while rocminfo still
+# reports it. It must never be persisted into an activation script.
 log "Configuring environment variables in venv activation script..."
 VENV_ACTIVATE="$HOME/$VENV_NAME/bin/activate"
 
-# Add HSA_ENABLE_DXG_DETECTION (required for ROCDXG)
 if ! grep -q "HSA_ENABLE_DXG_DETECTION" "$VENV_ACTIVATE"; then
     echo 'export HSA_ENABLE_DXG_DETECTION=1' >> "$VENV_ACTIVATE"
     log "Added HSA_ENABLE_DXG_DETECTION=1 to venv activation script"
@@ -307,12 +408,14 @@ if ! grep -q "PIP_USER=0" "$VENV_ACTIVATE"; then
     log "Added PIP_USER=0 to venv activation script to sandbox pip"
 fi
 
-# Add HSA_OVERRIDE_GFX_VERSION if detected
-if [ -n "${HSA_OVERRIDE_GFX_VERSION:-}" ]; then
-    if ! grep -q "HSA_OVERRIDE_GFX_VERSION" "$VENV_ACTIVATE"; then
-        echo "export HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION}" >> "$VENV_ACTIVATE"
-        log "Added HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION} to venv activation script"
-    fi
+# Make the GPU usable from any terminal, not just an activated venv. This is the
+# fix for the most common "PyTorch cannot see my GPU" report.
+log "Installing the GPU environment for login shells..."
+if rocm_ai_install_shell_integration; then
+    success "GPU environment installed for new login shells."
+else
+    warn "Could not install the login-shell environment automatically."
+    warn "See docs/TROUBLESHOOTING.md -> 'PyTorch can't see my GPU'."
 fi
 
 # --- 8. Verification ---

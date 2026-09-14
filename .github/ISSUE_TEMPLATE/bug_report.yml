@@ -1,0 +1,193 @@
+name: Bug report
+description: Something in the toolkit broke — installation, a launch, the menu, or the performance engine.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a report. Two things decide whether this can be turned into
+        a fix or only into a guess:
+
+        1. **The diagnostics block near the bottom.** It is generated on your own
+           machine, and it is the only way to tell "ROCm is not installed" apart from
+           "ROCm is installed but the GPU is invisible to PyTorch" — those look
+           identical from the outside and have completely different fixes.
+        2. **Which tool was involved.** Most failures are specific to one tool's
+           launch path.
+
+        The toolkit supports **WSL2 only** (Ubuntu 22.04 or 24.04). Native Linux,
+        Windows-native ROCm and macOS are out of scope, and reports from them cannot
+        be actioned.
+
+        Not a bug? See [docs/TROUBLESHOOTING.md](https://github.com/daMustermann/rocm-wsl-ai/blob/main/docs/TROUBLESHOOTING.md)
+        first — the GPU-visibility and desktop-shortcut failures are both covered
+        there. Security issues must **not** be filed here: follow
+        [SECURITY.md](https://github.com/daMustermann/rocm-wsl-ai/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: |
+        The actual behaviour, including the exact error text. Paste it rather than
+        paraphrasing — exit codes and the first line of a traceback matter more than
+        the last.
+      placeholder: |
+        I ran: ./menu.sh  ->  Install  ->  ComfyUI
+        It stopped at "Installing Python dependencies" and printed:
+
+        ERROR: Could not find a version that satisfies the requirement ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      description: One or two lines is fine.
+      placeholder: |
+        ComfyUI should install, and then Launch -> ComfyUI should serve
+        http://localhost:8188 in my Windows browser.
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Numbered steps, starting from a fresh WSL shell. Say whether it happens every
+        time or only sometimes, and whether `wsl --shutdown` changes anything.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ### Diagnostics
+
+        Run these from the directory where you cloned the toolkit (usually `~/rocm-wsl-ai`).
+        The first one takes a few seconds and ends with `Press Enter to return...` — that
+        prompt is normal, press Enter. Then paste both outputs below.
+
+        ```bash
+        cd ~/rocm-wsl-ai
+        cat VERSION
+        bash scripts/utils/gpu_diag.sh
+        python3 scripts/utils/perf_engine.py probe
+        ```
+
+        `probe` exits with code `1` and prints `torch import failed: No module named 'torch'`
+        when PyTorch is not installed yet. Paste that too — it is a useful clue, not noise.
+        If it is easier to read, `python3 scripts/utils/perf_engine.py probe --json` works as
+        well. Terminal colour codes in the pasted text are harmless.
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics output
+      description: Output of `gpu_diag.sh` and `perf_engine.py probe`. Do not trim it down.
+      render: shell
+      placeholder: |
+        $ cat VERSION
+        4.0.0
+
+        $ bash scripts/utils/gpu_diag.sh
+        === GPU & ROCm Diagnostics ===
+          [ OK  ]  WSL2 Environment    Detected — distro: Ubuntu-22.04
+          ...
+
+        $ python3 scripts/utils/perf_engine.py probe
+        ROCm WSL AI Toolkit — Performance Probe
+        ============================================
+        Engine version   : 1.0.0
+        ...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: gpu
+    attributes:
+      label: GPU model
+      description: From the diagnostics output, or from Radeon Software in Windows.
+      options:
+        - Radeon RX 7000 series (RDNA3)
+        - Radeon RX 9000 series (RDNA4)
+        - Ryzen APU (Strix / Strix Halo)
+        - Other AMD GPU (older, integrated, or not sure)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: ubuntu
+    attributes:
+      label: Ubuntu version
+      description: Run `lsb_release -ds` inside WSL if you are unsure.
+      options:
+        - Ubuntu 24.04 (noble)
+        - Ubuntu 22.04 (jammy)
+        - Something else (unsupported)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part of the toolkit was involved?
+      options:
+        - ComfyUI
+        - SD.Next
+        - Automatic1111
+        - kohya_ss (training)
+        - Text Generation WebUI
+        - A third-party tool I registered in tools.local
+        - Base install (ROCm 7.2.3 / ROCDXG / PyTorch 2.9.1)
+        - The menu, installer, or a Windows desktop shortcut
+        - Performance engine (perf_engine.py bench / probe / apply)
+        - Something else, or not sure
+    validations:
+      required: false
+
+  - type: dropdown
+    id: windows-driver
+    attributes:
+      label: Windows AMD driver version
+      description: |
+        Radeon Software -> Settings -> System -> Software & Driver. Adrenalin
+        **26.2.2 or newer** is required for the ROCDXG GPU bridge; older drivers
+        cannot work with this toolkit.
+      options:
+        - "26.2.2 (the minimum supported version)"
+        - Newer than 26.2.2
+        - Older than 26.2.2
+        - Not sure / cannot check right now
+    validations:
+      required: false
+
+  - type: input
+    id: windows-driver-exact
+    attributes:
+      label: Exact driver version (optional)
+      description: Only if the dropdown above was not specific enough, e.g. `26.2.2`.
+      placeholder: "26.2.2"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: false
+        - label: I am running this inside WSL2 (Ubuntu 22.04 or 24.04), not native Linux.
+          required: false
+        - label: I pasted the diagnostics output above unedited.
+          required: false

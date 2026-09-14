@@ -1,0 +1,25 @@
+# Issue template chooser.
+#
+# Blank issues are disabled so that every report arrives with the information the
+# toolkit actually needs to be debugged: the diagnostics output for bugs, and the
+# problem statement for feature requests.
+blank_issues_enabled: false
+
+contact_links:
+  # Questions that are really about ROCm itself, rather than about this toolkit,
+  # get better answers from AMD's own documentation.
+  - name: AMD ROCm documentation
+    url: https://rocm.docs.amd.com/en/latest/
+    about: Official ROCm install, compatibility and troubleshooting docs from AMD.
+
+  - name: AMD ROCm GitHub issues
+    url: https://github.com/ROCm/ROCm/issues
+    about: For bugs in ROCm, librocdxg or AMD's PyTorch wheels — not in this toolkit.
+
+  - name: Toolkit troubleshooting guide
+    url: https://github.com/daMustermann/rocm-wsl-ai/blob/main/docs/TROUBLESHOOTING.md
+    about: GPU not visible, shortcuts that close instantly, PyTorch import errors.
+
+  - name: Report a security vulnerability
+    url: https://github.com/daMustermann/rocm-wsl-ai/security/advisories/new
+    about: Privately report command injection, credential exposure or unsafe script execution.

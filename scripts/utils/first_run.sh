@@ -1,69 +1,69 @@
 #!/bin/bash
-# First-run welcome wizard for ROCm WSL AI Toolkit
-# This file is sourced by menu.sh — do NOT execute directly.
-# Defines: first_run_check()
+# ==============================================================================
+# First-run welcome wizard
+# ==============================================================================
+# Sourced by menu.sh — do not execute directly. Defines first_run_check().
+# Shown once, on a genuinely fresh install, then never again.
+# ==============================================================================
 
 FIRST_RUN_MARKER="${ROCM_AI_CONFIG_DIR:-$HOME/.config/rocm-wsl-ai}/.first_run_done"
 
 first_run_check() {
     [ -f "$FIRST_RUN_MARKER" ] && return 0
 
-    # Initialise user.env with defaults (from common.sh)
-    ensure_user_env
-    mkdir -p "$(dirname "$FIRST_RUN_MARKER")"
+    ensure_user_env >/dev/null 2>&1 || true
+    mkdir -p "$(dirname "$FIRST_RUN_MARKER")" 2>/dev/null || true
 
     clear
-    echo ""
+    printf '\n'
 
     if command -v gum >/dev/null 2>&1; then
         gum style \
             --border double --margin "1 2" --padding "1 3" \
             --border-foreground 212 --align center \
-            "$(gum style --bold --foreground 212 "👋 Welcome to ROCm WSL2 AI Toolkit v3.4.0")" \
-            "$(gum style --foreground 240 "First run detected  —  here is how to get started:")"
-        echo ""
-
+            "$(gum style --bold --foreground 212 "Welcome to the ROCm WSL2 AI Toolkit")" \
+            "$(gum style --foreground 240 "v${ROCM_AI_VERSION}")"
+        printf '\n'
         gum style --border rounded --margin "0 2" --padding "1 2" --border-foreground 63 \
-"$(gum style --bold --foreground 63 "🚀 Quick Start — 4 Steps")
+"$(gum style --bold --foreground 63 'Setup takes about 20 minutes and three steps')
 
-  $(gum style --foreground 46 '➊') $(gum style --bold 'Install Tools  →  Base Environment')
-     Installs ROCm 7.2.3 + PyTorch 2.9.1  (takes 10 – 20 min)
+  $(gum style --foreground 46 '1.') $(gum style --bold 'Quick start')
+     Installs ROCm + PyTorch into an isolated environment.
+     Takes 10-20 minutes.
 
-  $(gum style --foreground 46 '➋') $(gum style --bold 'Restart WSL2') after the base install:
-     Open PowerShell on Windows and run:
-     $(gum style --foreground 212 'wsl --shutdown')  then relaunch Ubuntu
+  $(gum style --foreground 46 '2.') $(gum style --bold 'Restart WSL2')
+     In Windows PowerShell:  $(gum style --foreground 212 'wsl --shutdown')
+     Then reopen Ubuntu and run ./menu.sh again.
+     $(gum style --foreground 214 'This step is required — without it your GPU is invisible.')
 
-  $(gum style --foreground 46 '➌') $(gum style --bold 'Install an AI tool')  →  ComfyUI recommended
-     Then launch it from the Launch Tool menu.
+  $(gum style --foreground 46 '3.') $(gum style --bold 'Quick start again')
+     It continues with an AI tool (ComfyUI recommended) and tunes
+     your GPU automatically.
 
-  $(gum style --foreground 46 '➍') Open your browser at:
-     $(gum style --foreground 212 'http://localhost:8188')
+$(gum style --foreground 240 'Before step 1, Windows needs the AMD Adrenalin 26.2.2+ driver')
+$(gum style --foreground 240 'and the Windows SDK. Settings -> GPU diagnostics checks both.')"
 
-$(gum style --foreground 240 "  💡 Magic Settings Auto-Tuner finds the fastest GPU settings for your card.")
-$(gum style --foreground 240 "  💡 Create Desktop Shortcuts for 1-click launch directly from Windows.")
-$(gum style --foreground 240 "  💡 Settings → GPU-Profile to fix GPU detection issues.")
-$(gum style --foreground 240 "  💡 Settings → GPU Diagnostics if something is not working.")"
-
-        echo ""
+        printf '\n'
         gum style --foreground 240 --margin "0 2" \
-            "Persistent settings are stored in: $(gum style --foreground 212 "~/.config/rocm-wsl-ai/user.env")"
+            "Your settings live in: $(gum style --foreground 212 "~/.config/rocm-wsl-ai/user.env")"
         gum style --foreground 240 --margin "0 2" \
-            "Edit them anytime via: Main Menu → ⚙️ Settings → Edit Settings"
+            "Change them later via: Settings in the main menu"
     else
-        echo "==========================="
-        echo " ROCm WSL AI Toolkit v3.4.0"
-        echo "==========================="
-        echo ""
-        echo "First run — Quick Start:"
-        echo "  1. Install Tools → Base Environment"
-        echo "  2. wsl --shutdown  (in PowerShell), then restart Ubuntu"
-        echo "  3. Install an AI tool  (e.g. ComfyUI)"
-        echo "  4. Launch Tool → open http://localhost:8188 in your browser"
-        echo ""
-        echo "Settings are stored in: $USER_ENV"
+        printf '==========================================\n'
+        printf '  ROCm WSL2 AI Toolkit  v%s\n' "$ROCM_AI_VERSION"
+        printf '==========================================\n\n'
+        printf 'Setup takes about 20 minutes and three steps:\n\n'
+        printf '  1. Quick start     installs ROCm + PyTorch (10-20 min)\n'
+        printf '  2. Restart WSL2    in PowerShell: wsl --shutdown\n'
+        printf '                     then reopen Ubuntu and run ./menu.sh\n'
+        printf '                     (required — without it your GPU is invisible)\n'
+        printf '  3. Quick start     continues with an AI tool and tuning\n\n'
+        printf 'Before step 1, Windows needs the AMD Adrenalin 26.2.2+ driver\n'
+        printf 'and the Windows SDK. Settings -> GPU diagnostics checks both.\n\n'
+        printf 'Settings: %s\n' "$USER_ENV"
     fi
 
-    echo ""
-    read -rp "  Press Enter to continue to the main menu..."
+    printf '\n'
+    read -rp "  Press Enter to continue to the menu..."
     touch "$FIRST_RUN_MARKER"
 }

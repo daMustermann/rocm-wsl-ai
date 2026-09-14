@@ -1,0 +1,50 @@
+# Line-ending policy.
+#
+# Two rules, and the second one is not cosmetic: a Windows batch file with LF-only
+# line endings misbehaves when run, and Install_WSL_Ubuntu.bat was committed that
+# way. Because the repository is developed inside WSL (where everything is LF) but
+# consumed on Windows, an explicit attribute is the only reliable way to keep this
+# correct.
+#
+# Without these rules a `git add` from WSL will happily rewrite the .bat to LF
+# again, silently breaking it.
+
+# Shell and Python scripts must be LF. CRLF in a shebang line makes the script
+# unrunnable on Linux with a confusing "bad interpreter" error.
+*.sh        text eol=lf
+*.py        text eol=lf
+*.bash      text eol=lf
+
+# Windows-authored files: stored verbatim (CRLF) in the repository.
+#
+# `-text` rather than `text eol=crlf`, and the distinction matters. With
+# `text eol=crlf` git still normalises the *stored* blob to LF and only restores
+# CRLF on checkout, so the repository copy stays LF and any tool that reads the
+# blob directly — including a GitHub "Download ZIP" of a single file, or a
+# deployment that checks files out with autocrlf disabled — gets a broken .bat.
+# `-text` means "this is not a text file, do not touch it", which keeps CRLF in
+# the object store, where it belongs for a Windows batch file.
+*.bat       -text
+*.cmd       -text
+*.ps1       text eol=crlf
+*.sln       text eol=crlf
+*.vcxproj   text eol=crlf
+
+# Text data files: normalise on commit, native on checkout.
+*.md        text
+*.json      text
+*.yml       text
+*.yaml      text
+*.txt       text
+*.env       text
+
+# Never convert these.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.so        binary
+*.whl       binary
+*.pyc       binary

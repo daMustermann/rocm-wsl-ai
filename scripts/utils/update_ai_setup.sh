@@ -58,66 +58,55 @@ update_amdgpu_drivers() {
 }
 
 update_rocm() {
-    print_section "Updating ROCm stack"
+    print_section "Updating the ROCm stack"
 
-    if ! is_wsl; then
-        print_warning "ROCm stack update is optimized for WSL2."
+    # The version to install is discovered from AMD's repositories rather than
+    # hardcoded. This block previously pinned ROCm 7.2.3 and the matching
+    # amdgpu-install build number, so it silently stopped doing anything useful
+    # as soon as AMD published a newer release.
+    # shellcheck disable=SC1091
+    if [ -f "$TOOLKIT_DIR/lib/version.sh" ]; then
+        . "$TOOLKIT_DIR/lib/version.sh"
     fi
 
-    local UBUNTU_CODENAME
-    UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || true)
-    local AMDGPU_INSTALL_VERSION="7.2.3.70203-1"
-    local AMDGPU_INSTALL_DEB="amdgpu-install_${AMDGPU_INSTALL_VERSION}_all.deb"
+    local codename current target
+    codename="$(va_ubuntu_codename 2>/dev/null || lsb_release -cs 2>/dev/null || echo unknown)"
+    current="$(va_rocm_installed 2>/dev/null || echo 'not installed')"
 
-    local CURRENT_ROCM="unknown"
-    if [ -f "/opt/rocm/.info/version" ]; then
-        CURRENT_ROCM=$(head -1 /opt/rocm/.info/version 2>/dev/null | tr -cd '0-9.' | head -1)
-    elif command -v rocminfo >/dev/null 2>&1; then
-        CURRENT_ROCM="installed (version unknown)"
+    print_info "Current ROCm version: ${current}"
+    print_info "Querying AMD's repositories for the newest release ..."
+
+    target="$(va_latest_rocm "$codename" 2>/dev/null || echo '')"
+    if [ -z "$target" ]; then
+        print_error "Could not determine the newest ROCm release (offline?)"
+        print_info "The full upgrade handles this better: ./upgrade.sh"
+        return 1
     fi
-    print_info "Current ROCm version: ${CURRENT_ROCM}"
 
-    if ! confirm "Continue with ROCm stack update via apt?"; then
-        print_info "ROCm update cancelled"
+    if [ "$current" != "not installed" ] && ! va_lt "$current" "$target"; then
+        print_success "ROCm ${current} is already the newest release for ${codename}."
+        print_info "For a complete stack check (PyTorch, ROCDXG, settings), run: ./upgrade.sh"
         return 0
     fi
 
-    ensure_apt_packages wget python3-setuptools python3-wheel || return 1
+    print_info "ROCm ${current} -> ${target} is available."
+    print_info ""
+    print_info "A ROCm upgrade also requires rebuilding PyTorch against it, so this"
+    print_info "is best done by the toolkit's automatic upgrade, which handles the"
+    print_info "whole sequence and migrates your settings."
+    print_info ""
 
-    if [[ "$UBUNTU_CODENAME" == "jammy" || "$UBUNTU_CODENAME" == "noble" ]]; then
-        local AMDGPU_INSTALL_URL="https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/${UBUNTU_CODENAME}/${AMDGPU_INSTALL_DEB}"
-        print_info "Refreshing AMD package source for ${UBUNTU_CODENAME}"
-        if wget -q "$AMDGPU_INSTALL_URL" -O "/tmp/${AMDGPU_INSTALL_DEB}"; then
-            sudo apt install -y "/tmp/${AMDGPU_INSTALL_DEB}" || return 1
-            rm -f "/tmp/${AMDGPU_INSTALL_DEB}"
-        else
-            print_warning "Could not download ${AMDGPU_INSTALL_DEB}; continuing with current apt sources"
+    if confirm "Run the full automatic upgrade now?"; then
+        if [ -f "$TOOLKIT_DIR/upgrade.sh" ]; then
+            bash "$TOOLKIT_DIR/upgrade.sh"
+            return $?
         fi
-    else
-        print_warning "Unsupported Ubuntu codename '${UBUNTU_CODENAME:-unknown}' for automatic amdgpu-install refresh"
-        print_warning "Skipping amdgpu-install package refresh"
-    fi
-
-    sudo apt update -y
-    sudo apt install -y rocm || {
-        print_error "ROCm package update failed"
+        print_error "upgrade.sh not found in $TOOLKIT_DIR"
         return 1
-    }
-
-    sudo usermod -a -G render,video "$LOGNAME" 2>/dev/null || true
-
-    local UPDATED_ROCM="unknown"
-    if [ -f "/opt/rocm/.info/version" ]; then
-        UPDATED_ROCM=$(head -1 /opt/rocm/.info/version 2>/dev/null | tr -cd '0-9.' | head -1)
-    fi
-    print_success "ROCm stack updated (detected: ${UPDATED_ROCM})"
-
-    if [ ! -f "/opt/rocm/lib/librocdxg.so" ]; then
-        print_warning "ROCDXG (librocdxg) not detected at /opt/rocm/lib/librocdxg.so"
-        print_warning "If GPU compute fails in WSL, run scripts/install/upgrade_to_rocdxg.sh"
     fi
 
-    print_info "WSL restart recommended after ROCm update: wsl --shutdown"
+    print_info "Cancelled. Nothing was changed."
+    return 0
 }
 
 # Install a requirements.txt while deliberately skipping torch/torchvision/torchaudio.
@@ -125,20 +114,101 @@ update_rocm() {
 # (1+ GB of nvidia_* packages) instead of keeping the installed ROCm wheels.
 _pip_req() {
     local req_file="$1"
-    [ -f "$req_file" ] || return 0
-    # Strip torch, torchvision, torchaudio (and their extras) from the file before passing to pip
-    grep -ivE '^[[:space:]]*(torch|torchvision|torchaudio)([>=<!;@# ]|$)' "$req_file" \
-        | pip install --upgrade -r /dev/stdin || true
+    pip_install_filtered_requirements "$req_file" || true
+
+    if [ -d "./sd-scripts" ] && [ -f "./sd-scripts/setup.py" ]; then
+        pip install -e "./sd-scripts" || true
+    fi
 }
 
 update_pytorch() {
-    print_section "Updating PyTorch (ROCm 7.2.3) + Triton"
+    print_section "Updating PyTorch and Triton (AMD ROCm build)"
+
+    # This function used to pin torch==2.9.1 from download.pytorch.org and then
+    # run `pip install -U --pre triton`. Both were wrong:
+    #   * Pinning downgraded a user who had already upgraded, and the index URL
+    #     does not track AMD's ROCm releases.
+    #   * `--pre triton` installs a *prerelease from PyPI*, which has no ROCm
+    #     support and overwrites the AMD triton build that torch was compiled
+    #     against. That breaks attention kernels in a way that is very hard to
+    #     diagnose.
+    # The correct behaviour is to install the newest AMD wheels that match the
+    # installed ROCm release.
+    # shellcheck disable=SC1091
+    if [ -f "$TOOLKIT_DIR/lib/version.sh" ]; then
+        . "$TOOLKIT_DIR/lib/version.sh"
+    fi
+
     check_venv
-    python3 -c "import torch; print(f'PyTorch: {torch.__version__} (ROCm avail: {torch.cuda.is_available()})')" 2>/dev/null || true
-    pip install --upgrade "torch==2.9.1" torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2
-    pip install -U --pre triton
-    pip install -U sageattention
-    print_success "PyTorch, Triton, and SageAttention updated"
+
+    python3 -c "import torch; print('Currently: PyTorch', torch.__version__, '(ROCm available:', torch.cuda.is_available(), ')')" 2>/dev/null || true
+
+    local installed_rocm pytag target
+    installed_rocm="$(va_rocm_installed 2>/dev/null || echo '')"
+    pytag="$(va_python_tag "$(command -v python3)")"
+
+    if [ -z "$installed_rocm" ]; then
+        print_error "Could not determine the installed ROCm version."
+        print_info "Run the full upgrade instead:  ./upgrade.sh"
+        return 1
+    fi
+
+    # Prefer the ROCm release already installed, so PyTorch matches the driver
+    # stack rather than dragging the whole system forward.
+    target="$installed_rocm"
+    if ! va_resolve_torch_wheels "$target" "$pytag" >/dev/null 2>&1; then
+        print_warning "No AMD wheels found for ROCm ${target} and Python ${pytag}."
+        target="$(va_best_installable_rocm "$pytag")"
+        print_info "Falling back to ROCm ${target}."
+    fi
+
+    local wheels
+    if ! wheels="$(va_resolve_torch_wheels "$target" "$pytag")"; then
+        print_error "Could not resolve AMD PyTorch wheels. Check your connection."
+        print_info "The full upgrade handles this more thoroughly:  ./upgrade.sh"
+        return 1
+    fi
+
+    local ROCM_REL TORCH_VERSION TORCH_WHEEL TORCHVISION_WHEEL TORCHAUDIO_WHEEL TRITON_WHEEL
+    eval "$wheels"
+    print_info "Installing PyTorch ${TORCH_VERSION} + triton ${TRITON_WHEEL#triton-} (ROCm ${ROCM_REL})"
+
+    local base="https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_REL}"
+    local tmp
+    tmp="$(mktemp -d /tmp/rocm-upd.XXXXXX)"
+    local w ok=1
+    for w in "$TORCH_WHEEL" "$TORCHVISION_WHEEL" "$TORCHAUDIO_WHEEL" "$TRITON_WHEEL"; do
+        if ! wget -q "${base}/${w//+/%2B}" -O "$tmp/$w"; then
+            print_error "Download failed: $w"
+            ok=0
+            break
+        fi
+    done
+
+    if [ "$ok" = "1" ]; then
+        pip install --no-cache-dir --force-reinstall --no-deps \
+            "$tmp/$TORCH_WHEEL" "$tmp/$TORCHVISION_WHEEL" \
+            "$tmp/$TORCHAUDIO_WHEEL" "$tmp/$TRITON_WHEEL" \
+            && print_success "PyTorch, Triton and SageAttention updated" \
+            || { print_error "PyTorch installation failed"; ok=0; }
+    fi
+    rm -rf "$tmp"
+    [ "$ok" = "1" ] || return 1
+
+    # Re-apply the WSL HSA runtime fix: a fresh torch wheel can restore the
+    # bundled runtime that conflicts with ROCDXG.
+    local loc torch_lib
+    loc="$(pip show torch 2>/dev/null | awk -F ': ' '/^Location/{print $2}')"
+    torch_lib="$loc/torch/lib"
+    [ -n "$loc" ] && [ -d "$torch_lib" ] && rm -f "$torch_lib"/libhsa-runtime64.so* 2>/dev/null
+
+    # Optional, and never fatal.
+    pip install --no-cache-dir sageattention >/dev/null 2>&1 \
+        && print_info "SageAttention refreshed" \
+        || print_warning "SageAttention not installed (optional)"
+
+    rm -f "${ROCM_AI_CONFIG_DIR:-$HOME/.config/rocm-wsl-ai}/.preflight" 2>/dev/null
+    return 0
 }
 
 update_comfyui() {
@@ -208,13 +278,21 @@ update_kohya_ss() {
 
     pushd "$KOHYA_DIR" >/dev/null || return 1
     git pull --rebase --autostash || print_warning "git pull had issues — continuing"
+    git submodule sync --recursive || true
+    git submodule update --init --recursive || print_warning "Failed to update kohya_ss submodules"
 
     if [ -f "$KOHYA_VENV/bin/activate" ]; then
         # shellcheck disable=SC1090
         source "$KOHYA_VENV/bin/activate"
         for req_file in requirements.txt requirements_linux.txt; do
-            _pip_req "$req_file"
+            pip_install_filtered_requirements "$req_file" || print_warning "Some packages in $req_file could not be installed — continuing"
         done
+
+        if [ -d "./sd-scripts" ] && [ -f "./sd-scripts/setup.py" ]; then
+            pip install -e "./sd-scripts" || print_warning "Failed to install local sd-scripts package during update"
+        fi
+
+        pip install "gradio>=5.34.1" || print_warning "Failed to install gradio during update"
         deactivate
     else
         print_warning "kohya_ss venv not found at $KOHYA_VENV"

@@ -1,42 +1,36 @@
 #!/bin/bash
-set -e
+# ==============================================================================
+# Install ComfyUI
+# ==============================================================================
+# Thin wrapper. The real implementation is lib/tools.sh::rocm_ai_install_tool,
+# which is also what the menu uses — so installing from here and installing from
+# the menu cannot drift apart.
+#
+# Usage:
+#   scripts/install/comfyui.sh
+# ==============================================================================
+set -uo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMMON="$SCRIPT_DIR/../../lib/common.sh"
-[ -f "$COMMON" ] && source "$COMMON" || { echo "common.sh not found"; exit 1; }
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/_shim.sh"
 
-VENV_NAME="genai_env"
-COMFYUI_DIR="$HOME/ComfyUI"
-COMFYUI_MANAGER_DIR="$COMFYUI_DIR/custom_nodes/comfyui-manager"
-COMFYUI_LORA_DIR="$COMFYUI_DIR/custom_nodes/ComfyUI-Lora-Manager"
+rocm_ai_shim_bootstrap "$SCRIPT_DIR"
 
-standard_header "ComfyUI Installation"
-ensure_venv "$VENV_NAME" || { err "Run 1_setup_pytorch_rocm_wsl.sh first"; exit 1; }
+standard_header "ComfyUI — installation"
 
-git_clone_or_update https://github.com/comfyanonymous/ComfyUI.git "$COMFYUI_DIR"
+rocm_ai_shim_install "comfyui"
+rc=$?
 
-if [ -f "$COMFYUI_DIR/requirements.txt" ]; then
-    pip_install_if_exists "$COMFYUI_DIR/requirements.txt"
-else
-    err "requirements.txt missing in $COMFYUI_DIR"; exit 1
-fi
+if [ "$rc" -eq 0 ]; then
+    success "ComfyUI is ready."
+    cat <<EOF
 
-mkdir -p "$COMFYUI_DIR/custom_nodes"
-git_clone_or_update https://github.com/Comfy-Org/ComfyUI-Manager.git "$COMFYUI_MANAGER_DIR"
-[ -f "$COMFYUI_MANAGER_DIR/requirements.txt" ] && pip_install_if_exists "$COMFYUI_MANAGER_DIR/requirements.txt"
+  Launch : ./menu.sh  ->  Launch  ->  ComfyUI
+           or: scripts/start/comfyui.sh
+  Models : $(rocm_ai_tool_dir comfyui)/models/
+  Web UI : http://localhost:$(rocm_ai_tool_effective_port comfyui)
 
-# Also install LoRA Manager (willmiao/ComfyUI-Lora-Manager) to provide an integrated LoRA model manager
-git_clone_or_update https://github.com/willmiao/ComfyUI-Lora-Manager.git "$COMFYUI_LORA_DIR" || true
-[ -f "$COMFYUI_LORA_DIR/requirements.txt" ] && pip_install_if_exists "$COMFYUI_LORA_DIR/requirements.txt"
-
-success "ComfyUI + Manager installed/updated"
-cat <<EOF
-
-Run:
-    source ~/${VENV_NAME}/bin/activate
-    cd ${COMFYUI_DIR}
-    python main.py --listen 0.0.0.0 --port 8188
-
-Models go in: ${COMFYUI_DIR}/models/
 EOF
-
-exit 0
+fi
+exit "$rc"
