@@ -119,7 +119,19 @@ def _safety_rank(entry: dict[str, Any]) -> int:
 
 
 def eprint(*args: Any) -> None:
-    print(*args, file=sys.stderr)
+    print(*args, file=sys.stderr, flush=True)
+
+
+def say(*args: Any) -> None:
+    """
+    Progress output, flushed.
+
+    Python block-buffers stdout when it is not a terminal, so a multi-minute
+    benchmark that is piped or redirected shows nothing until it finishes — which
+    looks exactly like a hang. The launcher also passes -u; this makes it safe
+    regardless of how the engine is invoked.
+    """
+    print(*args, flush=True)
 
 
 def now_utc() -> str:

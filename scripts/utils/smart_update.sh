@@ -290,70 +290,69 @@ main() {
     # ── Phase 4: User choice ───────────────────────────────────────────────
     declare -a selected=()
 
-    if command -v gum >/dev/null 2>&1; then
-        local mode
-        mode=$(gum choose --cursor="» " \
-            --header="How do you want to proceed?" \
-            "all  — Update all ${#needs_update[@]} component(s) listed above" \
-            "pick — Choose individual components" \
-            "q    — Cancel") || mode="q"
-
-        case "$mode" in
-            q*) log "Cancelled."; echo ""; read -rp "  Press Enter..."; return ;;
-            pick*)
-                # Build display options for gum choose --no-limit
-                local -a opts=()
+    # Note: this deliberately uses the toolkit's own choose() rather than
+    # `gum choose`. The value is captured with $(...), which makes stdout a pipe,
+    # and gum's TUI cannot render into a pipe — it produces no output and never
+    # reads keystrokes, so the user sees a frozen screen indefinitely.
+    local mode
+    if mode="$(choose "How do you want to proceed?" \
+        "all|Update all ${#needs_update[@]} component(s) listed above" \
+        "pick|Choose individual components" \
+        "q|Cancel")"; then
+        case "${mode%%|*}" in
+            q)
+                log "Cancelled."
+                echo ""
+                read -rp "  Press Enter..."
+                return
+                ;;
+            pick)
+                # Multi-select: comma-separated numbers, blank means everything.
+                local -a opts=() labels=() keys=()
+                local k disp
                 for k in "${needs_update[@]}"; do
                     for ((i=0; i<${#R_KEY[@]}; i++)); do
                         if [ "${R_KEY[$i]}" = "$k" ]; then
-                            opts+=("$k — ${R_LABEL[$i]}  (${R_CURRENT[$i]}  →  ${R_TARGET[$i]})")
+                            keys+=("$k")
+                            disp="${R_LABEL[$i]}  (${R_CURRENT[$i]}  ->  ${R_TARGET[$i]})"
+                            opts+=("$disp")
                             break
                         fi
                     done
                 done
-                local picks
-                picks=$(printf '%s\n' "${opts[@]}" | \
-                    gum choose --no-limit --cursor="» " \
-                    --header="Select components to update (Tab = toggle, Enter = confirm):") || picks=""
-                while IFS= read -r line; do
-                    [ -z "$line" ] && continue
-                    selected+=("${line%% *}")  # extract key (first word before " — ")
-                done <<< "$picks"
+
+                printf '\n  Select components to update (comma or space separated, blank = all):\n' >&2
+                local n=1 o
+                for o in "${opts[@]}"; do
+                    printf '    %2d) %s\n' "$n" "$o" >&2
+                    n=$((n + 1))
+                done
+                printf '  > ' >&2
+                local reply
+                read -r reply
+                if [ -z "$reply" ]; then
+                    selected=("${needs_update[@]}")
+                else
+                    local num
+                    for num in $(printf '%s' "$reply" | tr ',' ' '); do
+                        case "$num" in
+                            *[!0-9]*) continue ;;
+                        esac
+                        if [ "$num" -ge 1 ] && [ "$num" -le "${#keys[@]}" ]; then
+                            selected+=("${keys[$((num - 1))]}")
+                        fi
+                    done
+                fi
                 ;;
-            all*)
+            all)
                 selected=("${needs_update[@]}")
                 ;;
         esac
     else
-        # Plain-text fallback
-        echo "  a) Update all"
-        echo "  p) Pick individual components"
-        echo "  q) Cancel"
-        read -rp "  Choice: " raw
-        case "$raw" in
-            q|Q) return ;;
-            p|P)
-                echo ""
-                local idx=1
-                for k in "${needs_update[@]}"; do
-                    for ((i=0; i<${#R_KEY[@]}; i++)); do
-                        if [ "${R_KEY[$i]}" = "$k" ]; then
-                            printf "  %2d) %-22s %s → %s\n" \
-                                "$idx" "${R_LABEL[$i]}" "${R_CURRENT[$i]}" "${R_TARGET[$i]}"
-                            break
-                        fi
-                    done
-                    ((idx++))
-                done
-                echo ""
-                read -rp "  Enter numbers separated by spaces: " nums
-                for n in $nums; do
-                    local sk="${needs_update[$((n-1))]:-}"
-                    [ -n "$sk" ] && selected+=("$sk")
-                done
-                ;;
-            *) selected=("${needs_update[@]}") ;;
-        esac
+        log "Cancelled."
+        echo ""
+        read -rp "  Press Enter..."
+        return
     fi
 
     if [ ${#selected[@]} -eq 0 ]; then

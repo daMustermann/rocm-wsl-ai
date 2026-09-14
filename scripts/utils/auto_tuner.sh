@@ -17,6 +17,11 @@ set -uo pipefail
 
 TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export TOOLKIT_ROOT
+# common.sh provides choose()/confirm() and the colour constants; launch.sh
+# provides the GPU environment and preflight. Both are required — launch.sh does
+# not pull in common.sh.
+# shellcheck disable=SC1091
+. "$TOOLKIT_ROOT/lib/common.sh"
 # shellcheck disable=SC1091
 . "$TOOLKIT_ROOT/lib/launch.sh"
 
@@ -60,14 +65,20 @@ if ! ai_preflight; then
 fi
 
 # --- Choose how thorough to be -----------------------------------------------
+# Uses the toolkit's own choose(), not `gum choose`. gum's TUI needs stdout to be
+# a terminal, and this value is captured, so gum cannot render and hangs forever
+# with a blank screen — which is exactly what happened: a ten-minute wait at 0.6%
+# CPU with no output and no benchmark ever starting.
 MODE="standard"
-if command -v gum >/dev/null 2>&1; then
-    MODE="$(gum choose --cursor='» ' --header="How thorough should the tuning be?" \
-        "quick    — about 1 minute, fewer samples" \
-        "standard — about 3 minutes, recommended" \
-        "thorough — about 8 minutes, best accuracy" 2>/dev/null || echo standard)"
-    MODE="${MODE%% *}"
-fi
+CHOICE="$(choose "How thorough should the tuning be?" \
+    "quick|Quick       - about 1 minute, fewer samples" \
+    "standard|Standard    - about 3 minutes, recommended" \
+    "thorough|Thorough    - about 8 minutes, best accuracy")" || {
+    ai_info "Cancelled."
+    exit 0
+}
+MODE="${CHOICE%%|*}"
+
 case "$MODE" in
     quick)    ENGINE_FLAGS=(--quick) ;;
     thorough) ENGINE_FLAGS=(--iters 80 --warmup 8) ;;
@@ -78,11 +89,15 @@ echo ""
 ai_info "Starting the $MODE measurement run."
 ai_dim  "  Candidates are measured in separate processes, so a bad one cannot"
 ai_dim  "  take down the whole run."
+ai_dim  "  Progress is printed below; the whole run takes a few minutes."
 echo ""
 
-# Run it. Output is streamed so the user sees progress.
+# Run it unbuffered. Python block-buffers stdout whenever it is not a terminal,
+# which would hold every progress line back until the process exits and leave the
+# user staring at a frozen screen for minutes. -u and PYTHONUNBUFFERED together
+# cover both this call and anything the engine spawns.
 set +e
-"$VENV_PY" "$ENGINE" bench --save-report "${ENGINE_FLAGS[@]}"
+PYTHONUNBUFFERED=1 "$VENV_PY" -u "$ENGINE" bench --save-report "${ENGINE_FLAGS[@]}"
 ENGINE_RC=$?
 set -e
 

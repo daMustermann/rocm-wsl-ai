@@ -161,35 +161,26 @@ _rocm_ai_sel_flags() {
 }
 
 # ------------------------------------------------------------------------------
-# Selector helpers
+# Interactive selection
 # ------------------------------------------------------------------------------
-# Options are passed as "key|Label" (the historical format used throughout the
-# menus). Three approaches were tried before landing on this one:
+# A menu that renders with ANSI cursor control and reads arrow keys directly.
 #
-#   1. Passing "key|Label" with no delimiter. gum renders the string literally,
-#      so the user sees "quick|Quick start" in the menu.
-#   2. Passing --label-delimiter. Measured on gum 0.17.0: with "key<DELIM>Label"
-#      the menu displays "key"; with "Label<DELIM>value" it displays the whole
-#      string but returns the first field. Neither shows a human-readable label.
-#   3. Relying on gum's --selected.background flag for the highlight. Measured:
-#      the flag is accepted but not applied to the cursor line, so the selection
-#      stays visually indistinguishable from the other rows.
+# Why not `gum choose`: its TUI only works when stdout is a terminal. The result
+# of this function is consumed with  $( ... ), which makes stdout a PIPE — gum
+# then cannot render, never reads keystrokes, and hangs indefinitely with a blank
+# screen. Measured on a real installation: the process sat for ten minutes at
+# 0.6% CPU producing no output, and the user saw nothing at all.
 #
-# So: the label is displayed in full and mapped back to its key afterwards, and
-# the highlight is carried by the label's own escape sequence plus the cursor
-# glyph. Both of those are passed through verbatim and do not depend on gum's
-# terminal-capability detection, which is what silently disabled the styling.
-_ROCM_AI_ANSI_ON=$'\033[7m'
-_ROCM_AI_ANSI_OFF=$'\033[0m'
-
-_rocm_ai_key_of() {
-    # "key|Label" -> "key"
-    printf '%s' "${1%%|*}"
-}
+# Rendering the menu on stderr and printing only the result to stdout avoids the
+# problem completely, and removes a runtime dependency from the critical path.
+#
+# Options are accepted as "key|Label" (the historical format used across the
+# menus) and returned in the same form, so callers keep using ${result%%|*}.
+_ROCM_AI_SEL_ANSI_ON=$'\033[7m'
+_ROCM_AI_SEL_ANSI_OFF=$'\033[0m'
 
 _rocm_ai_label_of() {
-    # "key|Label" -> "Label". Tolerates a ':' delimiter and bare labels too,
-    # because callers have used all three forms.
+    # "key|Label" -> "Label". Tolerates a ':' delimiter and bare labels too.
     local entry="${1/|/:}"
     case "$entry" in
         *:*) printf '%s' "${entry#*:}" ;;
@@ -197,176 +188,160 @@ _rocm_ai_label_of() {
     esac
 }
 
-# Wrap a label in reverse video. Used for the currently highlighted row.
-_rocm_ai_label_ansi() {
-    printf '%s%s%s' "$_ROCM_AI_ANSI_ON" "$(_rocm_ai_label_of "$1")" "$_ROCM_AI_ANSI_OFF"
+_rocm_ai_key_of() {
+    # "key|Label" -> "key"
+    printf '%s' "${1%%|*}"
 }
 
-# These flags are NOT identical across gum subcommands: `confirm` accepts
-# --unselected.foreground/--unselected.background, `choose` does not and uses
-# --item.foreground/--item.background instead. Passing a flag a subcommand does
-# not know makes gum print its usage text and exit, so the menu silently becomes
-# a wall of documentation. Rather than trust the version, check per subcommand and
-# drop anything unsupported.
-_rocm_ai_gum_supports() {
-    local sub="$1" flag="$2"
-    gum "$sub" --help 2>/dev/null | grep -q -- "$flag"
-}
-
-# Usage: _rocm_ai_gum_style_args <subcommand> <flag> [<flag> ...]
-_rocm_ai_gum_style_args() {
-    local sub="$1"; shift
-    local flag
-    local -a out=()
-    for flag in "$@"; do
-        # Compare on the flag name only, ignoring any =value.
-        if _rocm_ai_gum_supports "$sub" "${flag%%=*}"; then
-            out+=("$flag")
-        fi
-    done
-    printf '%s\n' "${out[@]:-}"
-}
-
-confirm() {
-    local msg="$1"
-    if _rocm_ai_have_gum; then
-        # gum's defaults are pink-on-near-black (212 on 235), which is easy to
-        # miss. Bright cyan with black text is a much stronger signal; a terminal
-        # without 256-colour support downshifts it to standard ANSI colours.
-        local -a flags=()
-        while IFS= read -r f; do
-            [ -n "$f" ] && flags+=("$f")
-        done < <(_rocm_ai_gum_style_args confirm \
-            --selected.foreground=0 \
-            --selected.background=14 \
-            --unselected.foreground=252 \
-            --unselected.background=236)
-
-        gum confirm "$msg" --default=false "${flags[@]}"
-        return $?
-    fi
-    # Plain prompt. The default is stated explicitly, because the whole reason we
-    # are here is that a highlighted selector cannot be rendered.
-    local response
-    printf '%s\n' "$msg"
-    printf '  [y] yes   [n] no   (default: no) '
-    read -r response
-    printf '\n'
-    case "$response" in
-        y|Y|yes|YES|Yes) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
-msgbox() {
-    local title="$1" text="$2"
-    printf '\n'
-    if _rocm_ai_have_gum; then
-        printf '%s\n\n%s\n' "$(gum style --bold --foreground 212 "$title")" "$text" \
-            | gum style --border rounded --margin "0 2" --padding "1 2" --border-foreground 212
-    else
-        printf '\n==== %s ====\n%s\n' "$title" "$text"
-    fi
-    printf '\n'
-    read -rp "  Press Enter to continue..."
-}
-
-yesno() {
-    local title="$1" text="$2"
-    printf '\n'
-    if _rocm_ai_have_gum; then
-        printf '%s\n\n%s\n' "$(gum style --bold --foreground 214 "$title")" "$text" \
-            | gum style --border normal --margin "0 2" --padding "1 2" --border-foreground 214
-        printf '\n'
-        gum confirm "Continue?" --default=false \
-            --selected.foreground=0 --selected.background=14 \
-            --unselected.foreground=252
-        return $?
-    fi
-    printf '\n==== %s ====\n%s\n' "$title" "$text"
-    confirm "Continue?"
-}
-
-# A menu that always has a way out, even if the user presses Esc or Ctrl+C.
-# gum choose returns non-zero on Esc; the old menus turned that into a silent
-# no-op that left the user staring at an unchanged screen.
-#
-# Returns "key|Label" so callers can use ${result%%|*} to get the key.
-choose() {
+# Fallback for terminals that cannot do cursor control: numbered input.
+_rocm_ai_choose_plain() {
     local header="$1"; shift
-
     local -a entries=("$@")
-    local entry i width=${#entries[@]}
-
-    if _rocm_ai_have_gum; then
-        local -a flags=() labels=() rendered=()
-        while IFS= read -r f; do
-            [ -n "$f" ] && flags+=("$f")
-        done < <(_rocm_ai_gum_style_args choose \
-            --cursor='> ' \
-            --cursor.foreground=0 \
-            --cursor.background=14 \
-            --item.foreground=252)
-
-        # Only the first row carries reverse video. gum starts with the cursor on
-        # the first row, so exactly one row is highlighted at any time; wrapping
-        # every label would make the whole menu look selected. The escape sequence
-        # is embedded in the label text rather than requested via a flag, because
-        # the flag path was measured not to apply.
-        local first=1
-        for entry in "${entries[@]}"; do
-            local label; label="$(_rocm_ai_label_of "$entry")"
-            labels+=("$label")
-            if [ "$first" = "1" ]; then
-                rendered+=("${_ROCM_AI_ANSI_ON}${label}${_ROCM_AI_ANSI_OFF}")
-                first=0
-            else
-                rendered+=("$label")
-            fi
-        done
-
-        local picked
-        picked="$(gum choose --header="$header" "${flags[@]}" "${rendered[@]}" 2>/dev/null)" || return 1
-        [ -z "$picked" ] && return 1
-        # gum echoes the label back; strip any escapes before comparing.
-        picked="$(printf '%s' "$picked" | sed 's/\x1b\[[0-9;]*m//g')"
-
-        # Map the chosen label back to its entry.
-        local idx=0
-        for entry in "${entries[@]}"; do
-            if [ "${labels[$idx]}" = "$picked" ]; then
-                printf '%s' "$entry"
-                return 0
-            fi
-            idx=$((idx + 1))
-        done
-        printf '%s' "$picked"
-        return 0
-    fi
+    local i=1 entry
 
     printf '\n%s\n' "$header" >&2
-    printf '%s\n' "$(printf '─%.0s' $(seq 1 62))" >&2
-
-    i=1
+    printf '%s\n' "$(printf -- '-%.0s' $(seq 1 62))" >&2
     for entry in "${entries[@]}"; do
-        printf '  %*d) %s\n' "$width" "$i" "$(_rocm_ai_label_of "$entry")" >&2
+        printf '  %2d) %s\n' "$i" "$(_rocm_ai_label_of "$entry")" >&2
         i=$((i + 1))
     done
-
-    printf '%s\n' "$(printf '─%.0s' $(seq 1 62))" >&2
+    printf '%s\n' "$(printf -- '-%.0s' $(seq 1 62))" >&2
     printf '  Enter a number, or press Enter to go back: ' >&2
 
     local reply
     read -r reply
-
     [ -z "$reply" ] && return 1
     case "$reply" in
         *[!0-9]*) return 1 ;;
     esac
     [ "$reply" -ge 1 ] && [ "$reply" -le "${#entries[@]}" ] || return 1
-
     printf '%s' "${entries[$((reply - 1))]}"
     return 0
+}
+
+choose() {
+    local header="$1"; shift
+    local -a entries=("$@")
+    local n=${#entries[@]}
+
+    [ "$n" -eq 0 ] && return 1
+    [ "$n" -eq 1 ] && { printf '%s' "${entries[0]}"; return 0; }
+
+    # The interactive cursor menu needs a terminal to read keys from AND a
+    # terminal to draw on. Testing stdin alone is not enough: when output is
+    # piped or redirected the drawing goes nowhere and the menu looks frozen —
+    # the exact failure this function exists to prevent.
+    if [ -t 0 ] && [ -t 1 ] && [ -t 2 ] && _rocm_ai_colour_ok; then
+        _rocm_ai_choose_interactive "$header" "${entries[@]}"
+        return $?
+    fi
+
+    _rocm_ai_choose_plain "$header" "${entries[@]}"
+    return $?
+}
+
+# Cursor-driven menu with arrow keys. Visuals are written to stderr and only the
+# result goes to stdout, so capturing the result cannot break the display.
+_rocm_ai_choose_interactive() {
+    local header="$1"; shift
+    local -a entries=("$@")
+    local n=${#entries[@]}
+
+    local selected=0
+    local drawn=0
+    local key rest item idx
+
+    # Everything visual goes to stderr; stdout carries only the result.
+    _ai_menu_draw() {
+        if [ "$drawn" = "1" ]; then
+            printf '\033[%dA' "$((n + 3))" >&2
+        fi
+        printf '\033[J' >&2
+        printf '  %s\n' "$header" >&2
+        printf '  %s\n' "$(printf -- '-%.0s' $(seq 1 60))" >&2
+        idx=0
+        for item in "${entries[@]}"; do
+            if [ "$idx" -eq "$selected" ]; then
+                printf '  %s> %s%s\n' "$_ROCM_AI_SEL_ANSI_ON" \
+                    "$(_rocm_ai_label_of "$item")" "$_ROCM_AI_SEL_ANSI_OFF" >&2
+            else
+                printf '    %s\n' "$(_rocm_ai_label_of "$item")" >&2
+            fi
+            idx=$((idx + 1))
+        done
+        printf '  %s\n' "$(printf -- '-%.0s' $(seq 1 60))" >&2
+        printf '  up/down move   enter select   q cancel\n' >&2
+        drawn=1
+    }
+
+    printf '\033[?25l' >&2    # hide the cursor while navigating
+    _ai_menu_draw
+
+    while true; do
+        if ! IFS= read -rsn1 key; then
+            printf '\033[?25h\n' >&2
+            return 1
+        fi
+
+        case "$key" in
+            $'\x1b')
+                IFS= read -rsn1 -t 1 rest || rest=""
+                if [ "$rest" = "[" ]; then
+                    IFS= read -rsn1 -t 1 key || key=""
+                    case "$key" in
+                        A) selected=$(( (selected - 1 + n) % n )); _ai_menu_draw ;;
+                        B) selected=$(( (selected + 1) % n )); _ai_menu_draw ;;
+                    esac
+                else
+                    printf '\033[?25h\n' >&2    # bare Escape cancels
+                    return 1
+                fi
+                ;;
+            k) selected=$(( (selected - 1 + n) % n )); _ai_menu_draw ;;
+            j) selected=$(( (selected + 1) % n )); _ai_menu_draw ;;
+            q|Q)
+                printf '\033[?25h\n' >&2
+                return 1
+                ;;
+            "")
+                printf '\033[?25h\n' >&2
+                printf '%s' "${entries[$selected]}"
+                return 0
+                ;;
+            [1-9])
+                # A digit jumps straight to that option.
+                if [ "$key" -le "$n" ]; then
+                    selected=$((key - 1))
+                    _ai_menu_draw
+                fi
+                ;;
+            *) : ;;
+        esac
+    done
+}
+
+confirm() {
+    local msg="$1"
+    local response
+
+    # Read a single key directly rather than delegating to a TUI for the same
+    # reason as choose(): a prompt whose output is captured cannot rely on an
+    # external renderer being able to draw.
+    if [ -t 0 ] && _rocm_ai_colour_ok; then
+        printf '  %s  [y/N] ' "$msg" >&2
+        IFS= read -rsn1 response || response=""
+        printf '%s\n' "$response" >&2
+    else
+        printf '%s\n' "$msg"
+        printf '  [y] yes   [n] no   (default: no) '
+        read -r response
+        printf '\n'
+    fi
+
+    case "$response" in
+        y|Y) return 0 ;;
+        *)   return 1 ;;
+    esac
 }
 
 # ------------------------------------------------------------------------------

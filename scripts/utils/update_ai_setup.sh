@@ -402,41 +402,44 @@ _show_update_menu_gum() {
     while true; do
         clear
         echo ""
-        gum style --bold --foreground 212 --border normal --border-foreground 212 --padding "0 2" "🔄 Update Manager — ROCm AI Toolkit v3.4.0"
+        gum style --bold --foreground 212 --border normal --border-foreground 212 --padding "0 2" "Update Manager - ROCm AI Toolkit"
         echo ""
+        # Uses the toolkit's choose(), not `gum choose`: the result is captured
+        # with $(...), so stdout is a pipe and gum's TUI cannot render into it.
+        # gum then produces no output and never reads input, hanging forever.
         local CHOICE
-        CHOICE=$(gum choose --cursor="» " --header="Select what to update:" \
-            "s.  🤖 Smart Update (auto-scan all, update what is outdated)" \
-            "0.  🔄 Update Toolkit (self-update / git pull)" \
-            "1.  ⚠️  Reinstall AMD GPU drivers" \
-            "2.  ROCm stack" \
-            "3.  PyTorch (ROCm 7.2) + Triton" \
-            "4.  ComfyUI" \
-            "5.  SD.Next" \
-            "6.  Automatic1111" \
-            "7.  kohya_ss" \
-            "8.  Ollama" \
-            "9.  Text Generation WebUI" \
-            "10. 🚀 Update ALL AI tools (3-9, no drivers)" \
-            "11. 🧹 Clean caches" \
-            "12. ✅ Verify installations" \
-            "q.  ← Back")
-        case "$CHOICE" in
-            s.*|S.*) "$TOOLKIT_DIR/scripts/utils/smart_update.sh" ;;
-            0.*) self_update_toolkit ;;
-            1.*) update_amdgpu_drivers ;;
-            2.*) update_rocm ;;
-            3.*) update_pytorch ;;
-            4.*) update_comfyui ;;
-            5.*) update_sdnext ;;
-            6.*) update_automatic1111 ;;
-            7.*) update_kohya_ss ;;
-            8.*) update_ollama ;;
-            9.*) update_textgen ;;
-            10.*) "$TOOLKIT_DIR/scripts/utils/smart_update.sh" ;;
-            11.*) cleanup_cache ;;
-            12.*) verify_installations ;;
-            q.*|Q.*) return ;;
+        CHOICE="$(choose "Select what to update:" \
+            "s|Smart Update (auto-scan all, update what is outdated)" \
+            "0|Update Toolkit (self-update / git pull)" \
+            "1|Reinstall AMD GPU drivers" \
+            "2|ROCm stack" \
+            "3|PyTorch (ROCm) + Triton" \
+            "4|ComfyUI" \
+            "5|SD.Next" \
+            "6|Automatic1111" \
+            "7|kohya_ss" \
+            "8|Ollama" \
+            "9|Text Generation WebUI" \
+            "10|Update ALL AI tools" \
+            "11|Clean caches" \
+            "12|Verify installations" \
+            "q|Back")" || return
+        case "${CHOICE%%|*}" in
+            s) "$TOOLKIT_DIR/scripts/utils/smart_update.sh" ;;
+            0) self_update_toolkit ;;
+            1) update_amdgpu_drivers ;;
+            2) update_rocm ;;
+            3) update_pytorch ;;
+            4) update_comfyui ;;
+            5) update_sdnext ;;
+            6) update_automatic1111 ;;
+            7) update_kohya_ss ;;
+            8) update_ollama ;;
+            9) update_textgen ;;
+            10) "$TOOLKIT_DIR/scripts/utils/smart_update.sh" ;;
+            11) cleanup_cache ;;
+            12) verify_installations ;;
+            q) return ;;
         esac
         echo ""
         read -rp "  Press Enter to continue..."
