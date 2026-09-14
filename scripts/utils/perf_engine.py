@@ -1572,13 +1572,19 @@ def show_profile() -> str:
     if metrics:
         lines.append("")
         lines.append("Measured on this machine:")
-        for key in ("conv_ms", "attn_ms", "denoise_per_step_ms", "peak_vram_bytes"):
-            if key in metrics:
-                val = metrics[key]
-                if key == "peak_vram_bytes":
-                    lines.append(f"  {key:<22} {human_gb(val)}")
-                else:
-                    lines.append(f"  {key:<22} {val} ms")
+        for key, label in (
+            ("cold_first_conv_ms", "first conv (cold)"),
+            ("conv_ms", "convolution block"),
+            ("attn_ms", "attention"),
+            ("denoise_per_step_ms", "denoise step"),
+        ):
+            if key in metrics and metrics[key] is not None:
+                lines.append(f"  {label:<22} {metrics[key]} ms")
+        # peak_vram_bytes is deliberately not shown. It reports only what
+        # PyTorch's allocator held at one instant in the benchmarking process,
+        # which for a fused-attention workload is a fraction of a gigabyte and
+        # says nothing about the VRAM a real model needs. Showing it invited the
+        # reader to conclude their models would fit in 0.1 GB.
     return "\n".join(lines)
 
 
