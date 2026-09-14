@@ -363,6 +363,71 @@ rocm_ai_pip_filtered() {
     return $rc
 }
 
+# Install the requirements of a tool's custom nodes / extensions.
+#
+# Separate from rocm_ai_install_deps on purpose, because it must be called from
+# *both* paths that touch an environment: installing or updating a tool, and
+# rebuilding the environment during an upgrade. The upgrade previously called only
+# rocm_ai_install_deps, which handles the top-level requirements file and nothing
+# else — so after a rebuild every custom node's dependencies were left
+# uninstalled. A machine with 19 nodes was missing 48 packages and nothing said so.
+#
+# Failures are reported instead of swallowed. A silently missing dependency
+# surfaces much later as a confusing ImportError in the middle of a workflow.
+rocm_ai_install_extension_deps() {
+    local key="$1" dir
+    dir="$(rocm_ai_tool_dir "$key" 2>/dev/null)"
+    [ -d "$dir" ] || return 0
+
+    local -a subdirs=()
+    local s
+    for s in "$dir/custom_nodes" "$dir/extensions"; do
+        [ -d "$s" ] && subdirs+=("$s")
+    done
+    [ "${#subdirs[@]}" -eq 0 ] && return 0
+
+    local checked=0 installed=0 failed=0 node name req log
+    for s in "${subdirs[@]}"; do
+        for node in "$s"/*/; do
+            [ -d "$node" ] || continue
+            name="$(basename "$node")"
+
+            # Keep the node itself current when it is a git checkout.
+            if [ -d "$node/.git" ]; then
+                git -C "$node" pull --ff-only >/dev/null 2>&1 || true
+            fi
+
+            for req in requirements.txt requirements_linux.txt; do
+                [ -f "$node/$req" ] || continue
+                checked=$((checked + 1))
+                # Capture output so a failure can be shown, while a successful
+                # install stays quiet.
+                log="$(mktemp /tmp/rocm-node-req.XXXXXX)"
+                if rocm_ai_pip_filtered "$node/$req" >"$log" 2>&1; then
+                    installed=$((installed + 1))
+                else
+                    failed=$((failed + 1))
+                    ai_warn "    $name: some packages from $req did not install"
+                    grep -iE 'error' "$log" 2>/dev/null | head -3 | while IFS= read -r l; do
+                        printf '        %s\n' "$l"
+                    done
+                fi
+                rm -f "$log"
+            done
+        done
+    done
+
+    if [ "$checked" -gt 0 ]; then
+        if [ "$failed" -eq 0 ]; then
+            ai_dim "  $installed extension requirement file(s) satisfied"
+        else
+            ai_warn "  $installed of $checked extension requirement file(s) installed; $failed had errors"
+            ai_dim  "  Retry one node with:  pip install -r <node>/requirements.txt"
+        fi
+    fi
+    return 0
+}
+
 # --- Update -------------------------------------------------------------------
 
 rocm_ai_update_tool() {
@@ -384,18 +449,7 @@ rocm_ai_update_tool() {
         git -C "$dir" submodule update --init --recursive || ai_warn "submodule update had issues"
     fi
     rocm_ai_install_deps "$key"
-
-    # Reinstall custom nodes / extensions, which often carry their own deps.
-    local subdir
-    for subdir in "$dir/custom_nodes" "$dir/extensions"; do
-        [ -d "$subdir" ] || continue
-        local node
-        for node in "$subdir"/*/; do
-            [ -d "$node/.git" ] || continue
-            git -C "$node" pull --ff-only 2>/dev/null || true
-            [ -f "$node/requirements.txt" ] && rocm_ai_pip_filtered "$node/requirements.txt" >/dev/null 2>&1
-        done
-    done
+    rocm_ai_install_extension_deps "$key"
 
     ai_ok "$name updated."
     return 0

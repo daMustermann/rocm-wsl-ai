@@ -768,6 +768,14 @@ reinstall_tools() {
         else
             warn "    some dependencies could not be installed"
         fi
+
+        # Custom nodes and extensions carry their own requirements, and they are
+        # the usual source of "it worked before the upgrade" breakage. This was
+        # missing from the upgrade path entirely: only the top-level requirements
+        # file was reinstalled, so a machine with 19 custom nodes silently lost 48
+        # packages, which later surfaced as ImportErrors inside workflows.
+        rocm_ai_install_extension_deps "$key" 2>&1 | sed 's/^/    /'
+
         deactivate 2>/dev/null || true
     done
 
