@@ -292,7 +292,7 @@ PY
                 ai_say "  ${_C_BOLD}Most likely fixes, in order:${_C_RESET}"
                 ai_say "   1. In Windows PowerShell:  wsl --shutdown     then reopen Ubuntu"
                 ai_say "      (group membership and the DXCore bridge need a restart)"
-                ai_say "   2. AMD Adrenalin 26.2.2 or newer on Windows"
+                ai_say "   2. AMD Adrenalin 26.10.41.05 or newer on Windows"
                 ai_say "   3. Full diagnosis:  ./menu.sh  ->  Settings  ->  GPU Diagnostics"
                 ai_say ""
                 status="fail"

@@ -56,19 +56,21 @@ else
     ok "Running under WSL2 (distro: $distro)"
 fi
 
-# Ubuntu 22.04 (jammy) and 24.04 (noble) are the supported releases: the AMD
-# PyTorch wheels are built against specific CPython versions.
+# ROCm 10.x is published for these Ubuntu releases, under ubuntu2204 /
+# ubuntu2404 / ubuntu2604 paths rather than codenames. AMD ships PyTorch wheels
+# for CPython 3.10 through 3.14, so every supported release resolves.
 if [ -f /etc/os-release ]; then
     # shellcheck disable=SC1091
     . /etc/os-release
     case "${VERSION_CODENAME:-unknown}" in
-        jammy|noble)
+        jammy|noble|resolute)
             ok "Ubuntu ${VERSION_ID} (${VERSION_CODENAME}) — supported"
             ;;
         *)
             warn "Ubuntu ${VERSION_ID:-?} (${VERSION_CODENAME:-?}) is not a tested release."
-            say  "     Supported: Ubuntu 22.04 (jammy) and 24.04 (noble)."
-            say  "     Installation may fail on older AMD wheel availability."
+            say  "     Supported: Ubuntu 22.04, 24.04 and 26.04."
+            say  "     ROCm 10.x is only published for those, so the installer"
+            say  "     will stop rather than install something that cannot work."
             ;;
     esac
 fi
@@ -179,13 +181,15 @@ say "    The menu opens. Choose ${BOLD}Quick start${RESET} and it will walk you"
 say "    through the base environment install, then tuning, then your first tool."
 say ""
 say "  ${BOLD}Before you install the base environment, Windows needs:${RESET}"
-say "    • AMD Adrenalin driver 26.2.2 or newer"
+say "    • AMD Software: Adrenalin Edition ${BOLD}26.10.41.05 or newer${RESET} (for WSL2)"
 say "      https://www.amd.com/en/support/download/drivers.html"
-say "    • The Windows SDK (used to build the ROCDXG GPU bridge)"
-say "      https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/"
 say ""
-say "    Missing either one is the most common reason installation fails."
-say "    Settings -> GPU diagnostics checks both for you."
+say "    That is the only Windows prerequisite. ROCm 10.x ships the WSL GPU"
+say "    bridge (librocdxg) itself, so there is no Windows SDK to install and"
+say "    nothing to compile."
+say ""
+say "    An out-of-date driver is the most common reason installation fails."
+say "    Settings -> GPU diagnostics checks it for you."
 say ""
 
 cd "$INSTALL_DIR" || die "Could not enter $INSTALL_DIR"

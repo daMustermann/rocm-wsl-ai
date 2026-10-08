@@ -69,7 +69,7 @@ from typing import Any, Iterable
 # Constants
 # ---------------------------------------------------------------------------
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "2.0.0"
 
 CONFIG_DIR = Path(os.environ.get("ROCM_AI_CONFIG_DIR", Path.home() / ".config" / "rocm-wsl-ai"))
 PROFILE_JSON = CONFIG_DIR / "perf_profile.json"
@@ -663,7 +663,7 @@ def human_probe(probe: dict[str, Any], gfx: str | None = None) -> str:
         lines.append("")
         lines.append("  Fix checklist:")
         lines.append("   1. In Windows PowerShell: wsl --shutdown   (then reopen Ubuntu)")
-        lines.append("   2. AMD Adrenalin 26.2.2+ driver installed on Windows")
+        lines.append("   2. AMD Adrenalin 26.10.41.05+ driver installed on Windows")
         lines.append("   3. /opt/rocm/lib/librocdxg.so present")
         lines.append("   4. User in render+video groups")
         lines.append("   5. Run: menu.sh -> Settings -> GPU Diagnostics")

@@ -10,6 +10,16 @@ else
     echo "common.sh not found at $SCRIPT_DIR_DIAG/lib/common.sh" >&2; exit 1
 fi
 
+# Version discovery is needed for the ROCm and librocdxg rows: where those live
+# changed with ROCm 10.x, so the answer has to come from the shared resolver
+# rather than a path hardcoded here.
+if [ -f "$SCRIPT_DIR_DIAG/lib/version.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR_DIAG/lib/version.sh"
+else
+    echo "version.sh not found at $SCRIPT_DIR_DIAG/lib/version.sh" >&2; exit 1
+fi
+
 # Load user settings so HSA_OVERRIDE_GFX_VERSION etc. are in scope
 load_user_env 2>/dev/null || true
 
@@ -57,7 +67,7 @@ run_gpu_diag() {
     echo ""
     if command -v gum >/dev/null 2>&1; then
         gum style --bold --foreground 212 --border normal --border-foreground 212 \
-            --padding "0 2" "🔍 GPU & ROCm Diagnostics — ROCm WSL AI Toolkit"
+            --padding "0 2" "GPU & ROCm Diagnostics — ROCm WSL AI Toolkit"
     else
         echo "=== GPU & ROCm Diagnostics ==="
     fi
@@ -76,28 +86,49 @@ run_gpu_diag() {
     _diag_section "ROCm Stack"
 
     if command -v rocminfo >/dev/null 2>&1; then
-        local rocm_ver="?"
-        [ -f "/opt/rocm/.info/version" ] && \
-            rocm_ver=$(cat /opt/rocm/.info/version 2>/dev/null | head -1 | tr -d '\r\n ')
-        _diag_row "ROCm Installation"         ok   "Installed — v${rocm_ver}"
+        # Resolved through lib/version.sh rather than read from a fixed path.
+        # ROCm 10.x installs into /opt/rocm/core-10.1 and the 7.2.x stack put it
+        # at /opt/rocm, so a hardcoded /opt/rocm/.info/version reports "v?" on
+        # exactly the machines that are up to date.
+        local rocm_ver
+        rocm_ver="$(va_rocm_installed 2>/dev/null || true)"
+        [ -z "$rocm_ver" ] && rocm_ver="?"
+        local kind
+        kind="$(va_install_kind 2>/dev/null || echo unknown)"
+        _diag_row "ROCm Installation"         ok   "Installed — v${rocm_ver} (${kind} channel)"
     else
         _diag_row "ROCm Installation"         fail "Not found → Install Tools → Base Environment"
     fi
 
+    # ROCm 10.x ships librocdxg inside its own artifacts and the runtime loads it
+    # automatically when /dev/dxg is present. A 7.2.x stack had to build it from
+    # source against the Windows SDK, so report where it came from.
     if has_rocdxg; then
-        _diag_row "ROCDXG (librocdxg)"        ok   "/opt/rocm/lib/librocdxg.so ✓"
-        # Check the .so actually links without missing symbols
+        local dxg_ver
+        dxg_ver="$(va_rocdxg_installed 2>/dev/null || echo present)"
+        _diag_row "ROCDXG (librocdxg)"        ok   "v${dxg_ver} — ships with ROCm, no build needed"
+    else
+        _diag_row "ROCDXG (librocdxg)"        fail "missing → GPU cannot be reached from WSL"
+    fi
+
+    # A broken librocdxg is worth naming even when the library is present, but
+    # the path has moved between channels, so resolve it rather than assuming.
+    local dxg_path
+    for dxg_path in /opt/rocm/core-*/lib/librocdxg.so /opt/rocm/lib/librocdxg.so; do
+        [ -e "$dxg_path" ] && break
+        dxg_path=""
+    done
+    if [ -n "$dxg_path" ]; then
         local ldd_out
-        ldd_out=$(ldd /opt/rocm/lib/librocdxg.so 2>&1)
-        if echo "$ldd_out" | grep -q "not found"; then
+        ldd_out=$(ldd "$dxg_path" 2>&1)
+        if printf '%s' "$ldd_out" | grep -q "not found"; then
             local missing
-            missing=$(echo "$ldd_out" | grep "not found" | awk '{print $1}' | tr '\n' ' ')
-            _diag_row "ROCDXG link check"     fail "Missing libraries: $missing — rebuild ROCDXG"
+            missing=$(printf '%s' "$ldd_out" | grep "not found" | awk '{print $1}' | tr '\n' ' ')
+            _diag_row "ROCDXG link check"     fail "Missing libraries: $missing"
+            _diag_row "  fix"                  info "Reinstall the base environment: ./scripts/install/setup_pytorch_rocm.sh"
         else
             _diag_row "ROCDXG link check"     ok   "All shared libraries resolved ✓"
         fi
-    else
-        _diag_row "ROCDXG (librocdxg)"        fail "Missing — GPU compute unavailable in WSL2"
     fi
 
     # /dev/dxg is the DXCore bridge device — without it ROCm cannot see the GPU
@@ -105,7 +136,7 @@ run_gpu_diag() {
         _diag_row "/dev/dxg (DXCore bridge)"  ok   "Present ✓"
     else
         _diag_row "/dev/dxg (DXCore bridge)"  fail "Missing — Windows driver not exposing DXCore to WSL"
-        _diag_row "  Fix"                     warn "Update AMD Adrenalin driver on Windows (26.2.2+)"
+        _diag_row "  Fix"                     warn "Update AMD Adrenalin for WSL2 on Windows (26.10.41.05+)"
         _diag_row "  Fix"                     warn "Run in PowerShell: wsl --update  then wsl --shutdown"
     fi
 
@@ -129,15 +160,21 @@ run_gpu_diag() {
         _diag_row "HSA_ENABLE_DXG_DETECTION"  fail "Not set — GPU compute disabled in WSL2"
     fi
 
+    # HSA_OVERRIDE_GFX_VERSION forces a GPU architecture. Under WSL it is not a
+    # fallback, it is a trap: DXCore enumerates the GPU itself, and an override
+    # makes the runtime reject the device. PyTorch then reports no GPU while
+    # rocminfo still lists one, which is far more confusing than the problem it
+    # claims to solve.
+    #
+    # An earlier version of this file printed exactly that advice — "Not set, if
+    # PyTorch can't see GPU, set this!" — together with a table of values to try.
+    # It is now reported as a problem when SET, and never recommended.
     local gfx_val="${HSA_OVERRIDE_GFX_VERSION:-}"
     if [ -n "$gfx_val" ]; then
-        _diag_row "HSA_OVERRIDE_GFX_VERSION"  ok   "=\"$gfx_val\" (manual override)"
+        _diag_row "HSA_OVERRIDE_GFX_VERSION"  fail "=\"$gfx_val\" — this HIDES your GPU under WSL"
+        _diag_row "  fix"                      info "unset it in $USER_ENV and in ~/.bashrc"
     else
-        # Not set is only a problem when PyTorch/ROCm can't auto-detect the arch
-        _diag_row "HSA_OVERRIDE_GFX_VERSION"  warn "Not set — if PyTorch can't see GPU, set this!"
-        _diag_row "  RX 7900 XTX/XT"          info "Settings → GPU Profile  or: export HSA_OVERRIDE_GFX_VERSION=11.0.0"
-        _diag_row "  RX 7800/7700 XT"         info "export HSA_OVERRIDE_GFX_VERSION=11.0.2"
-        _diag_row "  RX 9070 / 9070 XT"       info "export HSA_OVERRIDE_GFX_VERSION=12.0.0"
+        _diag_row "HSA_OVERRIDE_GFX_VERSION"  ok   "not set (correct for WSL — do not set it)"
     fi
 
     local dev_val="${ROCR_VISIBLE_DEVICES:-}"
@@ -198,7 +235,7 @@ run_gpu_diag() {
             _diag_row "GPU Detection"             fail "No AMD GPU found by rocminfo"
             if is_wsl; then
                 _diag_row "  Most likely fix"      warn "Run in PowerShell: wsl --shutdown  then restart Ubuntu"
-                _diag_row "  Check driver"         info "Requires AMD Adrenalin 26.2.2+ on Windows"
+                _diag_row "  Check driver"         info "Requires AMD Adrenalin 26.10.41.05+ on Windows"
                 _diag_row "  WSL kernel"           info "Run in PowerShell: wsl --update"
                 _diag_row "  DXG bridge"           info "Ensure HSA_ENABLE_DXG_DETECTION=1 (already set here)"
             fi
@@ -307,7 +344,7 @@ if (\$vc) { Write-Output \"\$(\$vc.Name)|\$(\$vc.DriverVersion)\" }
     if $core_ok; then
         if command -v gum >/dev/null 2>&1; then
             gum style --foreground 46 --bold --margin "0 2" \
-                "✅ Core stack looks healthy — ready for AI generation!"
+                "✔  Core stack looks healthy — ready for AI generation!"
         else
             echo "  [OK] Core stack looks healthy."
         fi
@@ -331,7 +368,14 @@ if (\$vc) { Write-Output \"\$(\$vc.Name)|\$(\$vc.DriverVersion)\" }
     fi
 
     echo ""
-    read -rp "  Press Enter to return..."
+    # Skippable because `menu.sh --demo` renders this screen to produce the
+    # README screenshots, and a blocking read() there hangs the capture. It also
+    # lets the script be run unattended for bug reports.
+    if [ "${ROCM_AI_NO_PAUSE:-0}" = "1" ]; then
+        echo "  (diagnostics complete)"
+    else
+        read -rp "  Press Enter to return..."
+    fi
 }
 
 # ── Standalone entry point ────────────────────────────────────────────────────

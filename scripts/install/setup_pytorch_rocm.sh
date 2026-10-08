@@ -1,50 +1,50 @@
 #!/bin/bash
+# ==============================================================================
+# Base Environment Installer
+#
+# Installs the ROCm stack plus a working PyTorch, with everything resolved from
+# AMD's repositories at run time by lib/version.sh. Nothing is pinned, so a new
+# ROCm release becomes installable without editing this file.
+#
+# Two channels exist, selected with ROCM_AI_CHANNEL (or `upgrade.sh --target`):
+#
+#   core   (default)  ROCm 10.x. Built with AMD's "TheRock" system:
+#                     packages are amdrocm10.1-gfx1100 from stable.repo.amd.com,
+#                     installed under /opt/rocm/core-10.1. PyTorch is resolved by
+#                     pip from AMD's index using a device extra rather than
+#                     downloaded as named wheel files:
+#                         pip install --index-url <index>/ \
+#                             "rocm[libraries,device-gfx1100]==10.1.0" \
+#                             "torch[device-gfx1100]"
+#                     librocdxg, the WSL GPU bridge, SHIPS INSIDE ROCm here and
+#                     is loaded automatically when /dev/dxg exists — there is no
+#                     build step and no Windows SDK requirement.
+#
+#   legacy            ROCm 7.2.x. Packages are `rocm` from repo.radeon.com,
+#                     PyTorch wheels are downloaded by filename, and librocdxg
+#                     must be BUILT from source against the Windows SDK. Kept
+#                     because WSL support in 10.x is still a technical preview.
+#
+# AMD's documentation:
+# - ROCm install:   https://rocm.docs.amd.com/en/latest/install/rocm.html
+# - TheRock builds: https://github.com/ROCm/TheRock/blob/main/RELEASES.md
+# ==============================================================================
 set -euo pipefail
+
 SCRIPT_DIR_INSTALL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Source common utilities from the new 'lib' directory
 if [ -f "$SCRIPT_DIR_INSTALL/../../lib/common.sh" ]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR_INSTALL/../../lib/common.sh"
 else
     echo "common.sh not found, cannot proceed." >&2; exit 1
 fi
-# Version discovery: resolves the newest ROCm release and the matching PyTorch
-# wheels from AMD's repositories at run time. Nothing here is hardcoded, so a new
-# ROCm release becomes installable without editing this script.
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR_INSTALL/../../lib/version.sh"
 
-# ==============================================================================
-# Base Environment Installer
-#
-# Installs the newest ROCm release that AMD publishes for this Ubuntu version,
-# builds librocdxg (the WSL GPU bridge), and installs the matching AMD PyTorch
-# wheels. Every version is resolved from AMD's repositories at run time by
-# lib/version.sh — nothing in this file is pinned, so a new ROCm release works
-# without editing the script.
-#
-# Official AMD documentation:
-# - ROCDXG WSL guide: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/howto_wsl.html
-# - librocdxg:        https://github.com/ROCm/librocdxg/
-# - ROCm quick start: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/quick-start.html
-# - PyTorch wheels:   https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-pytorch.html
-# ==============================================================================
-
-# Force PIP to ignore global user install flags which break virtual environments
+# Force pip to ignore global user-install flags, which break virtual environments.
 export PIP_USER=0
-# Official AMD Documentation:
-# - ROCDXG WSL Guide: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/wsl/howto_wsl.html
-# - librocdxg GitHub: https://github.com/ROCm/librocdxg/
-# - ROCm Quick Start: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/quick-start.html
-# - PyTorch Install: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/install/installrad/native_linux/install-pytorch.html
-# ==============================================================================
 
-# --- Configuration ---
 VENV_NAME="genai_env"
-LIBROCDXG_REPO="https://github.com/ROCm/librocdxg.git"
-LIBROCDXG_DIR="/tmp/librocdxg"
-
-# --- Script Start ---
 
 if ! is_wsl; then
     err "This script is designed specifically for WSL2 environments."
@@ -54,71 +54,147 @@ fi
 
 log "Running in Windows Subsystem for Linux (WSL2)"
 
-# --- Detect Ubuntu Version and Python Version ---
-headline "TASK 1/8: Detecting Ubuntu and resolving versions"
-UBUNTU_VERSION=$(lsb_release -rs)
-UBUNTU_CODENAME=$(lsb_release -cs)
+# ==============================================================================
+# Ubuntu and Python
+# ==============================================================================
+headline "TASK 1/7: Detecting Ubuntu and Python"
 
-log "Ubuntu Version: ${UBUNTU_VERSION}"
-log "Ubuntu Codename: ${UBUNTU_CODENAME}"
+UBUNTU_VERSION=$(lsb_release -rs 2>/dev/null || echo unknown)
+UBUNTU_CODENAME=$(va_ubuntu_codename)
+log "Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME})"
 
-# Determine Python version and wheel suffix based on Ubuntu version
-if [[ "$UBUNTU_CODENAME" == "noble" ]]; then
-    PYTHON_VERSION="3.12"
-    WHEEL_SUFFIX="cp312-cp312"
-    success "Detected Ubuntu 24.04 (noble) - will use Python 3.12"
-elif [[ "$UBUNTU_CODENAME" == "jammy" ]]; then
-    PYTHON_VERSION="3.10"
-    WHEEL_SUFFIX="cp310-cp310"
-    success "Detected Ubuntu 22.04 (jammy) - will use Python 3.10"
+# The interpreter must be one AMD publishes wheels for. The mapping is
+# codename -> distribution default; ROCm 10.1 ships cp310 through cp314, so all
+# three supported releases resolve without a mismatch.
+case "$UBUNTU_CODENAME" in
+    jammy)    PYTHON_VERSION="3.10" ;;
+    noble)    PYTHON_VERSION="3.12" ;;
+    resolute) PYTHON_VERSION="3.13" ;;
+    *)
+        err "Unsupported Ubuntu release: ${UBUNTU_VERSION} (${UBUNTU_CODENAME})"
+        err "ROCm 10.x is published for Ubuntu 22.04, 24.04 and 26.04."
+        err "If your release genuinely is supported, set ROCM_AI_CHANNEL=legacy."
+        exit 1
+        ;;
+esac
+PYTHON_BIN="python${PYTHON_VERSION}"
+command -v "$PYTHON_BIN" >/dev/null 2>&1 || {
+    err "$PYTHON_BIN not found. Install it with:  sudo apt install ${PYTHON_BIN} ${PYTHON_BIN}-venv"
+    exit 1
+}
+
+# Confirm the interpreter is actually the version the codename implies, rather
+# than something else that happens to share the name. A distro that has moved its
+# default Python, or a user who installed a newer one over the top, would
+# otherwise silently get wheels for the wrong ABI — and the failure would surface
+# much later as an import error in torch.
+ACTUAL_PY="$(va_python_version "$PYTHON_BIN" 2>/dev/null || true)"
+if [ -n "$ACTUAL_PY" ] && [ "$ACTUAL_PY" != "$PYTHON_VERSION" ]; then
+    warn "$PYTHON_BIN is Python ${ACTUAL_PY}, not the ${PYTHON_VERSION} this Ubuntu"
+    warn "release normally ships. Using it anyway — AMD publishes wheels for it."
 else
-    err "Unsupported Ubuntu version: ${UBUNTU_VERSION} (${UBUNTU_CODENAME})"
-    err "This installer supports Ubuntu 24.04 (noble) and 22.04 (jammy) only."
+    success "Python ${ACTUAL_PY:-$PYTHON_VERSION}"
+fi
+
+WHEEL_SUFFIX="$(va_python_tag "$PYTHON_BIN" 2>/dev/null || true)"
+[ -n "$WHEEL_SUFFIX" ] || {
+    err "Could not determine the Python wheel tag for $PYTHON_BIN."
+    exit 1
+}
+success "Wheel tag: ${WHEEL_SUFFIX}"
+
+# ==============================================================================
+# GPU architecture
+# ==============================================================================
+headline "TASK 2/7: Identifying your GPU"
+
+# AMD publishes a per-architecture apt package, and PyTorch needs a matching
+# device extra, so this one value decides what gets installed. Detection order
+# is recorded choice -> existing ROCm -> AMD's own detector. When none of those
+# can answer, the user is asked rather than the installer guessing: installing
+# the wrong architecture package produces a machine with no working GPU and no
+# obvious reason why.
+GFX_TARGET=""
+if GFX_TARGET="$(va_gfx_detect 2>/dev/null)" && [ -n "$GFX_TARGET" ]; then
+    success "GPU architecture: gfx${GFX_TARGET}"
+else
+    warn "Could not detect your GPU architecture automatically."
+    warn "AMD publishes one ROCm package per architecture, so this has to be right."
+    warn "Run 'lspci | grep -i vga' in WSL, or check your card's model name against"
+    warn "AMD's list: https://rocm.docs.amd.com/en/latest/reference/gpu-arch-specs.html"
+
+    # The friendly table below is the first thing anyone looks for, but it is a
+    # snapshot and it will rot. The authoritative list is read from AMD's own
+    # package index, and printed underneath so a card that is newer than this
+    # script still appears.
+    printf '\n  Common Radeon / Ryzen targets:\n'
+    printf '    gfx1100  RX 7900 XTX / 7900 XT / 7900 GRE / W7900 / W7800\n'
+    printf '    gfx1101  RX 7800 XT / 7700 XT / 7700 / W7700\n'
+    printf '    gfx1102  RX 7600\n'
+    printf '    gfx1200  RX 9060 / 9060 XT\n'
+    printf '    gfx1201  RX 9070 / 9070 XT / AI PRO R9700 / R9600\n'
+    printf '    gfx1030  Radeon PRO W6800 / V620\n'
+
+    local_targets="$(va_supported_gfx_targets 2>/dev/null | tr '\n' ' ')"
+    if [ -n "$local_targets" ]; then
+        printf '\n  Everything ROCm %s publishes (from AMD'"'"'s index):\n' \
+            "$(va_latest_core_series)"
+        printf '    %s\n' "$local_targets"
+    fi
+
+    printf '\n  Enter your target (blank for gfx1100): ' >&2
+    read -r answer || answer=""
+    GFX_TARGET="${answer:-1100}"
+    GFX_TARGET="${GFX_TARGET#gfx}"
+fi
+
+case "$GFX_TARGET" in
+    ''|*[!0-9a-z]*)
+        err "That is not a valid target: '${GFX_TARGET}'"
+        exit 1
+        ;;
+esac
+
+# ==============================================================================
+# Resolve versions from AMD
+# ==============================================================================
+headline "TASK 3/7: Resolving versions from AMD"
+
+SPEC=""
+if ! SPEC="$(va_resolve_torch_spec "$GFX_TARGET" "$WHEEL_SUFFIX")"; then
+    err "Could not resolve a ROCm release with PyTorch wheels for ${WHEEL_SUFFIX}."
+    err "Index: ${ROCM_AI_WHL_INDEX}"
+    err "Check the index above in a browser, then re-run. If you are offline,"
+    err "upgrade.sh --check reports the last known-good combination."
     exit 1
 fi
+eval "$SPEC"
 
-# --- Resolve which ROCm release to install ---
-# AMD publishes several ROCm releases; we want the newest one that has both an
-# apt repository for this Ubuntu release AND PyTorch wheels for this Python.
-# Ask the repositories rather than trusting a version baked into this script.
-log "Querying AMD's repositories for the newest release ..."
+success "ROCm ${ROCM_VERSION} (series ${ROCM_SERIES})"
+success "PyTorch ${TORCH_VERSION} for ${PYTHON_TAG}"
+success "Architecture package: ${APT_META_PACKAGE}"
 
-ROCM_NEWEST="$(va_latest_rocm "$UBUNTU_CODENAME")"
-ROCM_VERSION="$(va_best_installable_rocm "$WHEEL_SUFFIX")"
+# A legacy 7.2.x install cannot coexist with 10.x: AMD requires the old stack be
+# removed first, and the two package trees both claim /opt/rocm.
+LEGACY_PRESENT=no
+[ "$(va_install_kind)" = "legacy" ] || [ "$(va_install_kind)" = "both" ] && LEGACY_PRESENT=yes
 
-if [ -z "$ROCM_VERSION" ]; then
-    warn "Could not reach AMD's repositories. Falling back to ROCm ${ROCM_AI_FALLBACK_ROCM}."
-    ROCM_VERSION="$ROCM_AI_FALLBACK_ROCM"
-elif va_lt "$ROCM_VERSION" "$ROCM_NEWEST"; then
-    success "ROCm ${ROCM_VERSION} selected (newest with wheels for ${WHEEL_SUFFIX}; ${ROCM_NEWEST} is published but has none yet)"
-else
-    success "Using the newest ROCm release: ${ROCM_VERSION}"
-fi
-
-# Resolve exact wheel filenames for this release + Python. The filenames embed a
-# git hash that changes with every ROCm patch, which is why nothing is pinned.
-WHEELS=""
-if ! WHEELS="$(va_resolve_torch_wheels "$ROCM_VERSION" "$WHEEL_SUFFIX")"; then
-    err "Could not resolve PyTorch wheels for ROCm ${ROCM_VERSION} / ${WHEEL_SUFFIX}."
-    err "Check:  https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/"
-    err ""
-    err "If you are offline, install with a known-good version by editing this"
-    err "script's ROCM_VERSION after the resolve step, or run:  ./upgrade.sh --check"
-    exit 1
-fi
-
-ROCM_REL="" TORCH_VERSION="" TORCH_WHEEL="" TORCHVISION_WHEEL="" TORCHAUDIO_WHEEL="" TRITON_WHEEL=""
-eval "$WHEELS"
-
-PYTORCH_VERSION="${TORCH_VERSION}+rocm${ROCM_REL}"
-LIBROCDXG_TAG="$(va_latest_librocdxg)"
-
-headline "Installing ROCm ${ROCM_VERSION} + ROCDXG ${LIBROCDXG_TAG} + PyTorch ${PYTORCH_VERSION}"
 printf '\n'
+if [ "$LEGACY_PRESENT" = "yes" ]; then
+    warn "A legacy ROCm 7.2.x install is present ($(va_rocm_installed))."
+    warn "ROCm 10.x cannot be installed alongside it — AMD requires the old stack"
+    warn "to be removed, and both would claim /opt/rocm."
+    warn ""
+    warn "Use the upgrade path instead, which removes the old stack safely:"
+    warn "    ./upgrade.sh --target core"
+    exit 1
+fi
+
 log "This will install:"
-log "  ROCm       ${ROCM_VERSION}"
-log "  ROCDXG     ${LIBROCDXG_TAG} (built from source)"
+log "  ROCm       ${ROCM_VERSION}  ->  /opt/rocm/core-${ROCM_SERIES}"
+log "  Architecture ${GFX_TARGET}"
 log "  PyTorch    ${TORCH_VERSION}"
+log "  venv       ~/${VENV_NAME}"
 printf '\n'
 
 if [ "${ROCM_AI_ASSUME_YES:-0}" != "1" ] && ! confirm "Proceed with the installation?"; then
@@ -126,358 +202,231 @@ if [ "${ROCM_AI_ASSUME_YES:-0}" != "1" ] && ! confirm "Proceed with the installa
     exit 0
 fi
 
-# --- 2. System Update and Prerequisites ---
-headline "TASK 2/8: System Update and Prerequisites"
-ensure_apt_packages wget build-essential git python3-pip python3-venv libnuma-dev pkg-config cmake gcc
-success "System update and prerequisites installation complete."
+# ==============================================================================
+# Prerequisites
+# ==============================================================================
+headline "TASK 4/7: System prerequisites"
+ensure_apt_packages wget curl gpg git "${PYTHON_BIN}" "${PYTHON_BIN}-venv" python3-pip ca-certificates
+success "Prerequisites installed."
 
-# --- 3. Install ROCm from AMD's signed apt repository ---
-headline "TASK 3/8: Installing ROCm ${ROCM_VERSION}"
+# ==============================================================================
+# ROCm from AMD's signed apt repository
+# ==============================================================================
+headline "TASK 5/7: Installing ROCm ${ROCM_VERSION} (${GFX_TARGET})"
 
-if command -v rocminfo &> /dev/null && [ -f "/opt/rocm/bin/rocminfo" ]; then
-    ROCM_PRESENT="$(va_rocm_installed 2>/dev/null || echo unknown)"
-    if [ "$ROCM_PRESENT" = "$ROCM_VERSION" ]; then
-        success "ROCm ${ROCM_VERSION} is already installed."
-    else
-        warn "ROCm ${ROCM_PRESENT} is installed; this installer targets ${ROCM_VERSION}."
-        if confirm "Upgrade ROCm to ${ROCM_VERSION}?"; then
-            INSTALL_ROCM=1
-        else
-            success "Keeping the installed ROCm."
-        fi
-    fi
+KEYRING="/etc/apt/keyrings/amdrocm.gpg"
+log "Installing AMD's repository signing key..."
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL "$ROCM_AI_AMD_GPG_KEY" | gpg --dearmor | sudo tee "$KEYRING" >/dev/null || {
+    err "Failed to install the ROCm signing key from ${ROCM_AI_AMD_GPG_KEY}"
+    err "Check your internet connection."
+    exit 1
+}
+success "Signing key installed at ${KEYRING}"
+
+# Replace rather than accumulate: a stale amdrocm-stable.sources pointing at a
+# different series is the usual cause of "no candidate version".
+log "Writing the ROCm apt source..."
+va_core_apt_source | sudo tee /etc/apt/sources.list.d/amdrocm-stable.sources >/dev/null || {
+    err "Could not write /etc/apt/sources.list.d/amdrocm-stable.sources"
+    exit 1
+}
+
+log "Refreshing package lists..."
+sudo apt-get update -y >/dev/null 2>&1 || {
+    err "apt-get update failed. The ROCm repository may be unreachable."
+    exit 1
+}
+
+# Install only the architecture package for this GPU rather than every
+# supported one: it is a fraction of the size and avoids pulling kernels for
+# hardware that is not present.
+PER_ARCH_PACKAGE="$(va_core_meta_package "$ROCM_SERIES" "$GFX_TARGET")"
+log "Installing ${PER_ARCH_PACKAGE} (several GB; this takes a while)..."
+if ! sudo apt-get install -y "$PER_ARCH_PACKAGE"; then
+    err "ROCm installation failed. The error above says which package was missing."
+    err "Confirm ${PER_ARCH_PACKAGE} exists for your Ubuntu release at:"
+    err "    $(va_core_apt_base)/"
+    exit 1
+fi
+
+success "ROCm installed. Version reported: $(va_rocm_installed 2>/dev/null || echo unknown)"
+
+# ==============================================================================
+# The WSL GPU bridge
+# ==============================================================================
+headline "TASK 6/7: Verifying the WSL GPU bridge"
+
+# ROCr loads librocdxg automatically when it finds /dev/dxg, so there is nothing
+# to build or install here — the check is only to confirm the pieces are present
+# so a failure later is diagnosable.
+if [ ! -c /dev/dxg ]; then
+    err "/dev/dxg is missing: WSL2 cannot reach the GPU at all."
+    err "  From PowerShell run:  wsl --shutdown"
+    err "  Then reopen WSL and re-run this installer."
+    exit 1
+fi
+success "WSL GPU device /dev/dxg is present"
+
+if has_rocdxg; then
+    success "librocdxg present (shipped with ROCm ${ROCM_VERSION})"
 else
-    INSTALL_ROCM=1
+    warn "librocdxg not found in the ROCm tree."
+    warn "ROCm 10.1 normally ships it. If the GPU stays invisible, check:"
+    warn "    find /opt/rocm -name 'librocdxg*' 2>/dev/null"
 fi
 
-if [ "${INSTALL_ROCM:-0}" = "1" ]; then
-    # --- apt source, not amdgpu-install --------------------------------------
-    # The amdgpu-install .deb path required guessing a build number that changes
-    # independently of the ROCm version (e.g. 7.2.3.70203-1) and broke whenever
-    # AMD republished. Adding the signed repository directly and installing the
-    # `rocm` metapackage is what AMD's own quick-start recommends, and it lets
-    # apt resolve dependencies and produce sensible upgrade paths.
-    KEYRING="/etc/apt/keyrings/rocm.gpg"
-
-    if [ ! -f "$KEYRING" ]; then
-        log "Installing AMD's repository signing key..."
-        sudo mkdir -p /etc/apt/keyrings
-        wget -qO- https://repo.radeon.com/rocm/rocm.gpg.key \
-            | gpg --dearmor | sudo tee "$KEYRING" >/dev/null || {
-                err "Failed to install the ROCm signing key."
-                err "Please check your internet connection."
-                exit 1
-            }
-    fi
-
-    # Amend an existing source rather than adding a second, conflicting one.
-    EXISTING_SRC="$(grep -rl 'repo.radeon.com/rocm/apt' /etc/apt/sources.list.d/ 2>/dev/null | head -1)"
-    if [ -n "$EXISTING_SRC" ]; then
-        log "Updating the ROCm apt source to ${ROCM_VERSION} ..."
-        sudo sed -i -E "s|https://repo\.radeon\.com/rocm/apt/[0-9.]+|https://repo.radeon.com/rocm/apt/${ROCM_VERSION}|g" "$EXISTING_SRC" \
-            || warn "Could not rewrite $EXISTING_SRC"
-    else
-        log "Adding the ROCm ${ROCM_VERSION} apt source..."
-        printf 'deb [arch=amd64 signed-by=%s] https://repo.radeon.com/rocm/apt/%s %s main\n' \
-            "$KEYRING" "$ROCM_VERSION" "$UBUNTU_CODENAME" \
-            | sudo tee /etc/apt/sources.list.d/rocm.list >/dev/null || {
-                err "Could not write the ROCm apt source."
-                exit 1
-            }
-    fi
-
-    # The graphics repository carries userspace pieces ROCm depends on.
-    if _va_curl -o /dev/null "https://repo.radeon.com/graphics/${ROCM_VERSION}/ubuntu/dists/${UBUNTU_CODENAME}/Release"; then
-        GRAPHICS_SRC="$(grep -rl 'repo.radeon.com/graphics' /etc/apt/sources.list.d/ 2>/dev/null | head -1)"
-        if [ -n "$GRAPHICS_SRC" ]; then
-            sudo sed -i -E "s|repo\.radeon\.com/graphics/[0-9.]+|repo.radeon.com/graphics/${ROCM_VERSION}|g" "$GRAPHICS_SRC" || true
-        else
-            printf 'deb [arch=amd64 signed-by=%s] https://repo.radeon.com/graphics/%s/ubuntu %s main\n' \
-                "$KEYRING" "$ROCM_VERSION" "$UBUNTU_CODENAME" \
-                | sudo tee /etc/apt/sources.list.d/rocm-graphics.list >/dev/null || true
-        fi
-    fi
-
-    log "Refreshing package lists..."
-    sudo apt-get update -y >/dev/null 2>&1 || {
-        err "apt-get update failed. The ROCm ${ROCM_VERSION} repository may be unreachable."
-        exit 1
-    }
-
-    log "Installing ROCm packages (several GB; this takes a while)..."
-    sudo apt-get install -y python3-setuptools python3-wheel >/dev/null 2>&1 || true
-    sudo apt-get install -y rocm || {
-        err "ROCm installation failed. Please check the error messages above."
-        err "For troubleshooting, see: https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/"
-        exit 1
-    }
-
-    success "ROCm $(va_rocm_installed 2>/dev/null || echo "$ROCM_VERSION") installation completed."
-fi
-
-# --- 4. User Group Configuration ---
-headline "TASK 4/8: Configuring user groups"
 log "Adding current user ($USER) to the 'render' and 'video' groups..."
-sudo usermod -a -G render,video "$LOGNAME"
+sudo usermod -a -G render,video "$LOGNAME" 2>/dev/null || true
 
-warn "Group changes require a WSL restart to take effect."
-warn "In Windows PowerShell/CMD, run: wsl --shutdown"
-warn "Then restart your Ubuntu terminal."
-
-if ! confirm "Continue without restarting?"; then
-    err "Installation paused. Please run 'wsl --shutdown' and restart this script."
-    exit 0
-fi
-success "User group configuration step finished (pending WSL restart)."
-
-# --- 5. Build & Install librocdxg (ROCDXG) ---
-headline "TASK 5/8: Building & Installing ROCDXG (librocdxg)"
-
-log "ROCDXG is the new user-mode WSL bridge library that replaces the legacy roc4wsl approach."
-log "It enables ROCm GPU compute inside WSL via Microsoft's DXCore interface."
-
-# Check if librocdxg is already installed
-if [ -f "/opt/rocm/lib/librocdxg.so" ]; then
-    ROCDXG_PRESENT="$(va_rocdxg_installed 2>/dev/null || echo unknown)"
-    if confirm "ROCDXG ${ROCDXG_PRESENT} is installed. Rebuild it as ${LIBROCDXG_TAG}?"; then
-        warn "Proceeding with the ROCDXG rebuild."
-    else
-        success "ROCDXG installation skipped."
-        SKIP_ROCDXG=1
-    fi
-fi
-
-if [ "${SKIP_ROCDXG:-0}" != "1" ]; then
-    log "Step 5a: Detecting Windows SDK path..."
-    WIN_SDK_PATH=""
-    
-    # Auto-detect Windows SDK from common paths
-    WIN_KITS_BASE="/mnt/c/Program Files (x86)/Windows Kits/10/Include"
-    if [ -d "$WIN_KITS_BASE" ]; then
-        # Find the latest SDK version
-        WIN_SDK_VERSION=$(ls -1 "$WIN_KITS_BASE" 2>/dev/null | grep -E '^10\.' | sort -V | tail -1)
-        if [ -n "$WIN_SDK_VERSION" ]; then
-            WIN_SDK_PATH="${WIN_KITS_BASE}/${WIN_SDK_VERSION}"
-            success "Detected Windows SDK: ${WIN_SDK_PATH}"
-        fi
-    fi
-    
-    if [ -z "$WIN_SDK_PATH" ]; then
-        err "Windows SDK not found!"
-        err "Please install the Windows SDK from: https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/"
-        err "Common location: C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.26100.0\\"
-        exit 1
-    fi
-    
-    log "Step 5b: Cloning librocdxg (${LIBROCDXG_TAG}) ..."
-    rm -rf "$LIBROCDXG_DIR"
-    # Prefer the resolved release tag; fall back to the default branch.
-    if ! git clone --depth=1 --branch "$LIBROCDXG_TAG" "$LIBROCDXG_REPO" "$LIBROCDXG_DIR" 2>/dev/null; then
-        warn "Tag ${LIBROCDXG_TAG} unavailable; using the default branch."
-        git clone --depth=1 "$LIBROCDXG_REPO" "$LIBROCDXG_DIR" || {
-            err "Failed to clone librocdxg repository."
-            exit 1
-        }
-    fi
-    
-    log "Step 5c: Verifying ROCm installation for librocdxg build..."
-    if [ ! -d "/opt/rocm" ]; then
-        err "ROCm installation not found at /opt/rocm. Cannot build librocdxg."
-        exit 1
-    fi
-    success "ROCm found at /opt/rocm"
-    
-    log "Step 5d: Building librocdxg..."
-    mkdir -p "$LIBROCDXG_DIR/build"
-    cd "$LIBROCDXG_DIR/build"
-    
-    cmake .. -DWIN_SDK="${WIN_SDK_PATH}/shared" || {
-        err "CMake configuration failed for librocdxg."
-        err "Check that cmake >= 3.15 and gcc >= 11.4 are installed."
-        exit 1
-    }
-    
-    make || {
-        err "librocdxg build failed."
-        exit 1
-    }
-    
-    log "Step 5e: Installing librocdxg..."
-    sudo make install || {
-        err "librocdxg installation failed."
-        exit 1
-    }
-    
-    # Clean up build directory
-    cd /
-    rm -rf "$LIBROCDXG_DIR"
-    
-    success "ROCDXG (librocdxg) built and installed successfully."
-fi
-
-# --- 6. Setup Python Virtual Environment ---
-headline "TASK 6/8: Setting up Python ${PYTHON_VERSION} virtual environment '${VENV_NAME}'"
+# ==============================================================================
+# Virtual environment and PyTorch
+# ==============================================================================
+headline "TASK 7/7: Installing PyTorch ${TORCH_VERSION}"
 
 if [ ! -d "$HOME/$VENV_NAME" ]; then
-    python3 -m venv "$HOME/$VENV_NAME"
-    log "Virtual environment created at $HOME/$VENV_NAME"
+    "$PYTHON_BIN" -m venv "$HOME/$VENV_NAME"
+    log "Created virtual environment at ~/${VENV_NAME}"
 else
-    log "Virtual environment directory $HOME/$VENV_NAME already exists."
+    warn "~/${VENV_NAME} already exists; reusing it."
+    warn "  Delete it by hand if the install misbehaves."
 fi
 
 # shellcheck disable=SC1091
 source "$HOME/$VENV_NAME/bin/activate"
 
-log "Upgrading pip within the virtual environment..."
-pip install --upgrade pip wheel
-success "Python virtual environment setup complete. Environment activated."
+pip install --quiet --upgrade pip wheel
 
-# --- 7. Install PyTorch with ROCm Support ---
-headline "TASK 7/8: Installing PyTorch ${PYTORCH_VERSION} via official AMD wheels"
+# Remove any previous PyTorch before installing the ROCm build. Leaving a CUDA
+# torch in place is the single most common cause of "torch works but the GPU is
+# not visible".
+pip uninstall -y torch torchvision torchaudio triton triton-kernels 2>/dev/null || true
 
-log "Python version: $(python3 --version)"
-log "Target wheel suffix: ${WHEEL_SUFFIX}"
+log "Installing from ${PIP_INDEX}"
+log "  ${PIP_SPEC_ROCM}"
+log "  ${PIP_SPEC_TORCH}"
+log "  ${PIP_SPEC_TORCHVISION}"
+log "  ${PIP_SPEC_TORCHAUDIO}"
+printf '\n'
 
-# Wheel names, versions and the ROCm release directory were all resolved from
-# AMD's repository index at the top of this script (see va_resolve_torch_wheels).
-PYTORCH_BASE_URL="https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_REL}"
-
-log "Downloading PyTorch wheels from repo.radeon.com ..."
-WHEEL_TMP="$(mktemp -d /tmp/rocm-wheels.XXXXXX)"
-cd "$WHEEL_TMP" || exit 1
-
-for w in "$TORCH_WHEEL" "$TORCHVISION_WHEEL" "$TORCHAUDIO_WHEEL" "$TRITON_WHEEL"; do
-    log "  $(printf '%s' "$w" | cut -c1-64)"
-    wget -q "${PYTORCH_BASE_URL}/${w//+/%2B}" -O "$w" || {
-        err "Failed to download: $w"
-        err "URL: ${PYTORCH_BASE_URL}/${w//+/%2B}"
-        err "Please check your internet connection."
-        exit 1
-    }
-done
-
-success "All PyTorch wheels downloaded successfully."
-
-log "Uninstalling any existing PyTorch packages..."
-pip3 uninstall -y torch torchvision torchaudio pytorch-triton-rocm triton 2>/dev/null || true
-
-log "Installing PyTorch wheels..."
-pip3 install "$TORCH_WHEEL" "$TORCHVISION_WHEEL" "$TORCHAUDIO_WHEEL" "$TRITON_WHEEL"
-
-log "Installing SageAttention..."
-pip3 install sageattention || warn "SageAttention not installed (optional)"
-
-# Clean up downloaded wheels
-rm -f /tmp/*.whl
-success "PyTorch ${PYTORCH_VERSION} installation complete."
-
-# --- WSL-specific fix for HSA runtime library ---
-log "Applying WSL-specific HSA runtime library fix..."
-LOCATION=$(pip show torch | grep Location | awk -F ": " '{print $2}')
-TORCH_LIB_PATH="${LOCATION}/torch/lib"
-
-if [ -d "${TORCH_LIB_PATH}" ]; then
-    log "Removing bundled HSA runtime from ${TORCH_LIB_PATH}..."
-    rm -f "${TORCH_LIB_PATH}/libhsa-runtime64.so"*
-    success "WSL runtime library fix applied."
-else
-    warn "Could not find torch library path: ${TORCH_LIB_PATH}"
-    warn "WSL library fix may be required manually."
+# pip resolves the device extras itself, including the amd-torch-device-* wheels
+# that carry the GPU-specific kernels. No wheel is downloaded by hand.
+if ! pip install --index-url "$PIP_INDEX" \
+        "$PIP_SPEC_ROCM" \
+        "$PIP_SPEC_TORCH" \
+        "$PIP_SPEC_TORCHVISION" \
+        "$PIP_SPEC_TORCHAUDIO"; then
+    err "PyTorch installation failed."
+    err "Most often this means the device extra does not exist for this GPU."
+    err "Try:  pip install --index-url ${PIP_INDEX} 'torch[device-all]'"
+    exit 1
 fi
 
-# Inject the GPU environment into venv activation script.
-#
-# Deliberately minimal. The real GPU environment is applied by lib/launch.sh
-# before Python starts, and these two lines are a convenience for people who
+pip install --quiet sageattention 2>/dev/null \
+    || warn "SageAttention not installed (optional)."
+
+# The HSA runtime shipped inside torch's own lib directory conflicts with the one
+# ROCm provides, and on a 7.2.x stack it was the cause of a hard crash. Whether
+# it is still needed is measured rather than assumed: only if the GPU is
+# invisible AND the bundled library exists.
+maybe_fix_bundled_hsa_runtime() {
+    local location lib
+    location="$(pip show torch 2>/dev/null | awk -F': ' '/^Location:/{print $2}')"
+    [ -n "$location" ] || return 0
+    lib="$location/torch/lib"
+    [ -d "$lib" ] || return 0
+
+    if "$HOME/$VENV_NAME/bin/python" -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null; then
+        success "GPU already visible; leaving torch's bundled libraries untouched."
+        return 0
+    fi
+
+    if ls "$lib"/libhsa-runtime64.so* >/dev/null 2>&1; then
+        warn "GPU is not visible and torch bundles its own HSA runtime."
+        warn "Removing the bundled copy so the ROCm-provided one is used..."
+        rm -f "$lib"/libhsa-runtime64.so*
+        if "$HOME/$VENV_NAME/bin/python" -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null; then
+            success "Removing the bundled HSA runtime fixed it."
+        else
+            warn "Still not visible. See docs/TROUBLESHOOTING.md"
+        fi
+    else
+        warn "GPU is not visible and torch bundles no HSA runtime."
+        warn "See docs/TROUBLESHOOTING.md -> 'PyTorch can't see my GPU'"
+    fi
+}
+maybe_fix_bundled_hsa_runtime
+
+# A minimal, honest activation script. The real GPU environment is applied by
+# lib/launch.sh before Python starts; these two lines are only for people who
 # activate the venv by hand.
 #
-# Notably absent: HSA_OVERRIDE_GFX_VERSION. Version 3.x wrote it here if it
-# happened to be set, and with ROCDXG installed an override makes the runtime
-# reject the device — the GPU then disappears from PyTorch while rocminfo still
-# reports it. It must never be persisted into an activation script.
-log "Configuring environment variables in venv activation script..."
+# HSA_OVERRIDE_GFX_VERSION is deliberately never written here. Under WSL it makes
+# the runtime reject the device, so PyTorch sees no GPU while rocminfo still
+# lists one.
 VENV_ACTIVATE="$HOME/$VENV_NAME/bin/activate"
+grep -q "HSA_ENABLE_DXG_DETECTION" "$VENV_ACTIVATE" 2>/dev/null \
+    || echo 'export HSA_ENABLE_DXG_DETECTION=1' >> "$VENV_ACTIVATE"
+grep -q "PIP_USER=0" "$VENV_ACTIVATE" 2>/dev/null \
+    || echo 'export PIP_USER=0' >> "$VENV_ACTIVATE"
 
-if ! grep -q "HSA_ENABLE_DXG_DETECTION" "$VENV_ACTIVATE"; then
-    echo 'export HSA_ENABLE_DXG_DETECTION=1' >> "$VENV_ACTIVATE"
-    log "Added HSA_ENABLE_DXG_DETECTION=1 to venv activation script"
-fi
+# Record the architecture so a later rebuild installs the same packages.
+_update_user_env "AMDROCM_DEVICE_TARGET" "gfx${GFX_TARGET}"
 
-if ! grep -q "PIP_USER=0" "$VENV_ACTIVATE"; then
-    echo 'export PIP_USER=0' >> "$VENV_ACTIVATE"
-    log "Added PIP_USER=0 to venv activation script to sandbox pip"
-fi
-
-# Make the GPU usable from any terminal, not just an activated venv. This is the
-# fix for the most common "PyTorch cannot see my GPU" report.
 log "Installing the GPU environment for login shells..."
 if rocm_ai_install_shell_integration; then
     success "GPU environment installed for new login shells."
 else
     warn "Could not install the login-shell environment automatically."
-    warn "See docs/TROUBLESHOOTING.md -> 'PyTorch can't see my GPU'."
+    warn "See docs/TROUBLESHOOTING.md"
 fi
 
-# --- 8. Verification ---
-headline "TASK 8/8: Running verification checks"
+# ==============================================================================
+# Verification
+# ==============================================================================
+headline "Verification"
 
-log "Verifying ROCDXG installation..."
-if [ -f "/opt/rocm/lib/librocdxg.so" ]; then
-    success "ROCDXG library found: /opt/rocm/lib/librocdxg.so"
-else
-    warn "librocdxg.so not found at /opt/rocm/lib/. ROCDXG may not be installed correctly."
-fi
-
-log "Setting HSA_ENABLE_DXG_DETECTION=1 for verification..."
 export HSA_ENABLE_DXG_DETECTION=1
 
-log "Verifying ROCm installation (rocminfo)..."
-if command -v rocminfo &> /dev/null; then
-    rocminfo | grep -E 'Agent [0-9]+|Name:|Marketing Name:' | grep -A2 -B1 'Agent' | grep -v -E 'Host|CPU' || warn "rocminfo did not list an AMD GPU Agent as expected."
+log "rocminfo ..."
+if command -v rocminfo >/dev/null 2>&1; then
+    rocminfo 2>/dev/null | grep -E '^\s+(Name|Marketing Name):' | head -6 || warn "rocminfo listed no agents"
 else
-    warn "rocminfo command not found. ROCm installation might be incomplete."
+    warn "rocminfo not found; the ROCm install may be incomplete."
 fi
 
-log "Verifying PyTorch ROCm integration..."
-python3 -c "
-import torch, os
-print(f'--- PyTorch Verification ---')
-print(f'PyTorch Version: {torch.__version__}')
-rocm_available = torch.cuda.is_available()
-print(f'ROCm Available via torch.cuda.is_available(): {rocm_available}')
-print(f'Built with ROCm (HIP): {torch.version.hip is not None}')
-print(f'HSA_ENABLE_DXG_DETECTION: {os.environ.get(\"HSA_ENABLE_DXG_DETECTION\", \"Not Set\")}')
-if rocm_available:
-    try:
-        print(f'Detected GPU Count: {torch.cuda.device_count()}')
-        print(f'Detected GPU Name [0]: {torch.cuda.get_device_name(0)}')
-        hsa_override = os.environ.get('HSA_OVERRIDE_GFX_VERSION', 'Not Set')
-        print(f'HSA_OVERRIDE_GFX_VERSION: {hsa_override}')
-    except Exception as e:
-        print(f'[WARN] Error during GPU detail retrieval: {e}')
+# amd-smi gained WSL2 telemetry in ROCm 10.1, which WSL could not report before.
+# Worth showing if present, purely informational.
+if command -v amd-smi >/dev/null 2>&1; then
+    log "amd-smi (ROCm 10.1 reports WSL telemetry through this) ..."
+    amd-smi static 2>/dev/null | grep -iE 'gfx|product|vbios' | head -4 || true
+fi
+
+log "PyTorch ..."
+"$HOME/$VENV_NAME/bin/python" - <<'PYEOF' || warn "The verification snippet itself failed."
+import os
+import torch
+
+print(f"  PyTorch            {torch.__version__}")
+print(f"  Built with HIP     {torch.version.hip or 'NO'}")
+print(f"  GPU available      {torch.cuda.is_available()}")
+print(f"  HSA_DXG_DETECTION  {os.environ.get('HSA_ENABLE_DXG_DETECTION', 'not set')}")
+print(f"  HSA_OVERRIDE_GFX   {os.environ.get('HSA_OVERRIDE_GFX_VERSION', 'not set')}")
+if torch.cuda.is_available():
+    print(f"  Device count       {torch.cuda.device_count()}")
+    print(f"  Device 0           {torch.cuda.get_device_name(0)}")
 else:
-    print('[WARN] PyTorch does not detect a compatible ROCm device.')
-    print('[INFO] This may be normal if you have not restarted WSL after installation.')
-print(f'---------------------------')
-" || warn "PyTorch verification script encountered an error."
+    print("  [WARN] PyTorch does not see a GPU.")
+    print("         If you have just installed, run 'wsl --shutdown' first.")
+    print("         Then:  ~/genai_env/bin/python scripts/utils/gpu_diag.sh 2>/dev/null || bash scripts/utils/gpu_diag.sh")
+PYEOF
 
-success "Verification checks complete."
-
-# --- Script End ---
-echo ""
-success "ROCm ${ROCM_VERSION} + ROCDXG + PyTorch ${PYTORCH_VERSION} installation finished!"
-echo ""
-warn "[IMPORTANT REMINDER] You MUST restart WSL for group changes to apply:"
+printf '\n'
+success "Base environment installed: ROCm ${ROCM_VERSION} + PyTorch ${TORCH_VERSION}"
+printf '\n'
+warn "Restart WSL so the group change takes effect:"
 warn "  1. Close this terminal"
-warn "  2. In Windows PowerShell/CMD, run: wsl --shutdown"
-warn "  3. Restart your Ubuntu terminal"
-echo ""
-log "[NEXT STEPS]"
-log "1. Restart WSL as instructed above"
-log "2. Activate the virtual environment in new terminals:"
-log "   source ~/${VENV_NAME}/bin/activate"
-log "3. Use the main menu to install AI tools like ComfyUI, SD.Next, etc."
-log "4. For troubleshooting, see: docs/WSL2_SETUP_GUIDE.md"
-echo ""
-
-exit 0
+warn "  2. In PowerShell:  wsl --shutdown"
+warn "  3. Reopen Ubuntu"
+printf '\n'
+log "Next: run ./menu.sh and install a tool, or ./scripts/utils/auto_tuner.sh to tune."

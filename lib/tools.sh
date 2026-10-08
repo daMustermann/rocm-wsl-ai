@@ -332,13 +332,20 @@ rocm_ai_install_deps() {
 # Strip torch/torchvision/torchaudio from a requirements file before handing it
 # to pip. Without this, pip resolves torch from PyPI and silently replaces the
 # ROCm wheels with the CUDA build (over a gigabyte of nvidia_* packages).
+#
+# The list also covers the package names ROCm 10.x introduced. A tool's
+# requirements.txt naming `triton` used to be harmless because ROCm shipped
+# `pytorch-triton-rocm`; on 10.x the pieces are separate wheels and pip would
+# fetch the CUDA `triton` from PyPI, which then fails to build or silently
+# changes numerics. Same reasoning for the `amd-*` device wheels and for the
+# `rocm`/`rocm-sdk-*` family, which must come from AMD's index only.
 rocm_ai_pip_filtered() {
     local req_file="$1"
     [ -f "$req_file" ] || return 0
 
     local tmp
     tmp="$(mktemp -t rocm-ai-req.XXXXXX)"
-    local skip='^[[:space:]]*(torch|torchvision|torchaudio|pytorch-triton-rocm)([>=<!;@# ]|$)|^[[:space:]]*-[[:space:]]*(e|--editable)[[:space:]]+.*sd-scripts'
+    local skip='^[[:space:]]*(torch|torchvision|torchaudio|triton|triton-rocm|triton_kernels|pytorch-triton|pytorch-triton-rocm|rocm|rocm-sdk-[a-z0-9-]+|amd-torch[a-z0-9-]*|amd-torchvision[a-z0-9-]*|amd-torchaudio[a-z0-9-]*|amd-triton|amd-aiter)([>=<!;@# \[]|$)|^[[:space:]]*-[[:space:]]*(e|--editable)[[:space:]]+.*sd-scripts'
 
     if grep -qE '^[[:space:]]*-[[:space:]]*r[[:space:]]+requirements\.txt' "$req_file"; then
         # kohya_ss style: an included file that itself pins torch.

@@ -27,7 +27,6 @@ KOHYA_VENV="$HOME/kohya_env"
 TOOLKIT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Map prior function names
-print_header(){ headline "$@"; }
 print_section(){ headline "$@"; }
 print_success(){ success "$@"; }
 print_warning(){ warn "$@"; }
@@ -37,7 +36,13 @@ print_info(){ log "$@"; }
 check_venv() {
     if [ ! -f "$VENV_PATH/bin/activate" ]; then
         print_error "Python virtual environment not found at $VENV_PATH"
-        print_error "Please run the ROCm/PyTorch setup script first (1_setup_pytorch_rocm_wsl.sh)"
+        # The name changed during the 4.0 restructure and this message kept the
+        # old one, so anyone who followed it was told to run a file that has not
+        # existed for a release.
+        print_error "Install the base environment first:"
+        print_error "  ./menu.sh   ->  Install -> Base environment"
+        print_error "or directly:"
+        print_error "  $TOOLKIT_DIR/scripts/install/setup_pytorch_rocm.sh"
         exit 1
     fi
     # shellcheck disable=SC1091
@@ -45,16 +50,53 @@ check_venv() {
     print_success "Virtual environment activated"
 }
 
+# The AMD display driver on WSL is the *Windows* Adrenalin driver. It cannot be
+# updated from inside a Linux distro — there is no amdgpu DKMS module to rebuild
+# and no package to install. The previous implementation of this function called
+# ./9_install_amd_drivers.sh, a script that does not exist in the repository, so
+# it could only ever fail.
+#
+# What is actually useful is telling the user which driver they have, whether it
+# meets the minimum the installed ROCm requires, and where to get a newer one.
+windows_driver_version() {
+    command -v powershell.exe >/dev/null 2>&1 || return 1
+    local out
+    out="$(powershell.exe -NoProfile -Command \
+        "(Get-CimInstance Win32_VideoController | Select-Object -First 1 -ExpandProperty DriverVersion)" \
+        2>/dev/null | tr -d '\r')"
+    [ -n "$out" ] || return 1
+    printf '%s' "$out"
+}
+
+# `sort -V` on Windows driver numbers: 32.0.31041.3013 is newer than 32.0.31041.0.
+_wdrv_ge() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]; }
+
 update_amdgpu_drivers() {
-    print_section "Updating AMD GPU Drivers (reinstall)"
-    print_warning "AMD GPU driver updates require removal and reinstallation"
-    read -p "Continue with AMD GPU driver update? (y/N): " -n 1 -r; echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_info "AMD GPU driver update cancelled"; return 0; fi
-    if [ ! -f "./9_install_amd_drivers.sh" ]; then
-        print_error "AMD driver installation script not found (9_install_amd_drivers.sh)"; return 1; fi
-    chmod +x ./9_install_amd_drivers.sh && ./9_install_amd_drivers.sh || return 1
-    print_success "AMD GPU drivers updated. Restart terminal/WSL as needed."
+    print_section "Windows display driver (Adrenalin)"
+
+    local have
+    if ! have="$(windows_driver_version)"; then
+        print_warning "Could not read the Windows driver version."
+        print_info "Check Settings -> System -> About -> Display"
+        return 0
+    fi
+
+    # Adrenalin 26.10.41.05, which ROCm 10.1 requires, ships as this driver.
+    local need="32.0.31041.3013"
+    printf '  installed : %s\n' "$have"
+    printf '  required  : %s   (Adrenalin 26.10.41.05, for ROCm 10.x)\n' "$need"
+
+    if _wdrv_ge "$have" "$need"; then
+        print_success "Driver is new enough for ROCm 10.x"
+    else
+        print_warning "Driver is older than ROCm 10.x requires."
+        print_info "GPU workloads may fail or the GPU may not be detected at all."
+        print_info "Download the Adrenalin for WSL2 package:"
+        print_info "  https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-ROCM-10-01.html"
+    fi
+
+    print_info "The driver is installed on the Windows side; WSL picks it up automatically."
+    return 0
 }
 
 update_rocm() {
@@ -173,7 +215,9 @@ update_pytorch() {
     eval "$wheels"
     print_info "Installing PyTorch ${TORCH_VERSION} + triton ${TRITON_WHEEL#triton-} (ROCm ${ROCM_REL})"
 
-    local base="https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_REL}"
+    # The legacy manylinux base comes from lib/version.sh rather than being
+    # written here, so there is exactly one place that knows the URL shape.
+    local base="${ROCM_AI_REPO}/rocm/manylinux/rocm-rel-${ROCM_REL}"
     local tmp
     tmp="$(mktemp -d /tmp/rocm-upd.XXXXXX)"
     local w ok=1

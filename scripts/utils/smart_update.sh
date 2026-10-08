@@ -7,9 +7,12 @@ set -euo pipefail
 # Scans every installed component, detects what is outdated or behind on
 # commits, then lets the user update everything or pick individual items.
 #
-# Pinned target versions:
-#   ROCm   → 7.2.3
-#   PyTorch → 2.9.1 + rocm7.2
+# Target versions are DISCOVERED, never pinned. Earlier revisions carried
+# TARGET_ROCM="7.2.3" / TARGET_PYTORCH="2.9.1" constants here, which rotted into
+# reporting "up to date" against versions AMD had superseded. lib/version.sh is
+# the single source of truth for what is available; if discovery fails (offline,
+# or the index is unreachable) the row is reported as unknown rather than
+# guessed at.
 # ===============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -20,9 +23,12 @@ else
     echo "common.sh not found" >&2; exit 1
 fi
 
-# ─── Target versions ──────────────────────────────────────────────────────────
-TARGET_ROCM="7.2.3"
-TARGET_PYTORCH="2.9.1"
+if [ -f "$SCRIPT_DIR/lib/version.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/version.sh"
+else
+    echo "version.sh not found" >&2; exit 1
+fi
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 VENV_PATH="$HOME/genai_env"
@@ -54,21 +60,28 @@ _add() {
 # ─── Scanners ─────────────────────────────────────────────────────────────────
 
 _scan_rocm() {
-    local current=""
-    [ -f "/opt/rocm/.info/version" ] && \
-        current=$(head -1 /opt/rocm/.info/version 2>/dev/null | tr -cd '0-9.')
+    local current
+    current="$(va_rocm_installed 2>/dev/null || true)"
+
+    local target
+    target="$(va_latest_rocm 2>/dev/null || true)"
+    [ -z "$target" ] && target="unknown"
 
     if [ -z "$current" ]; then
-        _add "rocm" "ROCm" "not installed" "$TARGET_ROCM" "missing"
-    elif _ver_lt "$current" "$TARGET_ROCM"; then
-        _add "rocm" "ROCm" "$current" "$TARGET_ROCM" "update"
+        _add "rocm" "ROCm" "not installed" "$target" "missing"
+    elif [ "$target" = "unknown" ]; then
+        _add "rocm" "ROCm" "$current" "unknown" "skipped"
+    elif _ver_lt "$current" "$target"; then
+        _add "rocm" "ROCm" "$current" "$target" "update"
     else
-        _add "rocm" "ROCm" "$current" "$TARGET_ROCM" "ok"
+        _add "rocm" "ROCm" "$current" "$target" "ok"
     fi
 }
 
 _scan_rocdxg() {
-    if [ -f "/opt/rocm/lib/librocdxg.so" ]; then
+    # ROCm 10.x ships librocdxg inside its own artifacts, so this only matters on
+    # a legacy 7.2.x stack where it had to be built from source.
+    if command -v has_rocdxg >/dev/null 2>&1 && has_rocdxg; then
         _add "rocdxg" "ROCDXG (librocdxg)" "present" "—" "ok"
     else
         _add "rocdxg" "ROCDXG (librocdxg)" "missing" "rebuild needed" "missing"
@@ -89,12 +102,18 @@ _scan_pytorch() {
 
     local clean="${current%%+*}"   # "2.7.0+rocm7.2.3..." → "2.7.0"
 
+    local target
+    target="$(va_latest_torch 2>/dev/null || true)"
+    [ -z "$target" ] && target="unknown"
+
     if [ -z "$clean" ]; then
-        _add "pytorch" "PyTorch (genai_env)" "import failed" "$TARGET_PYTORCH+rocm7.2" "missing"
-    elif _ver_lt "$clean" "$TARGET_PYTORCH"; then
-        _add "pytorch" "PyTorch (genai_env)" "$current" "$TARGET_PYTORCH+rocm7.2" "update"
+        _add "pytorch" "PyTorch (genai_env)" "import failed" "$target" "missing"
+    elif [ "$target" = "unknown" ]; then
+        _add "pytorch" "PyTorch (genai_env)" "$current" "unknown" "skipped"
+    elif _ver_lt "$clean" "$target"; then
+        _add "pytorch" "PyTorch (genai_env)" "$current" "$target" "update"
     else
-        _add "pytorch" "PyTorch (genai_env)" "$current" "$TARGET_PYTORCH+rocm7.2" "ok"
+        _add "pytorch" "PyTorch (genai_env)" "$current" "$target" "ok"
     fi
 }
 

@@ -69,6 +69,20 @@ OPT_FORCE=0
 OPT_SKIP_TOOLKIT=0
 OPT_SKIP_RETUNE=0
 
+# Which ROCm release stream to move to.
+#
+#   core    ROCm 10.x. Packages become amdrocm10.1-gfx1100 from
+#           stable.repo.amd.com under /opt/rocm/core-10.1, PyTorch comes from
+#           pip with a device extra, and librocdxg arrives inside ROCm — so the
+#           Windows SDK and the from-source ROCDXG build are no longer needed.
+#   legacy  ROCm 7.2.x, kept because WSL support in 10.x is a technical preview.
+#
+# `core` is the default. Switching from legacy to core is destructive and needs
+# its own confirmation, because it removes the ROCm packages that are currently
+# working on the machine.
+TARGET_CHANNEL="${ROCM_AI_CHANNEL:-core}"
+export ROCM_AI_CHANNEL="$TARGET_CHANNEL"
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --check|--dry-run) OPT_CHECK_ONLY=1 ;;
@@ -76,6 +90,19 @@ while [ $# -gt 0 ]; do
         --force)           OPT_FORCE=1 ;;
         --rocm-only)       OPT_SKIP_TOOLKIT=1 ;;
         --no-retune)       OPT_SKIP_RETUNE=1 ;;
+        --target)
+            shift
+            case "${1:-}" in
+                core|legacy)
+                    TARGET_CHANNEL="$1"
+                    export ROCM_AI_CHANNEL="$1"
+                    ;;
+                *)
+                    warn "--target expects 'core' or 'legacy', not '${1:-}'"
+                    exit 2
+                    ;;
+            esac
+            ;;
         -h|--help)
             sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
@@ -159,20 +186,82 @@ detect_state() {
     TORCH_NOW="$(va_torch_installed "$VENV_PY" 2>/dev/null || true)"
     TORCH_HIP_NOW="$(va_torch_hip_version "$VENV_PY" 2>/dev/null || true)"
 
-    log "Querying AMD's repositories for the newest release ..."
-    ROCM_NEW="$(va_latest_rocm "$CODENAME")"
-    ROCDXG_NEW="$(va_latest_librocdxg)"
-    ROCM_WITH_WHEELS="$(va_best_installable_rocm "$PYTAG")"
+    INSTALL_KIND="$(va_install_kind)"
+
+    # Which GPU architecture to install for. Every core-channel package name and
+    # every pip device extra is keyed on it, so it is resolved once here and
+    # reused by the plan, the install and the verification.
+    #
+    # user.env is consulted first: once a machine has been installed for a
+    # specific target, that recorded choice outranks detection, so a later
+    # upgrade keeps the same architecture even if a second GPU appears.
+    GFX_TARGET=""
+    if [ -f "$USER_ENV" ]; then
+        GFX_TARGET="$(sed -n 's/^export AMDROCM_DEVICE_TARGET="\(.*\)"$/\1/p' "$USER_ENV" \
+            | head -1)"
+    fi
+    [ -z "$GFX_TARGET" ] && GFX_TARGET="${AMDROCM_DEVICE_TARGET:-}"
+    [ -z "$GFX_TARGET" ] && GFX_TARGET="$(va_gfx_detect 2>/dev/null || true)"
+
+    # A legacy install always has a working ROCm to interrogate, so by the time
+    # we need this on a real migration it is normally known.
+    if [ -z "$GFX_TARGET" ] && [ -x /opt/rocm/bin/rocminfo ]; then
+        GFX_TARGET="$(/opt/rocm/bin/rocminfo 2>/dev/null \
+            | grep -oE 'Name:[[:space:]]+gfx[0-9a-z]+' | awk '{print $2}' | head -1)"
+    fi
+    GFX_TARGET="${GFX_TARGET#gfx}"
+
+    # A legacy 7.2.x stack present while targeting core is the migration case.
+    # It is a different job from an in-place version bump: the old packages have
+    # to be removed, not upgraded.
+    NEED_LEGACY_PURGE=0
+    if [ "$TARGET_CHANNEL" = "core" ]; then
+        case "$INSTALL_KIND" in
+            legacy|both) NEED_LEGACY_PURGE=1 ;;
+        esac
+    fi
+
+    if [ "$TARGET_CHANNEL" = "legacy" ]; then
+        log "Targeting the legacy ROCm 7.2.x channel ..."
+        ROCM_NEW="$(va_latest_legacy_rocm "$CODENAME")"
+        ROCDXG_NEW="$(va_latest_librocdxg)"
+        ROCM_WITH_WHEELS="$(va_best_installable_rocm "$PYTAG")"
+        TORCH_TARGET="$(
+            va_resolve_torch_wheels "$ROCM_WITH_WHEELS" "$PYTAG" 2>/dev/null \
+                | sed -n 's/^TORCH_VERSION=//p'
+        )"
+    else
+        log "Querying AMD's repositories for the newest ROCm 10.x release ..."
+        ROCM_NEW="$(va_latest_core_series)"
+        # librocdxg ships inside ROCm on this channel, so there is no separate
+        # library version to compare against and nothing to build.
+        ROCDXG_NEW=""
+        ROCM_TARGET_NOTE=""
+
+        # Resolve the full install plan once, up front. Everything downstream
+        # reads these values rather than re-querying, so the plan that gets
+        # reported is exactly the plan that gets executed.
+        if UPGRADE_SPEC="$(va_resolve_torch_spec "$GFX_TARGET" "$PYTAG")"; then
+            eval "$UPGRADE_SPEC"
+            ROCM_WITH_WHEELS="$ROCM_SERIES"
+            ROCM_TARGET="$ROCM_SERIES"
+            TORCH_TARGET="$TORCH_VERSION"
+        else
+            warn "Could not resolve a ROCm 10.x release with wheels for ${PYTAG}."
+            warn "Falling back to reporting the newest series without a plan."
+            ROCM_WITH_WHEELS="$ROCM_NEW"
+            ROCM_TARGET="$ROCM_NEW"
+            TORCH_TARGET=""
+        fi
+    fi
 
     # The ROCm release we will actually install has to have wheels for this
     # Python, or the environment rebuild would fail after ROCm was already
-    # replaced. Prefer the newest with wheels.
-    if [ -n "$ROCM_WITH_WHEELS" ] && va_lt "$ROCM_WITH_WHEELS" "$ROCM_NEW"; then
+    # replaced.
+    if [ "$TARGET_CHANNEL" = "legacy" ] \
+       && [ -n "${ROCM_WITH_WHEELS:-}" ] && va_lt "$ROCM_WITH_WHEELS" "$ROCM_NEW"; then
         ROCM_TARGET="$ROCM_WITH_WHEELS"
         ROCM_TARGET_NOTE=" (newest with PyTorch wheels for Python ${PYTAG#cp})"
-    else
-        ROCM_TARGET="$ROCM_NEW"
-        ROCM_TARGET_NOTE=""
     fi
 
     TOOLKIT_REMOTE=""
@@ -203,8 +292,9 @@ plan_work() {
         fi
     fi
 
-    # ROCm
-    if [ "$OPT_FORCE" = "1" ]; then
+    # ROCm. Removing a legacy stack counts as needing ROCm work: the core
+    # packages still have to be installed afterwards.
+    if [ "$OPT_FORCE" = "1" ] || [ "${NEED_LEGACY_PURGE:-0}" = "1" ]; then
         NEED_ROCM=1
     elif [ -z "${ROCM_NOW:-}" ]; then
         NEED_ROCM=1
@@ -212,14 +302,17 @@ plan_work() {
         NEED_ROCM=1
     fi
 
-    # ROCDXG (the WSL GPU bridge) — compare the version we have to the newest tag.
-    if [ -z "${ROCDXG_NOW:-}" ]; then
-        NEED_ROCDXG=1
-    elif [ -n "${ROCDXG_NEW:-}" ] && [ "$OPT_FORCE" = "1" ]; then
-        NEED_ROCDXG=1
-    elif [ -n "${ROCDXG_NEW:-}" ]; then
-        local want="${ROCDXG_NEW#v}"
-        va_lt "$ROCDXG_NOW" "$want" && NEED_ROCDXG=1
+    # The WSL GPU bridge. Only the legacy channel has something to do here:
+    # ROCm 10.x ships librocdxg and the runtime loads it automatically.
+    if [ "$TARGET_CHANNEL" = "legacy" ]; then
+        if [ -z "${ROCDXG_NOW:-}" ]; then
+            NEED_ROCDXG=1
+        elif [ -n "${ROCDXG_NEW:-}" ] && [ "$OPT_FORCE" = "1" ]; then
+            NEED_ROCDXG=1
+        elif [ -n "${ROCDXG_NEW:-}" ]; then
+            local want="${ROCDXG_NEW#v}"
+            va_lt "$ROCDXG_NOW" "$want" && NEED_ROCDXG=1
+        fi
     fi
 
     # Python environment: rebuild when ROCm or PyTorch moved, or torch is absent
@@ -245,7 +338,8 @@ plan_work() {
     # Root is required for the ROCm stage, the ROCDXG build and the login-shell
     # drop-in. Decide now whether that is actually obtainable.
     NEED_SUDO=0
-    if [ "$NEED_ROCM" = "1" ] || [ "$NEED_ROCDXG" = "1" ] || [ "$NEED_SHELL" = "1" ]; then
+    if [ "$NEED_ROCM" = "1" ] || [ "$NEED_ROCDXG" = "1" ] || [ "$NEED_SHELL" = "1" ] \
+       || [ "${NEED_LEGACY_PURGE:-0}" = "1" ]; then
         NEED_SUDO=1
     fi
 }
@@ -269,7 +363,19 @@ report_plan() {
     printf '   %-22s %-26s %s\n' "COMPONENT" "INSTALLED" "AVAILABLE"
     printf '   %s\n' "$(printf '─%.0s' $(seq 1 68))"
 
-    local t_mark="" r_mark="" x_mark="" e_mark="" m_mark="" s_mark=""
+    local t_mark="" r_mark="" x_mark="" e_mark="" m_mark="" s_mark="" p_mark=""
+
+    # Target channel, stated up front because it decides everything else.
+    printf '\n'
+    if [ "$TARGET_CHANNEL" = "legacy" ]; then
+        printf '   %bTarget%b legacy ROCm 7.2.x channel (--target legacy)\n' \
+            "$_C_INFO" "$_C_RESET"
+    else
+        printf '   %bTarget%b ROCm %s core channel · architecture gfx%s\n' \
+            "$_C_INFO" "$_C_RESET" "${ROCM_NEW:-?}" "${GFX_TARGET:-?}"
+    fi
+    printf '\n'
+
     # Toolkit
     if [ -z "${TOOLKIT_REMOTE:-}" ]; then
         printf '   %-22s %-26s %s\n' "Toolkit" "$TOOLKIT_LOCAL" "unknown (offline?)"
@@ -281,24 +387,48 @@ report_plan() {
     fi
 
     # ROCm
-    if [ "$NEED_ROCM" = "1" ]; then
-        printf '   %-22s %-26s %s\n' "ROCm" "${ROCM_NOW:-not installed}" "$ROCM_TARGET   <- upgrade"
-        r_mark="rocm"
-    else
-        printf '   %-22s %-26s %s\n' "ROCm" "$ROCM_NOW" "up to date"
+    # The legacy teardown is listed before ROCm so the destructive step is never
+    # hidden below an ordinary-looking upgrade line.
+    if [ "${NEED_LEGACY_PURGE:-0}" = "1" ]; then
+        printf '   %-22s %-26s %s\n' "Legacy ROCm 7.2.x" \
+            "$(va_install_kind)" "will be REMOVED   <- destructive"
+        p_mark="purge"
     fi
 
-    # ROCDXG
-    if [ "$NEED_ROCDXG" = "1" ]; then
-        printf '   %-22s %-26s %s\n' "ROCDXG (WSL bridge)" "${ROCDXG_NOW:-not installed}" "$ROCDXG_NEW   <- rebuild"
-        x_mark="rocdxg"
+    if [ "$NEED_ROCM" = "1" ]; then
+        if [ "$TARGET_CHANNEL" = "legacy" ]; then
+            printf '   %-22s %-26s %s\n' "ROCm" "${ROCM_NOW:-not installed}" "$ROCM_TARGET   <- upgrade"
+        else
+            printf '   %-22s %-26s %s\n' "ROCm" "${ROCM_NOW:-not installed}" \
+                "$(va_core_meta_package "${ROCM_TARGET:-}" "${GFX_TARGET:-}")   <- install"
+        fi
+        r_mark="rocm"
     else
-        printf '   %-22s %-26s %s\n' "ROCDXG (WSL bridge)" "${ROCDXG_NOW:-none}" "up to date"
+        printf '   %-22s %-26s %s\n' "ROCm" "${ROCM_NOW:-none}" "up to date"
+    fi
+
+    # The WSL GPU bridge. Only actionable on the legacy channel — ROCm 10.x ships
+    # librocdxg, so there is nothing to build and nothing to compare against.
+    if [ "$TARGET_CHANNEL" = "legacy" ]; then
+        if [ "$NEED_ROCDXG" = "1" ]; then
+            printf '   %-22s %-26s %s\n' "ROCDXG (WSL bridge)" "${ROCDXG_NOW:-not installed}" "$ROCDXG_NEW   <- rebuild"
+            x_mark="rocdxg"
+        else
+            printf '   %-22s %-26s %s\n' "ROCDXG (WSL bridge)" "${ROCDXG_NOW:-none}" "up to date"
+        fi
+    elif [ "${NEED_LEGACY_PURGE:-0}" = "1" ] || [ "$NEED_ROCM" = "1" ]; then
+        printf '   %-22s %-26s %s\n' "ROCDXG (WSL bridge)" "${ROCDXG_NOW:-none}" "ships with ROCm"
     fi
 
     # PyTorch
     if [ "$NEED_ENV" = "1" ]; then
-        printf '   %-22s %-26s %s\n' "PyTorch" "${TORCH_NOW:-not installed}" "rebuild for ROCm $ROCM_TARGET"
+        if [ -n "${TORCH_TARGET:-}" ] && [ "$TARGET_CHANNEL" != "legacy" ]; then
+            printf '   %-22s %-26s %s\n' "PyTorch" "${TORCH_NOW:-not installed}" \
+                "rebuild -> ${TORCH_TARGET}"
+        else
+            printf '   %-22s %-26s %s\n' "PyTorch" "${TORCH_NOW:-not installed}" \
+                "rebuild for ROCm $ROCM_TARGET"
+        fi
         e_mark="env"
     else
         printf '   %-22s %-26s %s\n' "PyTorch" "${TORCH_NOW:-none}" "up to date"
@@ -334,8 +464,18 @@ report_plan() {
         printf '        Python %s, so %s will be installed instead.\n' "${PYTAG#cp}" "$ROCM_TARGET"
     fi
 
+    if [ "${NEED_LEGACY_PURGE:-0}" = "1" ]; then
+        printf '\n'
+        printf '   %bDESTRUCTIVE%b This upgrade removes your working ROCm 7.2.x packages.\n' \
+            "$_C_ERR" "$_C_RESET"
+        printf '               AMD requires it: both stacks register /opt/rocm and\n'
+        printf '               cannot coexist. Your /opt/rocm-7.2.x directories are\n'
+        printf '               set aside, not deleted, so a rollback stays possible.\n'
+        printf '               You will be asked to type REMOVE before anything goes.\n'
+    fi
+
     local actions=0
-    for m in "$t_mark" "$r_mark" "$x_mark" "$e_mark" "$m_mark" "$s_mark"; do
+    for m in "$t_mark" "$p_mark" "$r_mark" "$x_mark" "$e_mark" "$m_mark" "$s_mark"; do
         [ -n "$m" ] && actions=$((actions + 1))
     done
 
@@ -450,8 +590,181 @@ install_shell_env() {
 # Stage 6 — ROCm
 # ==============================================================================
 
+# Remove a legacy ROCm 7.2.x stack.
+#
+# This is the only destructive stage in the upgrade, and it exists because AMD
+# requires it: the legacy packages install into /opt/rocm-<version> and register
+# /opt/rocm through update-alternatives, while the 10.x packages install into
+# /opt/rocm/core-<series> and register the same paths. Leaving both in place
+# produces a machine where /opt/rocm points into a tree whose libraries and the
+# venv's torch disagree about what ROCm version is present.
+#
+# AMD's documentation states the requirement but gives no commands, so the exact
+# package set is assembled here. The list is deliberately narrow: it names the
+# legacy ROCm package families and nothing else, so an unrelated `nvidia-*` or
+# system package is never a candidate.
+#
+# /opt/rocm-<version> directories are MOVED, not deleted. They are large, but a
+# rename costs nothing and keeps a way back to a working stack if 10.1's WSL
+# preview turns out not to suit this machine.
+remove_legacy_rocm() {
+    headline "Removing the legacy ROCm 7.2.x stack"
+
+    local dirs
+    dirs="$(ls -d /opt/rocm-[0-9]* 2>/dev/null)"
+    local count
+    count="$(printf '%s\n' "$dirs" | grep -c . || true)"
+
+    printf '  AMD requires ROCm 7.2.x or older to be removed before ROCm 10.x\n'
+    printf '  can be installed. Both claim /opt/rocm.\n\n'
+    printf '  Will remove these packages:\n'
+    printf '    rocm*  hip*  rocblas  rocfft  rocsparse  rocsolver rocrand\n'
+    printf '    rocrand  miopen  rccl  rocship  roct  hsa-rocr  comgr\n'
+    printf '    amd-smi-lib  rocm-smi-lib  rocm-llvm\n\n'
+    if [ "$count" -gt 0 ]; then
+        printf '  And set aside these directories (a rename, reversible):\n'
+        printf '%s\n' "$dirs" | sed 's/^/    /'
+    fi
+    printf '\n'
+
+    if [ "$OPT_CHECK_ONLY" != "1" ]; then
+        if [ "$OPT_YES" != "1" ]; then
+            # Typed confirmation. This stage deletes a working GPU stack, and a
+            # stray Enter keypress should not be enough to authorise it.
+            printf '  Type REMOVE to proceed: ' >&2
+            local typed=""
+            read -r typed || typed=""
+            printf '\n'
+            if [ "$typed" != "REMOVE" ]; then
+                err "Not confirmed. Nothing was removed."
+                err "The legacy stack is still installed, so ROCm 10.x cannot proceed."
+                exit 1
+            fi
+        fi
+
+        log "Removing legacy ROCm packages ..."
+        sudo apt-get purge -y \
+            'rocm*' 'hip*' 'rocblas' 'rocfft' 'rocsparse' 'rocsolver' 'rocrand' \
+            'miopen' 'rccl' 'rocship' 'roct' 'hsa-rocr' 'comgr' \
+            'amd-smi-lib' 'rocm-smi-lib' 'rocm-llvm' \
+            >/dev/null 2>&1 || warn "Some legacy packages were not present; continuing."
+
+        # The legacy apt sources point at repo.radeon.com/rocm/apt, which would
+        # otherwise keep offering the old packages on every future `apt update`.
+        local src
+        for src in /etc/apt/sources.list.d/rocm.list \
+                   /etc/apt/sources.list.d/rocm-graphics.list; do
+            if [ -f "$src" ]; then
+                log "Removing legacy apt source $src"
+                sudo rm -f "$src" || true
+            fi
+        done
+
+        # `apt autoremove` reclaims the dependencies ROCm pulled in.
+        sudo apt-get autoremove -y >/dev/null 2>&1 || true
+
+        # /opt/rocm is an update-alternatives symlink owned by the removed
+        # packages. Purge usually leaves it dangling, which breaks tools that
+        # test -e /opt/rocm.
+        if [ -L /opt/rocm ] && [ ! -e /opt/rocm ]; then
+            log "Removing dangling /opt/rocm symlink (recreated by ROCm 10.x)"
+            sudo rm -f /opt/rocm || true
+        fi
+
+        local stamp d
+        stamp="$(date +%Y%m%d%H%M%S)"
+        for d in $dirs; do
+            [ -d "$d" ] || continue
+            log "Setting aside $d -> ${d}.retired-${stamp}"
+            sudo mv "$d" "${d}.retired-${stamp}" || warn "Could not move $d"
+        done
+        sudo ldconfig || true
+
+        success "Legacy ROCm stack removed."
+        if [ "$count" -gt 0 ]; then
+            printf '\n'
+            log "To roll back later, move the directory back and reinstall the"
+            log "legacy packages. Nothing was deleted."
+        fi
+    fi
+}
+
 upgrade_rocm() {
-    headline "Upgrading ROCm to ${ROCM_TARGET}"
+    if [ "$TARGET_CHANNEL" = "legacy" ]; then
+        upgrade_rocm_legacy
+        return $?
+    fi
+
+    headline "Installing ROCm ${ROCM_TARGET} (series) for gfx${GFX_TARGET:-unknown}"
+
+    printf '  From: %s\n' "${ROCM_NOW:-nothing}"
+    printf '  To  : ROCm %s, architecture package for %s\n\n' \
+        "${ROCM_VERSION:-?}" "${GFX_TARGET:-unknown}"
+
+    if [ -z "${GFX_TARGET:-}" ]; then
+        err "Could not determine your GPU architecture."
+        err "Set it in $USER_ENV as AMDROCM_DEVICE_TARGET=\"gfx1100\", or run"
+        err "./scripts/install/setup_pytorch_rocm.sh which will ask."
+        return 1
+    fi
+
+    local keyring="/etc/apt/keyrings/amdrocm.gpg"
+    if [ ! -f "$keyring" ]; then
+        log "Installing AMD's signing key"
+        sudo mkdir -p /etc/apt/keyrings
+        if ! curl -fsSL "$ROCM_AI_AMD_GPG_KEY" | gpg --dearmor | sudo tee "$keyring" >/dev/null; then
+            err "Could not install the ROCm signing key from ${ROCM_AI_AMD_GPG_KEY}"
+            return 1
+        fi
+        success "Signing key installed"
+    fi
+
+    # Overwrite rather than append. A leftover stanza pointing at a different
+    # series is the usual cause of "no candidate version for amdrocm10.1-gfx1100".
+    log "Writing the ROCm apt source"
+    if ! va_core_apt_source | sudo tee /etc/apt/sources.list.d/amdrocm-stable.sources >/dev/null; then
+        err "Could not write /etc/apt/sources.list.d/amdrocm-stable.sources"
+        return 1
+    fi
+
+    log "Refreshing package lists"
+    sudo apt-get update -y >/dev/null 2>&1 || {
+        err "apt-get update failed; the ROCm repository may be unreachable."
+        return 1
+    }
+
+    # Only the architecture package for this GPU, not every supported one.
+    local pkg
+    pkg="$(va_core_meta_package "$ROCM_TARGET" "$GFX_TARGET")"
+    log "Installing ${pkg} (several GB)"
+    if ! sudo apt-get install -y "$pkg"; then
+        err "ROCm installation failed."
+        err "Confirm ${pkg} exists for this Ubuntu release at:"
+        err "    $(va_core_apt_base 2>/dev/null)/"
+        return 1
+    fi
+
+    success "ROCm installed. Version reported: $(va_rocm_installed 2>/dev/null || echo unknown)"
+
+    # ROCm 10.x ships librocdxg, so the only thing to confirm is that the WSL
+    # bridge device exists. If it does not, nothing downstream can work.
+    if [ ! -c /dev/dxg ]; then
+        warn "/dev/dxg is missing — WSL2 cannot reach the GPU."
+        warn "Run 'wsl --shutdown' from PowerShell, then reopen WSL."
+    fi
+    if has_rocdxg; then
+        success "librocdxg present (ships with ROCm; no build step needed)"
+    else
+        warn "librocdxg not found in the ROCm tree."
+        warn "If the GPU stays invisible:  find /opt/rocm -name 'librocdxg*'"
+    fi
+}
+
+# Legacy 7.2.x channel: repository from repo.radeon.com, package `rocm`, and
+# librocdxg built from source. Kept intact so `--target legacy` remains a real
+# fallback rather than a note in the documentation.
+upgrade_rocm_legacy() {
+    headline "Upgrading ROCm to ${ROCM_TARGET} (legacy channel)"
 
     local codename="$CODENAME"
     local keyring="/etc/apt/keyrings/rocm.gpg"
@@ -476,12 +789,17 @@ upgrade_rocm() {
     # --- Point apt at the target release -------------------------------------
     # Amends any previous rocm/apt source instead of only adding a new one, so
     # apt cannot end up with two competing ROCm repositories.
+    #
+    # The host is interpolated from $ROCM_AI_REPO rather than written out, so the
+    # legacy URL exists in exactly one place (lib/version.sh) and the CI guard
+    # that forbids hardcoded upstream hosts stays meaningful.
     log "Configuring the apt source for ROCm ${ROCM_TARGET}"
+    local legacy_base="$ROCM_AI_REPO/rocm/apt"
     local sources
-    sources="$(grep -rl 'repo.radeon.com/rocm/apt' /etc/apt/sources.list.d/ 2>/dev/null | head -1)"
+    sources="$(grep -rl "$legacy_base" /etc/apt/sources.list.d/ 2>/dev/null | head -1)"
 
     if [ -n "$sources" ]; then
-        sudo sed -i -E "s|https://repo\.radeon\.com/rocm/apt/[0-9.]+|https://repo.radeon.com/rocm/apt/${ROCM_TARGET}|g" "$sources" \
+        sudo sed -i -E "s|${legacy_base//./\\.}/[0-9.]+|${legacy_base}/${ROCM_TARGET}|g" "$sources" \
             || warn "Could not rewrite $sources — continuing"
         log "Updated existing source: $sources"
     else
@@ -618,6 +936,121 @@ upgrade_rocdxg() {
 # ==============================================================================
 
 rebuild_environment() {
+    if [ "$TARGET_CHANNEL" = "legacy" ]; then
+        rebuild_environment_legacy
+        return $?
+    fi
+
+    headline "Rebuilding the Python environment for ROCm ${ROCM_SERIES}"
+
+    local venv="$HOME/genai_env"
+    local backup=""
+
+    if [ -d "$venv" ]; then
+        backup="${venv}_backup_$(date +%Y%m%d_%H%M%S)"
+        log "Moving the current environment to ${backup/#$HOME/\~}"
+        mv "$venv" "$backup" || { err "Could not move $venv aside."; return 1; }
+    fi
+
+    # Match the interpreter to the release, the same way the installer does.
+    local pybin="python$(case "$CODENAME" in
+        jammy) printf '3.10' ;; noble) printf '3.12' ;; resolute) printf '3.13' ;;
+        *) printf '' ;; esac)"
+    [ -n "$pybin" ] && command -v "$pybin" >/dev/null 2>&1 || pybin="python3"
+
+    log "Creating a fresh environment with ${pybin}"
+    if ! "$pybin" -m venv "$venv"; then
+        err "Could not create the virtual environment."
+        [ -n "$backup" ] && err "Your previous environment is at $backup"
+        return 1
+    fi
+
+    # shellcheck disable=SC1091
+    . "$venv/bin/activate"
+    export PIP_USER=0
+    pip install --quiet --upgrade pip wheel >/dev/null 2>&1 || warn "pip upgrade had issues"
+
+    # Re-resolve rather than trusting the plan: between `--check` and this point
+    # the index may have moved, and installing a version that does not exist
+    # would fail deep inside pip instead of here where it can be explained.
+    local spec
+    if ! spec="$(va_resolve_torch_spec "$GFX_TARGET" "$PYTAG")"; then
+        err "Could not resolve PyTorch for ROCm ${ROCM_SERIES} and Python ${PYTAG}."
+        err "Index: ${ROCM_AI_WHL_INDEX}"
+        if [ -n "$backup" ]; then
+            warn "Restoring your previous environment."
+            rm -rf "$venv"
+            mv "$backup" "$venv"
+        fi
+        return 1
+    fi
+    eval "$spec"
+
+    printf '       PyTorch %s · torchvision · torchaudio · ROCm %s\n' \
+        "$TORCH_VERSION" "$ROCM_VERSION"
+    printf '       device extra: %s\n\n' "$DEVICE_TARGET"
+
+    # A leftover CUDA torch is the most common cause of "the GPU is invisible".
+    pip uninstall -y torch torchvision torchaudio triton triton-kernels 2>/dev/null || true
+
+    log "Installing from ${PIP_INDEX} (this takes a few minutes)"
+    if ! pip install --index-url "$PIP_INDEX" \
+            "$PIP_SPEC_ROCM" "$PIP_SPEC_TORCH" \
+            "$PIP_SPEC_TORCHVISION" "$PIP_SPEC_TORCHAUDIO"; then
+        err "PyTorch installation failed."
+        err "If this is a device-extra problem, 'torch[device-all]' usually works:"
+        err "    pip install --index-url ${PIP_INDEX} 'rocm[libraries,device-all]' 'torch[device-all]'"
+        [ -n "$backup" ] && err "Previous environment preserved at $backup"
+        return 1
+    fi
+
+    pip install --no-cache-dir sageattention >/dev/null 2>&1 \
+        && log "SageAttention installed" \
+        || warn "SageAttention not installed (optional — see docs/PERFORMANCE.md)"
+
+    # --- Bundled HSA runtime --------------------------------------------------
+    # A 7.2.x-era torch bundled an HSA runtime that conflicted with ROCm's and
+    # could crash the process on import. Whether it still applies is measured:
+    # only remove the bundled copy if the GPU is invisible AND it exists.
+    local loc torch_lib
+    loc="$(pip show torch 2>/dev/null | awk -F ': ' '/^Location/{print $2}')"
+    torch_lib="$loc/torch/lib"
+    if [ -n "$loc" ] && [ -d "$torch_lib" ]; then
+        if python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null; then
+            log "GPU already visible; torch's bundled libraries left untouched"
+        elif ls "$torch_lib"/libhsa-runtime64.so* >/dev/null 2>&1; then
+            rm -f "$torch_lib"/libhsa-runtime64.so* 2>/dev/null
+            log "Removed torch's bundled HSA runtime so ROCm's is used"
+        fi
+    fi
+
+    # Record the architecture so a future rebuild reinstalls the same target.
+    _update_user_env "AMDROCM_DEVICE_TARGET" "gfx${GFX_TARGET}"
+
+    # --- venv activation ------------------------------------------------------
+    # Deliberately minimal: the launcher supplies the real environment, and
+    # PYTORCH_HIP_ALLOC_CONF must never appear here again.
+    {
+        printf '\nexport HSA_ENABLE_DXG_DETECTION=1\n'
+        printf 'export PIP_USER=0\n'
+    } >> "$venv/bin/activate"
+
+    deactivate 2>/dev/null || true
+
+    success "Environment rebuilt with PyTorch ${TORCH_VERSION} (ROCm ${ROCM_VERSION})"
+
+    if [ -n "$backup" ]; then
+        printf '\n       The previous environment is preserved at:\n'
+        printf '         %s\n' "$backup"
+        printf '       Delete it once you have confirmed everything works:\n'
+        printf '         rm -rf %s\n' "$backup"
+    fi
+
+    return 0
+}
+
+# Legacy channel: wheels are downloaded by filename from repo.radeon.com.
+rebuild_environment_legacy() {
     headline "Rebuilding the Python environment for ROCm ${ROCM_TARGET}"
 
     local venv="$HOME/genai_env"
@@ -649,7 +1082,7 @@ rebuild_environment() {
     local wheels
     if ! wheels="$(va_resolve_torch_wheels "$ROCM_TARGET" "$PYTAG")"; then
         err "Could not find PyTorch wheels for ROCm ${ROCM_TARGET} and Python ${PYTAG}."
-        err "Check:  https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_TARGET}/"
+        err "Check:  ${ROCM_AI_REPO}/rocm/manylinux/rocm-rel-${ROCM_TARGET}/"
         [ -n "$backup" ] && {
             err "Restoring your previous environment."
             rm -rf "$venv"
@@ -943,17 +1376,26 @@ main() {
         install_shell_env
     fi
 
-    # 6. ROCm and the WSL bridge.
+    # 6. Remove the legacy stack, then install ROCm.
+    #
+    #    The teardown has to happen before the install: AMD requires the old
+    #    packages gone, and both trees register /opt/rocm. It is also the one
+    #    destructive step, so it runs as its own stage with its own typed
+    #    confirmation rather than being folded into the install.
+    if [ "${NEED_LEGACY_PURGE:-0}" = "1" ]; then
+        remove_legacy_rocm || return 1
+    fi
+
     if [ "$NEED_ROCM" = "1" ]; then
         upgrade_rocm || return 1
     else
         log "ROCm is already at ${ROCM_NOW} — skipping."
     fi
 
-    if [ "$NEED_ROCDXG" = "1" ]; then
+    if [ "$TARGET_CHANNEL" = "legacy" ] && [ "$NEED_ROCDXG" = "1" ]; then
         upgrade_rocdxg || warn "Continuing without rebuilding ROCDXG."
-    else
-        log "ROCDXG is already at ${ROCDXG_NOW} — skipping."
+    elif [ "$TARGET_CHANNEL" != "legacy" ]; then
+        log "librocdxg ships with ROCm ${ROCM_SERIES:-10.x} — no build step needed."
     fi
 
     # 7. Python environment.

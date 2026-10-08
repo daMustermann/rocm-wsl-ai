@@ -40,7 +40,7 @@ first_run_check() {
      It continues with an AI tool (ComfyUI recommended) and tunes
      your GPU automatically.
 
-$(gum style --foreground 240 'Before step 1, Windows needs the AMD Adrenalin 26.2.2+ driver')
+$(gum style --foreground 240 'Before step 1, Windows needs the AMD Adrenalin 26.10.41.05+ driver')
 $(gum style --foreground 240 'and the Windows SDK. Settings -> GPU diagnostics checks both.')"
 
         printf '\n'
@@ -58,7 +58,7 @@ $(gum style --foreground 240 'and the Windows SDK. Settings -> GPU diagnostics c
         printf '                     then reopen Ubuntu and run ./menu.sh\n'
         printf '                     (required — without it your GPU is invisible)\n'
         printf '  3. Quick start     continues with an AI tool and tuning\n\n'
-        printf 'Before step 1, Windows needs the AMD Adrenalin 26.2.2+ driver\n'
+        printf 'Before step 1, Windows needs the AMD Adrenalin 26.10.41.05+ driver\n'
         printf 'and the Windows SDK. Settings -> GPU diagnostics checks both.\n\n'
         printf 'Settings: %s\n' "$USER_ENV"
     fi
