@@ -2,6 +2,145 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.0] - 2026-10-08
+
+Moves the toolkit to **ROCm 10.1**, which is not a version bump but a different
+packaging system: AMD builds ROCm with TheRock, the package names, repository and
+install root all change, and the WSL GPU bridge now ships inside ROCm. Installing
+it needs no Windows SDK, no CMake, and nothing compiled.
+
+**Upgrading from 4.x:** `cd ~/rocm-wsl-ai && ./upgrade.sh`. Read
+[docs/UPGRADING.md](docs/UPGRADING.md) first — AMD requires ROCm 7.2.x to be
+uninstalled before 10.x can be installed, so that step is destructive (the old
+`/opt/rocm-7.2.x` directories are renamed, not deleted).
+
+### ⬆️ ROCm 10.1
+
+- **The installer is rewritten.** Packages are `amdrocm10.1-gfx1100` from
+  `stable.repo.amd.com/rocm/core/packages/ubuntu2204/`, signed with AMD's new
+  keyring and a deb822 `amdrocm-stable.sources` stanza, installed under
+  `/opt/rocm/core-10.1`.
+- **PyTorch is resolved by pip, not downloaded by filename.**
+  `pip install --index-url …/whl-next/ "rocm[libraries,device-gfx1100]==10.1.0" "torch[device-gfx1100]"`.
+  The four hand-`wget`-ed wheel URLs are gone.
+- **The GPU architecture is detected and used** to pick both the apt package and
+  the `device-*` extra. When detection is impossible the installer asks instead of
+  guessing, because the wrong choice produces a machine with no working GPU and
+  no obvious reason why.
+- **No librocdxg build.** ROCm 10.x ships it (v1.1.0 on this release) and the ROCr
+  runtime loads it automatically when `/dev/dxg` exists. The Windows SDK
+  requirement, the cmake build, and the `HSA_OVERRIDE_GFX_VERSION` workaround are
+  all removed from the default path.
+- **The required driver is now Adrenalin 26.10.41.05** (was 26.2.2). Seven places
+  in the UI still quoted the old floor and would have told users the wrong thing.
+- **Ubuntu 26.04 (resolute) is supported** alongside 22.04 and 24.04.
+- **`amd-smi` reports WSL telemetry** for the first time (temperature, power,
+  utilisation), and replaces the removed `rocm-smi`. Per-process GPU usage and
+  `amd-smi event` are not available under WSL.
+
+### ⬆️ Migration path
+
+- **`upgrade.sh --target core|legacy`.** `core` is the default; `legacy` keeps the
+  7.2.x channel working, including the librocdxg build, because WSL support in
+  10.x is still a technical preview.
+- **A dedicated teardown stage** removes the legacy ROCm packages, which AMD
+  requires and which cannot coexist with 10.x. It asks for a typed `REMOVE`
+  first, renames `/opt/rocm-7.2.x` to `*.retired-<timestamp>` instead of deleting
+  it, and prints the rollback.
+- **`upgrade.sh --check`** lists the teardown as its own row, marked
+  `<- destructive`, above the ordinary upgrade line.
+
+### 🐛 Fixed
+
+- **`msgbox` and `yesno` did not exist.** Both were called 19 times from
+  `menu.sh` and exported from `lib/common.sh`, but never defined — every call ran
+  `command not found`. Because `install_base` gates on `if ! yesno …`, and 127
+  negated to success, **the base environment had been installing itself with no
+  confirmation at all**.
+- **`update_amdgpu_drivers` called `./9_install_amd_drivers.sh`**, which is not in
+  the repository. It is replaced by a real check of the Windows driver version
+  against the minimum ROCm requires — the driver is on the Windows side and cannot
+  be updated from inside WSL anyway.
+- **`smart_update.sh` pinned `TARGET_ROCM="7.2.3"` and `TARGET_PYTORCH="2.9.1"`**
+  while the installed stack was already 7.2.4, so "Smart update" reported
+  everything current against superseded versions. Versions are now discovered.
+- **`gpu_diag` advised setting `HSA_OVERRIDE_GFX_VERSION`** "if PyTorch can't see
+  GPU". Under WSL that setting makes the runtime *reject* the device, so PyTorch
+  sees no GPU while `rocminfo` still lists one. It is now reported as a failure
+  when set, and never recommended.
+- **`gpu_diag` read `/opt/rocm/.info/version`**, which does not exist on 10.x, so
+  it reported the version as `v?` on exactly the up-to-date machines.
+- **`_rocm_ai_label_of` split on the first colon**, so menu entries with a
+  `tool:<key>|` prefix rendered as `comfyui:ComfyUI` instead of `ComfyUI`.
+- **`va_install_kind` counted retired directories** as an active legacy install,
+  because `/opt/rocm-7.2.4.retired-*` matches `/opt/rocm-[0-9]*`. After the
+  migration every run would still claim a legacy stack was present and offer the
+  destructive purge again.
+- **A tool's `requirements.txt` could replace ROCm PyTorch with the CUDA build.**
+  The pip filter now also strips `triton`, `triton-rocm`, `triton_kernels`,
+  `pytorch-triton*`, `rocm`, `rocm-sdk-*` and the `amd-torch*` device wheels,
+  whose names changed in 10.x.
+
+### 🎨 Interface
+
+- **`gum` now drives the menus.** `choose` uses it via a temporary file rather than
+  command substitution — `R=$(gum choose …)` hangs with an unkillable renderer
+  (measured on gum v0.17.0), while `gum choose … > file` works. The hand-rolled
+  ANSI menu remains as the fallback.
+- **`gum confirm` obeys the same rule** and additionally writes nothing to stdout
+  in v0.17.0, so the answer is taken from its exit status. Reading a "Yes" string
+  would have reported every prompt as "no".
+- One palette in one place (`lib/common.sh`), in both hex and 256-colour form, so
+  the gum and ANSI renderings cannot drift apart.
+- **`./menu.sh --demo`** renders every screen once and exits without prompting.
+- **`scripts/utils/capture.sh`** turns that output into the images in
+  `docs/assets/`, running the UI inside a pty because colour is only emitted to a
+  terminal. The screenshots therefore come from the code paths users actually run.
+
+### 🧹 Cleaned up
+
+- **Removed seven functions nothing called.** `_rocm_ai_key_of`, `print_header`,
+  `va_ge`, `va_gt`, `va_rocm_series_installed` and `va_summary` were all dead —
+  `va_summary` had been dead since the 4.0 rewrite. `va_supported_gfx_targets` was
+  also dead until the installer was changed to use it.
+- **The installer now verifies its interpreter.** It maps Ubuntu release to a
+  Python version, then confirms the interpreter really is that version. A release
+  that moved its default Python would previously have produced wheels for the
+  wrong ABI, failing much later as an import error inside torch.
+- **The GPU picker lists what AMD actually publishes.** The friendly six-GPU table
+  stays, but it is now backed by the authoritative list read from AMD's package
+  index — so a card newer than this script still appears. That table was a snapshot
+  waiting to rot, which is the same failure mode the CI guard exists to catch.
+- **A stale error message pointed at a file deleted in 4.0.**
+  `update_ai_setup.sh` told users to run `1_setup_pytorch_rocm_wsl.sh`; nothing has
+  been called that for a release.
+- **`scripts/utils/capture.sh` is executable in git**, matching the other 21
+  scripts, so a fresh clone can run it.
+- Removed the unreferenced `docs/assets/preview.png`.
+
+### 📖 Documentation
+
+- README restructured around the 7.2.x → 10.x move, with the eight new
+  screenshots.
+- `docs/UPGRADING.md` rewritten for 4.x → 5.0, including the destructive step and
+  the rollback.
+- CI gained the job that `CONTRIBUTING.md` and `docs/ARCHITECTURE.md` have both
+  claimed for some time — a check that upstream repositories and versions stay
+  discovered rather than hardcoded. It immediately caught seven stale copies of
+  the old driver floor.
+
+### 🔬 Verified
+
+Migrated a working ROCm 7.2.4 / torch 2.10.0 installation on an RX 7900 XTX
+(WSL2, Ubuntu 22.04, Python 3.10) to ROCm 10.1:
+
+```
+ROCm 10.1.0 (core channel) · librocdxg 1.1.0 · torch 2.14.0+rocm10.1.0
+torch.cuda.is_available() = True · AMD Radeon RX 7900 XTX
+amd-smi: ROCm version 10.1.0 · amdgpu 26.10.41.03
+rocminfo: "WSL environment detected."
+```
+
 ## [4.1.0] - 2026-09-14
 
 Upgrades are now a single command, ROCm versions are discovered rather than

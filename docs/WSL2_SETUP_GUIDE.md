@@ -1,267 +1,272 @@
 # WSL2 Setup Guide for ROCm AI Toolkit
 
-Complete guide for setting up AMD ROCm on WSL2 for AI workloads.
+The plumbing-level version of the install: what each step does, and how to do it
+by hand if you would rather not use the toolkit.
 
-## Table of Contents
+**Most people should just run the installer.** It discovers versions, picks the
+right package for your GPU, and rebuilds PyTorch correctly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/daMustermann/rocm-wsl-ai/main/install.sh | bash
+```
+
+This guide exists for when that does not work, when you want to understand what
+is being installed, or when you are on a machine the installer will not touch.
+
+---
+
+## Table of contents
 
 1. [Prerequisites](#prerequisites)
-2. [WSL2 Installation](#wsl2-installation)
-3. [Ubuntu Installation](#ubuntu-installation)
-4. [AMD Driver Installation](#amd-driver-installation)
-5. [ROCm Installation](#rocm-installation)
-6. [PyTorch Installation](#pytorch-installation)
-7. [Optional: kohya_ss Model Training](#optional-kohyass-model-training)
-8. [Self-Update](#self-update)
-9. [Windows Desktop Shortcuts](#windows-desktop-shortcuts)
-10. [Verification](#verification)
+2. [WSL2 installation](#wsl2-installation)
+3. [Ubuntu installation](#ubuntu-installation)
+4. [AMD driver installation](#amd-driver-installation)
+5. [ROCm installation](#rocm-installation)
+6. [PyTorch installation](#pytorch-installation)
+7. [Verifying](#verifying)
+8. [Optional: kohya_ss](#optional-kohya_ss-training)
+9. [Windows desktop shortcuts](#windows-desktop-shortcuts)
+10. [Staying on ROCm 7.2.x](#staying-on-rocm-72x)
 11. [Troubleshooting](#troubleshooting)
+12. [Performance tips](#performance-tips)
+13. [Quick reference](#quick-reference)
+
+---
 
 ## Prerequisites
 
-### Windows Requirements
+### Windows
 
-- **Windows Version**: Windows 11
-- **GPU**: AMD Radeon RX 7000 or RX 9000 series (RDNA3/RDNA4), or Ryzen Strix / Strix Halo APU
-- **RAM**: 16GB+ recommended
-- **Disk Space**: 30GB+ free space
-- **AMD Adrenalin 26.2.2+ driver**: [Download](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html)
-- **Windows SDK**: [Download](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) (required for ROCDXG build).  
-  *Note: During SDK installation, check **"Windows SDK for Desktop C++ amd64 Apps"**. Leave its auto-selected dependencies checked, but you can uncheck Performance Toolkit, Debugging Tools, .NET, etc. to save space.*
-  
-  <img src="assets/winsdkinstall.png" width="600" alt="Windows SDK Installation Options">
+| Requirement | Notes |
+|---|---|
+| **Windows 11** | Required. Windows 10 is not supported by ROCm 10.x |
+| **AMD Adrenalin 26.10.41.05+** | The *for WSL2* driver package. This is the single most common cause of failure |
+| **WSL2** | `wsl --install` from PowerShell |
 
-### Check Windows Version
+There is **no Windows SDK requirement.** ROCm 7.2.x needed one because the WSL GPU
+bridge had to be compiled from source; ROCm 10.x ships that bridge itself.
+
+Two Windows features interfere with ROCm and should be off:
+
+- **Windows Defender Application Guard (WDAG)** — Control Panel → Programs →
+  Programs and Features → Turn Windows features on or off → clear it.
+- **Smart App Control (SAC)** — Settings → Privacy & security → Windows Security →
+  App & browser control → Off.
+
+### Check your Windows version
 
 ```powershell
-# In PowerShell
+# PowerShell
+[System.Environment]::OSVersion.Version
 winver
 ```
 
-## Upgrading from v2.x / v3.1.x
-
-If you already have an existing ROCm 7.2.1 installation, use the built-in upgrade wizard:
-
-```bash
-cd rocm-wsl-ai
-git pull    # or: ./menu.sh → Updates → Check for Toolkit Updates
-./menu.sh
-# Select: Install Tools → Upgrade from ROCm 7.2.1 → 7.2.3 (ROCDXG)
-```
-
-**Before upgrading, install on Windows:**
-1. AMD Adrenalin 26.2.2+ driver
-2. Windows SDK *(Check "Desktop C++ amd64 Apps" and leave its auto-selected dependencies checked; uncheck the rest)*
-
-<img src="assets/winsdkinstall.png" width="600" alt="Windows SDK Installation Options">
-
-The upgrade wizard will back up your old venv, install ROCm 7.2.3 + ROCDXG, create a fresh Python environment, and reinstall all your AI tool dependencies. **Your models, custom nodes, and extensions are never touched.**
-
-## WSL2 Installation
-
-### Step 1: Enable WSL2
-
-Open PowerShell as Administrator and run:
+### Check the AMD driver version
 
 ```powershell
-wsl --install
+Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion
 ```
 
-This command will:
-- Enable WSL feature
-- Enable Virtual Machine Platform
-- Install Ubuntu (default distribution)
-- Set WSL 2 as default
+ROCm 10.x needs a driver at or above **26.10.41.05**, which ships as Windows
+driver version `32.0.31041.3013` or newer.
 
-### Step 2: Restart Computer
+> If you are upgrading an existing installation, read
+> [UPGRADING.md](UPGRADING.md) first. ROCm 10.x cannot be installed alongside
+> ROCm 7.2.x, and the transition removes your old packages.
 
-After installation completes, restart your computer.
+---
 
-### Step 3: Check WSL Version
+## WSL2 installation
 
-After restart, verify WSL2 is active:
+### Enable WSL2
+
+From PowerShell (Administrator):
 
 ```powershell
+wsl --install --no-distribution
+```
+
+### Restart
+
+This one is not optional. Reboot Windows.
+
+### Check
+
+```powershell
+wsl --status
 wsl --list --verbose
 ```
 
-Should show:
-```
-  NAME      STATE           VERSION
-* Ubuntu    Running         2
-```
-
-If VERSION shows `1`, update to WSL2:
-```powershell
-wsl --set-version Ubuntu 2
-```
-
-### Step 4: Update WSL
+### Update WSL
 
 ```powershell
 wsl --update
 ```
 
-## Ubuntu Installation
+---
 
-If you need to install Ubuntu manually or want a specific version:
+## Ubuntu installation
 
-### Install Ubuntu 24.04 (Recommended)
+ROCm 10.x is published for Ubuntu 22.04, 24.04 and 26.04. AMD publishes them
+under `ubuntu2204` / `ubuntu2404` / `ubuntu2604` paths, which is why the toolkit
+maps your codename (`jammy` / `noble` / `resolute`) rather than guessing.
+
+| Ubuntu | Default Python | PyTorch wheels |
+|---|---|---|
+| 26.04 (`resolute`) | 3.13 | `cp313` |
+| 24.04 (`noble`) | 3.12 | `cp312` |
+| 22.04 (`jammy`) | 3.10 | `cp310` |
+
+ROCm 10.1 ships wheels for CPython 3.10 through 3.14, so all three resolve.
 
 ```powershell
 wsl --install -d Ubuntu-24.04
 ```
 
-### Install Ubuntu 22.04 (Alternative)
-
-```powershell
-wsl --install -d Ubuntu-22.04
-```
-
-### Set Default Distribution
+Set the default if you have more than one:
 
 ```powershell
 wsl --set-default Ubuntu-24.04
 ```
 
-### First Launch
+On first launch, create your user and password.
 
-1. Launch Ubuntu from Start Menu
-2. Create your username and password (remember these!)
-3. Wait for initial setup to complete
+---
 
-## AMD Driver Installation
+## AMD driver installation
 
-### CRITICAL: Install Windows Driver First
+Download **AMD Software: Adrenalin Edition for WSL2**, version **26.10.41.05**
+or newer:
 
-You **MUST** install the AMD Adrenalin driver on Windows before ROCm will work in WSL2.
+<https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-ROCM-10-01.html>
 
-### Step 1: Download AMD Driver
+Install it on Windows, then reboot. WSL picks it up automatically — there is no
+in-distro driver to install, because WSL uses the Windows driver through DXCore.
 
-Download [AMD Adrenalin Edition 26.2.2 or newer](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html)
-
-### Step 2: Install Driver
-
-1. Run the installer
-2. Choose "Full Install" or "Minimal Install"
-3. Restart Windows after installation
-
-### Step 3: Verify Installation
-
-1. Open AMD Radeon Software from System Tray
-2. Check that your GPU is detected
-3. Ensure WSL2 support is enabled in driver settings
-
-## ROCm Installation
-
-### Automated Installation (Recommended)
-
-Use our toolkit for automated installation:
+Verify:
 
 ```bash
-cd rocm-wsl-ai
-chmod +x menu.sh
-./menu.sh
-# Select: Install → Base Environment
+ls -l /dev/dxg
 ```
 
-See [README.md](../README.md) for detailed toolkit usage.
+A character device owned by root, mode `crw-rw-rw-`. **If this is missing,
+nothing else will work** — no ROCm install can make a GPU appear. Close every WSL
+window and run `wsl --shutdown` from PowerShell.
 
-### Manual Installation
+---
 
-If you prefer manual installation:
+## ROCm installation
 
-#### Step 1: Update System
+### Automated (recommended)
+
+```bash
+./menu.sh
+# Select: Install → Base environment
+```
+
+### Manual
+
+#### Step 1: Update the system
 
 ```bash
 sudo apt update
 sudo apt upgrade -y
+sudo apt install -y wget curl gpg ca-certificates
 ```
 
-#### Step 2: Download amdgpu-install
+#### Step 2: Identify your GPU architecture
 
-**For Ubuntu 24.04:**
+ROCm 10.x publishes one package per GPU architecture, and PyTorch needs a
+matching `device-*` extra. Get this wrong and you get a machine with no working
+GPU and no obvious reason why.
+
+| Your GPU | Target |
+|---|---|
+| RX 7900 XTX / 7900 XT / 7900 GRE / PRO W7900 / W7800 | `gfx1100` |
+| RX 7800 XT / 7700 XT / 7700 / PRO W7700 | `gfx1101` |
+| RX 7600 | `gfx1102` |
+| RX 9070 / 9070 XT / AI PRO R9700 / R9600 | `gfx1201` |
+| RX 9060 / 9060 XT | `gfx1200` |
+| PRO W6800 / V620 | `gfx1030` |
+
+Full table: <https://rocm.docs.amd.com/en/latest/reference/gpu-arch-specs.html>
+
+To read it off the hardware:
+
 ```bash
-wget https://repo.radeon.com/amdgpu-install/7.2.1/ubuntu/noble/amdgpu-install_7.2.1.70201-1_all.deb
-sudo apt install ./amdgpu-install_7.2.1.70201-1_all.deb
+lspci | grep -iE 'vga|3d'
 ```
 
-**For Ubuntu 22.04:**
-```bash
-wget https://repo.radeon.com/amdgpu-install/7.2.1/ubuntu/jammy/amdgpu-install_7.2.1.70201-1_all.deb
-sudo apt install ./amdgpu-install_7.2.1.70201-1_all.deb
-```
+#### Step 3: Add AMD's repository
 
-#### Step 3: Install ROCm
+ROCm 10.x uses a deb822 source and a keyring, not the older one-line `deb`
+entry:
 
 ```bash
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://stable.repo.amd.com/rocm/gpg/packages.gpg \
+  | gpg --dearmor | sudo tee /etc/apt/keyrings/amdrocm.gpg >/dev/null
+
+sudo tee /etc/apt/sources.list.d/amdrocm-stable.sources << 'EOF'
+X-Repo-Id: amdrocm-stable
+Types: deb
+URIs: https://stable.repo.amd.com/rocm/core/packages/ubuntu2404/
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/amdrocm.gpg
+Enabled: yes
+EOF
+
 sudo apt update
-sudo apt install -y python3-setuptools python3-wheel
-sudo apt install -y rocm
 ```
 
-**Note**: In ROCm 7.2.1, the install method changed from `amdgpu-install --usecase=wsl,rocm` to `apt install rocm`.
+Change `ubuntu2404` to `ubuntu2204` or `ubuntu2604` to match your release.
 
-#### Step 4: Build & Install ROCDXG (librocdxg)
+#### Step 4: Install ROCm
 
-ROCDXG is the new user-mode bridge library that enables GPU compute in WSL via DXCore.
-
-**Prerequisites**: Windows SDK must be installed on Windows.
+Install the package for **your** architecture. It is a fraction of the size of
+the all-architecture package and avoids pulling kernels for hardware you do not
+have:
 
 ```bash
-# Install build dependencies
-sudo apt install -y cmake gcc
-
-# Clone librocdxg
-git clone https://github.com/ROCm/librocdxg.git
-cd librocdxg
-
-# Set path to the Windows SDK Include directory dynamically
-export win_kits="/mnt/c/Program Files (x86)/Windows Kits/10/Include"
-export sdk_ver=$(ls -1 "$win_kits" | grep -E '^10\.' | sort -V | tail -1)
-export win_sdk="${win_kits}/${sdk_ver}"
-export CXXFLAGS="-I$win_sdk/shared -I$win_sdk/um"
-
-mkdir -p build && cd build
-cmake .. -DWIN_SDK="${win_sdk}/shared"
-make
-sudo make install
+# Substitute your own target from the table above.
+sudo apt install -y amdrocm10.1-gfx1100
 ```
 
-#### Step 5: Add User to Groups
+That is the whole install. There is nothing to compile — ROCm 10.x ships the WSL
+GPU bridge (`librocdxg`) inside its own artifacts:
 
 ```bash
-sudo usermod -a -G render,video $USER
+ls /opt/rocm/core-*/lib/librocdxg.so
 ```
 
-#### Step 6: Restart WSL2
+#### Step 5: Grant GPU access
 
-**In Windows PowerShell:**
+```bash
+sudo usermod -a -G render,video "$LOGNAME"
+```
+
+Then restart WSL, or the group change will not apply:
+
 ```powershell
 wsl --shutdown
 ```
 
-Then restart your Ubuntu terminal.
+---
 
-#### Step 7: Verify ROCm
+## PyTorch installation
 
-```bash
-export HSA_ENABLE_DXG_DETECTION=1
-rocminfo
-```
+### Through the toolkit (recommended)
 
-You should see your GPU listed with its marketing name (e.g., "Radeon RX 7900 XTX").
+The base environment install includes PyTorch, resolved against your Python and
+GPU at run time.
 
-## PyTorch Installation
+### Manual
 
-### Using Our Toolkit (Recommended)
+#### Step 1: Create a virtual environment
 
-The base environment installation includes PyTorch. No manual steps needed!
-
-### Manual PyTorch Installation
-
-If you prefer manual setup:
-
-#### Step 1: Create Virtual Environment
+Use the Python that matches your Ubuntu release:
 
 ```bash
 python3 -m venv ~/genai_env
@@ -269,402 +274,363 @@ source ~/genai_env/bin/activate
 pip install --upgrade pip wheel
 ```
 
-#### Step 2: Download PyTorch Wheels
+#### Step 2: Install from AMD's index
 
-**For Ubuntu 24.04 (Python 3.12):**
-```bash
-cd /tmp
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torch-2.9.1%2Brocm7.2.1.lw.gitff65f5bc-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torchvision-0.24.0%2Brocm7.2.1.gitb919bd0c-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torchaudio-2.9.0%2Brocm7.2.1.gite3c6ee2b-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/triton-3.5.1%2Brocm7.2.1.gita272dfa8-cp312-cp312-linux_x86_64.whl
-```
-
-**For Ubuntu 22.04 (Python 3.10):**
-```bash
-cd /tmp
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torch-2.9.1%2Brocm7.2.1.lw.gitff65f5bc-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torchvision-0.24.0%2Brocm7.2.1.gitb919bd0c-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/torchaudio-2.9.0%2Brocm7.2.1.gite3c6ee2b-cp310-cp310-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/triton-3.5.1%2Brocm7.2.1.gita272dfa8-cp310-cp310-linux_x86_64.whl
-```
-
-#### Step 3: Install Wheels
+PyTorch is no longer downloaded as named wheel files. AMD publishes a wheel index
+and the GPU-specific kernels are selected with a `device-*` extra, so `pip`
+resolves the whole dependency set:
 
 ```bash
-pip3 install torch-*.whl torchvision-*.whl torchaudio-*.whl triton-*.whl
-rm -f *.whl
+pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ \
+    'rocm[libraries,device-gfx1100]==10.1.0' \
+    'torch[device-gfx1100]' \
+    'torchvision[device-gfx1100]' \
+    'torchaudio'
 ```
 
-#### Step 4: WSL Runtime Fix
+Notes that matter:
+
+- The `==10.1.0` pin belongs on **`rocm`** only. `torch==10.1.0` would ask for a
+  PyTorch release that does not exist — 10.1.0 is the ROCm version, not torch's.
+- `device-gfx1100` must match the apt package you installed. If you are unsure,
+  `device-all` works and is larger.
+- If your GPU architecture has no `device-*` extra, the install fails with
+  `No matching distribution`. Use `device-all`.
+
+#### Step 3: Optional extras
 
 ```bash
-location=$(pip show torch | grep Location | awk -F ": " '{print $2}')
-cd ${location}/torch/lib/
-rm -f libhsa-runtime64.so*
+pip install sageattention        # optional attention kernels
 ```
 
-## Optional: kohya_ss Model Training
+#### Step 4: Make the GPU environment available
 
-[kohya_ss](https://github.com/bmaltais/kohya_ss) provides a web-based GUI for LoRA training, DreamBooth fine-tuning, and other model customization techniques. It runs on your AMD GPU via ROCm inside WSL2.
+```bash
+export HSA_ENABLE_DXG_DETECTION=1
+```
 
-### Install via Menu
+ROCm 10.x detects WSL automatically and this defaults to 1, so the export is a
+belt-and-braces measure for older 7.2.x stacks.
+
+**Do not set `HSA_OVERRIDE_GFX_VERSION` under WSL.** It is not a fallback. DXCore
+enumerates the GPU itself, and an override makes the runtime reject the device —
+PyTorch then reports no GPU while `rocminfo` still lists one, which is a far more
+confusing problem than the one it claims to solve.
+
+---
+
+## Verifying
+
+### ROCm
+
+```bash
+rocminfo | grep -i wsl
+# WSL environment detected.
+```
+
+That line is the confirmation that the bridge loaded. Without it, PyTorch will
+not see a GPU no matter what else you do.
+
+### PyTorch
+
+```bash
+~/genai_env/bin/python -c "
+import torch
+print('version', torch.__version__)
+print('hip    ', torch.version.hip)
+print('gpu    ', torch.cuda.is_available())
+print('device ', torch.cuda.get_device_name(0) if torch.cuda.is_available() else '-')
+"
+```
+
+Expected:
+
+```text
+version 2.14.0+rocm10.1.0
+hip     7.16.26385
+gpu     True
+device  AMD Radeon RX 7900 XTX
+```
+
+### Telemetry
+
+ROCm 10.1 gives WSL access to GPU telemetry for the first time, via `amd-smi`:
+
+```bash
+amd-smi static
+amd-smi metric
+```
+
+`amd-smi event` is **not** supported under WSL and may hang — do not run it.
+Per-process GPU usage is also unavailable there.
+
+### The whole thing at once
+
+```bash
+./scripts/utils/gpu_diag.sh
+```
+
+---
+
+## Optional: kohya_ss training
+
+[kohya_ss](https://github.com/bmaltais/kohya_ss) is a web GUI for LoRA training
+and fine-tuning.
 
 ```bash
 ./menu.sh
-# Select: Install Tools → kohya_ss (LoRA / Model Training)
+# Select: Install → kohya_ss
 ```
-
-### What Gets Installed
 
 | Item | Location |
-|------|----------|
-| kohya_ss repository | `~/kohya_ss` |
-| Dedicated Python venv | `~/kohya_env` |
-| Accelerate config | `~/.config/accelerate/default_config.yaml` |
-| Web GUI port | http://localhost:7861 |
+|---|---|
+| Repository | `~/kohya_ss` |
+| Dedicated venv | `~/kohya_env` |
+| Web GUI | http://localhost:7861 |
 
-> **Separate venv**: kohya_ss is intentionally installed into its own `~/kohya_env` virtual environment. This prevents dependency conflicts with the inference tools (ComfyUI, SD.Next, etc.) that use `~/genai_env`.
+> kohya_ss gets its **own** virtual environment on purpose. Its training
+> dependencies conflict with the inference tools in `~/genai_env`, and sharing one
+> environment reliably breaks one or the other.
 
-### Manual Requirements
+---
 
-If you want to install kohya_ss manually:
-
-```bash
-# System packages
-sudo apt install python3-venv python3-tk python3-dev libgl1-mesa-glx libglib2.0-0
-
-# Clone
-git clone https://github.com/bmaltais/kohya_ss.git ~/kohya_ss
-
-# Dedicated venv
-python3 -m venv ~/kohya_env
-source ~/kohya_env/bin/activate
-
-# PyTorch for ROCm
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2
-
-# kohya_ss dependencies
-cd ~/kohya_ss
-pip install -r requirements.txt
-pip install accelerate transformers diffusers safetensors
-
-deactivate
-```
-
-### Launch kohya_ss
+## Windows desktop shortcuts
 
 ```bash
 ./menu.sh
-# Select: Launch Tool → kohya_ss (Training GUI)
-# Open in Windows: http://localhost:7861
+# Select: Create Desktop shortcuts
+```
+
+Each shortcut is a `.bat` file on your Windows Desktop that calls
+`wsl.exe -d <distro> -- bash -l "<launcher>"`.
+
+**Shortcut does nothing when double-clicked:** the file is missing CRLF line
+endings. Run **Settings → Edit settings → (re)create shortcuts**, or from WSL:
+
+```bash
+cd ~/rocm-wsl-ai && ./scripts/utils/create_shortcut.sh comfyui
 ```
 
 ---
 
-## Self-Update
+## Staying on ROCm 7.2.x
 
-The toolkit can update itself without leaving the menu.
-
-### Check for Toolkit Updates
-
-```bash
-./menu.sh
-# Select: Updates → Check for Toolkit Updates
-```
-
-The toolkit will:
-1. Run `git fetch` to check for new commits
-2. Show the list of new changes
-3. Apply them with `git pull --rebase --autostash`
-4. Prompt you to restart `menu.sh`
-
-Alternatively, update manually:
-```bash
-git -C ~/rocm-wsl-ai pull --rebase --autostash
-```
-
-### Update AI Tools
+ROCm 10.x ships WSL support as a **technical preview**. If it misbehaves on your
+machine, stay on 7.2.x — it is still supported.
 
 ```bash
-./menu.sh
-# Select: Updates → Update Installed AI Tools
+./upgrade.sh --target legacy
 ```
 
-The Update Manager lets you selectively update ComfyUI, SD.Next, Automatic1111, kohya_ss, Ollama, Text Generation WebUI, or all at once.
+### How the 7.2.x install differs
 
----
+Everything below is only needed on the legacy channel.
 
-## Windows Desktop Shortcuts
-
-Desktop shortcuts let you launch any AI tool with a double-click from Windows — no need to open a WSL terminal manually.
-
-### Create a Shortcut
+**The package is `rocm`, not `amdrocm10.1-*`**, from AMD's older repository:
 
 ```bash
-./menu.sh
-# Select: Create Desktop Shortcuts → (choose tool)
+wget https://repo.radeon.com/rocm/rocm.gpg.key \
+  | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg >/dev/null
+
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2.4 $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/rocm.list >/dev/null
+
+sudo apt update
+sudo apt install -y python3-setuptools python3-wheel
+sudo apt install -y rocm
 ```
 
-A `.bat` file will be created on your Windows Desktop.
-
-### How It Works
-
-The `.bat` file uses the correct `wsl.exe` syntax to start WSL and run the server:
-
-```batch
-wsl.exe -d "Ubuntu-24.04" -- bash -l "/path/to/start/script.sh"
-```
-
-- `--` separates WSL options from the Linux command
-- `bash -l` starts a login shell (loads your `.profile`/`.bashrc` and environment variables)
-- The CMD window stays open and shows server logs; close it to stop the server
-
-### Troubleshooting Shortcuts
-
-| Symptom | Fix |
-|---------|-----|
-| Window closes instantly | Recreate shortcut — old ones (pre-v3.2) used broken wsl.exe syntax |
-| "WSL distribution not found" | Run `wsl --list --verbose` in PowerShell to check installed distros |
-| Server starts but browser can't connect | Wait ~30 seconds, then open `http://localhost:PORT` |
-| Black window, no output | Run from WSL manually first to check for errors |
-
----
-
-## Verification
-
-### Test ROCm
+**The WSL GPU bridge has to be compiled**, because ROCm 7.2.x does not ship it.
+This is the step that needs the Windows SDK:
 
 ```bash
-rocminfo
+sudo apt install -y cmake gcc
+
+git clone https://github.com/ROCm/librocdxg.git
+cd librocdxg
+
+export win_kits="/mnt/c/Program Files (x86)/Windows Kits/10/Include"
+export sdk_ver=$(ls -1 "$win_kits" | grep -E '^10\.' | sort -V | tail -1)
+export win_sdk="${win_kits}/${sdk_ver}"
+
+mkdir -p build && cd build
+cmake .. -DWIN_SDK="${win_sdk}/shared"
+make
+sudo make install
 ```
 
-Expected output should include:
-```
-*******
-Agent 2
-*******
-  Name:                    gfx1100
-  Marketing Name:          Radeon RX 7900 XTX
-  ...
-```
-
-### Test PyTorch
+Alternatively, download the prebuilt package from the
+[librocdxg releases page](https://github.com/ROCm/librocdxg/releases):
 
 ```bash
+sudo dpkg -i rocdxg-roct_<version>_amd64.deb
+```
+
+**PyTorch wheels are named files** on this channel, and must match your Python:
+
+```bash
+python3 -m venv ~/genai_env
 source ~/genai_env/bin/activate
-python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'ROCm available: {torch.cuda.is_available()}'); print(f'GPU count: {torch.cuda.device_count()}'); print(f'GPU name: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
+
+# Example for ROCm 7.2.4 / Python 3.10. Substitute your own release.
+cd /tmp
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.4/torch-2.10.0%2Brocm7.2.4-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.4/torchvision-0.25.0%2Brocm7.2.4-cp310-cp310-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.4/torchaudio-2.10.0%2Brocm7.2.4-cp310-cp310-linux_x86_64.whl
+pip3 install torch-*.whl torchvision-*.whl torchaudio-*.whl
 ```
 
-Expected output:
-```
-PyTorch: 2.9.1+rocm7.2.1
-ROCm available: True
-GPU count: 1
-GPU name: Radeon RX 7900 XTX
-```
+Those filenames embed a git hash that changes with every patch release, which is
+exactly the fragility that 5.0 removes. Browse
+<https://repo.radeon.com/rocm/manylinux/> to find the current ones, or use the
+toolkit, which resolves them for you.
+
+**`HSA_ENABLE_DXG_DETECTION=1` is mandatory** on this channel — ROCr only learned
+to auto-detect WSL in 7.13.
+
+---
 
 ## Troubleshooting
 
-### Troubleshooting Shortcuts
+### `/dev/dxg` is missing
 
-See the [Windows Desktop Shortcuts](#windows-desktop-shortcuts) section above, or the README troubleshooting guide.
+The single most important thing to check. Without it WSL cannot reach the GPU.
 
-### GPU Not Detected in WSL2
-
-**Problem**: `rocminfo` shows no GPU or "No AMD GPU detected"
-
-**Solutions**:
-1. **Verify Windows Driver**: Open AMD Radeon Software on Windows, ensure GPU is detected
-2. **Check Driver Version**: Must be AMD Adrenalin 26.2.2 or newer
-3. **Check ROCDXG**: Verify librocdxg is installed:
-   ```bash
-   ls /opt/rocm/lib/librocdxg.so
-   ```
-4. **Set ROCDXG env var**: Ensure HSA_ENABLE_DXG_DETECTION is set:
-   ```bash
-   export HSA_ENABLE_DXG_DETECTION=1
-   ```
-5. **Restart WSL2**:
-   ```powershell
-   wsl --shutdown
-   ```
-6. **Check WSL Version**:
-   ```powershell
-   wsl --list --verbose
-   ```
-   Must show VERSION 2, not 1
-7. **Update WSL**:
-   ```powershell
-   wsl --update
-   ```
-
-### PyTorch Can't Find ROCm
-
-**Problem**: `torch.cuda.is_available()` returns `False`
-
-**Solutions**:
-1. **Check ROCm Installation**:
-   ```bash
-   rocminfo | grep "Marketing Name"
-   ```
-2. **Verify Virtual Environment**:
-   ```bash
-   which python
-   # Should show: /home/username/genai_env/bin/python
-   ```
-3. **Check HSA Override**:
-   ```bash
-   echo $HSA_OVERRIDE_GFX_VERSION
-   # Should show: gfx1100 or gfx1200 or similar
-   ```
-4. **Reinstall PyTorch**: Use toolkit or manual method above
-
-### ImportError: libhsa-runtime64.so
-
-**Problem**: PyTorch fails to load with HSA runtime error
-
-**Solution**: Apply WSL runtime fix:
 ```bash
-source ~/genai_env/bin/activate
-location=$(pip show torch | grep Location | awk -F ": " '{print $2}')
-cd ${location}/torch/lib/
-rm -f libhsa-runtime64.so*
+ls -l /dev/dxg
 ```
 
-### Permission Denied Errors
+If absent: `wsl --shutdown` from PowerShell, reopen, check again. If it persists,
+your Windows driver is not exposing DXCore — install the Adrenalin *for WSL2*
+package at 26.10.41.05 or newer.
 
-**Problem**: Can't access `/dev/kfd` or `/dev/dri`
+### `rocminfo` shows no GPU
 
-**Solution**:
-1. **Add to groups**:
+1. `ls -l /dev/dxg` — see above.
+2. Confirm the driver: `amd-smi version` should report ROCm 10.1.0.
+3. Confirm the bridge: `ls /opt/rocm/core-*/lib/librocdxg.so`.
+4. `wsl --shutdown`, reopen.
+
+### `torch.cuda.is_available()` is `False`
+
+1. `rocminfo | grep -i wsl` — must say `WSL environment detected.`
+2. Check you are using the right interpreter:
+   `which python` should be `~/genai_env/bin/python`.
+3. Check `HSA_OVERRIDE_GFX_VERSION` is **unset**. If it is set, the runtime is
+   rejecting your device — that is the bug, not the fix:
    ```bash
-   sudo usermod -a -G render,video $USER
+   echo "${HSA_OVERRIDE_GFX_VERSION:-<unset>}"
+   sed -i '/HSA_OVERRIDE_GFX_VERSION/d' ~/.config/rocm-wsl-ai/user.env
+   sed -i '/HSA_OVERRIDE_GFX_VERSION/d' ~/.bashrc
    ```
-2. **Restart WSL2**:
-   ```powershell
-   wsl --shutdown
-   ```
+4. Just installed? `wsl --shutdown` first — this is normal and expected.
 
-### Slow Performance
+### `No matching distribution found for torch`
 
-**Solutions**:
-1. **Increase WSL2 Memory**: Create/edit `C:\Users\YourName\.wslconfig`:
+The `device-*` extra does not exist for your architecture. Use the universal one:
+
+```bash
+pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ \
+    'rocm[libraries,device-all]' 'torch[device-all]'
+```
+
+Then check what the apt package was scoped to, and reinstall the matching one.
+
+### `ImportError: libhsa-runtime64.so`
+
+Some torch builds bundle an HSA runtime that conflicts with the one ROCm
+provides. Only if the GPU is invisible *and* the bundled copy exists:
+
+```bash
+location=$(pip show torch | awk -F ': ' '/^Location/{print $2}')
+rm -f "$location"/torch/lib/libhsa-runtime64.so*
+```
+
+### A workload hangs on a device-side assertion
+
+Known ROCm 10.1 WSL issue: certain device-side executions can leave the GPU
+workload stopped while the host process waits for completion. Most HIP and OpenCL
+workloads are unaffected. Terminate the process and restart the application.
+
+### Permission denied
+
+```bash
+sudo usermod -a -G render,video "$USER"
+```
+
+Then `wsl --shutdown`. Note that under WSL this is less often the cause than on
+native Linux, because access is brokered by DXCore.
+
+### Slow performance
+
+1. Keep your tools and models inside the WSL filesystem (`/home/...`), not
+   `/mnt/c/...`. Crossing the 9p boundary is dramatically slower.
+2. Give WSL more resources — `%UserProfile%\.wslconfig`:
    ```ini
    [wsl2]
-   memory=16GB
-   processors=8
+   memory=24GB
+   processors=12
    swap=8GB
    ```
-2. **Store Projects in WSL**: Use `/home/username/` not `/mnt/c/`
-3. **Disable Windows Defender** for WSL2 folders (optional)
+3. Run the tuner: **Performance → Auto-tune**. It measures on your GPU rather than
+   applying folklore.
 
-### Network Issues in WSL2
+### Valgrind hangs
 
-**Problem**: Can't download packages
+Known ROCm 10.1 WSL issue: WSL reserves GPU address space up front, which can
+collide with Valgrind's reserved range when system RAM is large. Limit WSL's
+memory in `.wslconfig` to below ~36 GB if you need Valgrind.
 
-**Solutions**:
-1. **Check DNS**:
-   ```bash
-   cat /etc/resolv.conf
-   ```
-2. **Update DNS** (if needed):
-   ```bash
-   echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
-   ```
+---
 
-### amdgpu-install Fails
+## Performance tips
 
-**Problem**: Installation script errors
+- **Tune, do not guess.** `./menu.sh → Performance → Auto-tune` measures four
+  shaped workloads on your GPU. See [PERFORMANCE.md](PERFORMANCE.md).
+- **Keep files in the Linux filesystem.** `/mnt/c` is a network mount.
+- **Leave headroom in `.wslconfig`.** AMD documents a Valgrind collision above
+  roughly 36 GB.
+- **The idle timer is worth enabling.** **Settings → Idle hibernation** stops a
+  forgotten server and releases its VRAM.
 
-**Solutions**:
-1. **Check Ubuntu Version**:
-   ```bash
-   lsb_release -a
-   # Must be 24.04 or 22.04
-   ```
-2. **Update System First**:
-   ```bash
-   sudo apt update && sudo apt upgrade -y
-   ```
-3. **Check Disk Space**:
-   ```bash
-   df -h
-   # Ensure 20GB+ free
-   ```
+---
 
-## Performance Tips
-
-### Memory Allocation
-
-Edit `C:\Users\YourName\.wslconfig`:
-```ini
-[wsl2]
-memory=16GB          # Adjust based on your RAM
-processors=8         # Adjust based on your CPU cores
-swap=8GB
-localhostForwarding=true
-```
-
-Restart WSL2 after editing.
-
-### File System Performance
-
-- Store git repositories in `/home/` (Linux filesystem)
-- Avoid `/mnt/c/` (Windows filesystem) for large files
-- Use `explorer.exe .` to open Windows Explorer from WSL2
-
-### GPU Memory
-
-Monitor GPU usage:
-```bash
-rocm-smi
-```
-
-### Networking
-
-For web UIs (ComfyUI, etc.), access via:
-- `http://localhost:PORT` from Windows
-- Or find WSL2 IP: `hostname -I`
-
-## Additional Resources
-
-- [AMD ROCm Documentation](https://rocm.docs.amd.com/)
-- [WSL2 Official Docs](https://docs.microsoft.com/en-us/windows/wsl/)
-- [PyTorch ROCm Guide](https://pytorch.org/get-started/locally/)
-- [Our Toolkit README](../README.md)
-
-## Getting Help
-
-If you encounter issues:
-
-1. Check this guide's troubleshooting section
-2. Verify all prerequisites are met
-3. Check [AMD ROCm GitHub Issues](https://github.com/ROCm/ROCm/issues)
-4. Open an issue on our repository with:
-   - Output of `lsb_release -a`
-   - Output of `rocminfo`
-   - Exact error messages
-   - Steps to reproduce
-
-## Quick Reference Commands
+## Quick reference
 
 ```bash
-# Check WSL version
-wsl --list --verbose
+wsl --shutdown                              # from PowerShell — restarts WSL
+wsl --update                                # from PowerShell
 
-# Shutdown WSL2
-wsl --shutdown          # Run in PowerShell
+ls -l /dev/dxg                              # the GPU must be reachable here
+rocminfo | grep -i wsl                      # "WSL environment detected."
+amd-smi version                             # ROCm + driver versions
+amd-smi metric                              # live telemetry (works under WSL)
 
-# Check ROCm
-rocminfo
+source ~/genai_env/bin/activate             # use the ROCm PyTorch
+python -c "import torch; print(torch.cuda.is_available())"
 
-# Check GPU
-rocm-smi
-
-# Activate venv
-source ~/genai_env/bin/activate
-
-# Check PyTorch
-python3 -c "import torch; print(torch.cuda.is_available())"
+./menu.sh                                   # the toolkit
+./upgrade.sh --check                        # what would change
+./scripts/utils/gpu_diag.sh                 # full health check
+./scripts/utils/perf_engine.py bench        # measure this GPU
 ```
+
+---
+
+## Getting help
+
+1. Run the diagnostics and paste the output — it answers most questions:
+   ```bash
+   ./scripts/utils/gpu_diag.sh
+   ```
+2. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+3. Open an issue with the diagnostics output attached.
+
+## Resources
+
+- [ROCm 10.1 documentation](https://rocm.docs.amd.com/en/docs-10.1.0/)
+- [Installing ROCm on WSL](https://rocm.docs.amd.com/en/docs-10.1.0/install/rocm.html)
+- [GPU architecture specs](https://rocm.docs.amd.com/en/latest/reference/gpu-arch-specs.html)
+- [AMD SMI under WSL](https://rocm.docs.amd.com/projects/amdsmi/en/docs-10.1.0/how-to/amdsmi-wsl-mode.html)
+- [TheRock build system](https://github.com/ROCm/TheRock)
+- [WSL installation (Microsoft)](https://learn.microsoft.com/en-us/windows/wsl/install)

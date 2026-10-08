@@ -97,7 +97,7 @@ body:
       render: shell
       placeholder: |
         $ cat VERSION
-        4.0.0
+        5.0.0
 
         $ bash scripts/utils/gpu_diag.sh
         === GPU & ROCm Diagnostics ===
@@ -107,7 +107,7 @@ body:
         $ python3 scripts/utils/perf_engine.py probe
         ROCm WSL AI Toolkit — Performance Probe
         ============================================
-        Engine version   : 1.0.0
+        Engine version   : 2.0.0
         ...
     validations:
       required: false
@@ -131,6 +131,7 @@ body:
       label: Ubuntu version
       description: Run `lsb_release -ds` inside WSL if you are unsure.
       options:
+        - Ubuntu 26.04 (resolute)
         - Ubuntu 24.04 (noble)
         - Ubuntu 22.04 (jammy)
         - Something else (unsupported)
@@ -148,7 +149,8 @@ body:
         - kohya_ss (training)
         - Text Generation WebUI
         - A third-party tool I registered in tools.local
-        - Base install (ROCm 7.2.3 / ROCDXG / PyTorch 2.9.1)
+        - Base install (ROCm 10.1 / PyTorch 2.14)
+        - The upgrade path (upgrade.sh, including the 7.2.x to 10.x migration)
         - The menu, installer, or a Windows desktop shortcut
         - Performance engine (perf_engine.py bench / probe / apply)
         - Something else, or not sure
@@ -160,12 +162,13 @@ body:
     attributes:
       label: Windows AMD driver version
       description: |
-        Radeon Software -> Settings -> System -> Software & Driver. Adrenalin
-        **26.2.2 or newer** is required for the ROCDXG GPU bridge; older drivers
-        cannot work with this toolkit.
+        Radeon Software -> Settings -> System -> Software & Driver. ROCm 10.x
+        requires the Adrenalin **for WSL2** package at **26.10.41.05 or newer**;
+        older drivers cannot work with this toolkit. If you are still on the
+        legacy 7.2.x channel, the floor is 26.2.2.
       options:
-        - "26.2.2 (the minimum supported version)"
-        - Newer than 26.2.2
+        - "26.10.41.05 or newer (meets the ROCm 10.x requirement)"
+        - Between 26.2.2 and 26.10.41.05 (meets the legacy 7.2.x floor only)
         - Older than 26.2.2
         - Not sure / cannot check right now
     validations:
@@ -175,8 +178,8 @@ body:
     id: windows-driver-exact
     attributes:
       label: Exact driver version (optional)
-      description: Only if the dropdown above was not specific enough, e.g. `26.2.2`.
-      placeholder: "26.2.2"
+      description: Only if the dropdown above was not specific enough, e.g. `26.10.41.05`.
+      placeholder: "26.10.41.05"
     validations:
       required: false
 

@@ -74,24 +74,41 @@ so each AMD release invalidated the installer until somebody edited the script b
 hand. The same happened with `amdgpu-install`, whose package build number
 (`7.2.3.70203-1`) versions independently of ROCm.
 
-`lib/version.sh` instead reads AMD's repository index and answers:
+`lib/version.sh` instead reads AMD's repository index and answers, per channel:
 
-- `va_latest_rocm` — newest release with an apt repo for this Ubuntu version
-- `va_best_installable_rocm` — newest release that also has wheels for this Python
-- `va_resolve_torch_wheels` — the exact torch/torchvision/torchaudio/triton
-  filenames for a release and Python tag
-- `va_latest_librocdxg` — newest GitHub release tag for the WSL bridge
+**Core channel (ROCm 10.x, the default)**
 
-Two separate checks, because AMD sometimes publishes a ROCm release before its
-PyTorch wheels exist; installing that combination would fail at the environment
-rebuild after ROCm had already been replaced. Results are cached for 24 hours and
-every resolver has an offline fallback, so an unreachable network degrades to a
-known-good version rather than failing.
+- `va_latest_core_series` — newest series published for this Ubuntu release
+- `va_core_meta_package` — `amdrocm10.1-gfx1100`, scoped to one GPU architecture
+- `va_core_apt_source` — the deb822 stanza AMD documents
+- `va_gfx_detect` — which architecture to install for
+- `va_latest_torch` — newest torch for a Python tag *within* a ROCm series
+- `va_resolve_torch_spec` — the whole install plan as `KEY=VALUE` lines
+
+**Legacy channel (ROCm ≤ 7.2.x)**
+
+- `va_latest_legacy_rocm`, `va_resolve_torch_wheels`, `va_best_installable_rocm`
+- `va_latest_librocdxg` — the bridge had to be built from source on this channel
+
+Two details that are easy to get wrong and were both measured:
+
+- A ROCm series can be published for `apt` days before its wheels exist for a
+  given Python. `va_core_series_with_wheels` exists for that reason — installing a
+  series with no wheels would leave a machine with no PyTorch at all.
+- Wheel filenames carry the **full** ROCm version, not the series: a 10.1 wheel is
+  built as `+rocm10.1.0`, so the series must be followed by another component.
+
+Results are cached for 24 hours and every resolver has an offline fallback, so an
+unreachable network degrades to a known-good version rather than failing.
 
 ### Enforcement
 
-The CI and verification suite greps the install and upgrade paths for hardcoded
-version strings, so this property is tested rather than merely intended.
+CI's `no-pinned-versions` job greps every shell and Python file outside
+`lib/version.sh` for hardcoded ROCm repository URLs, wheel directories and
+version constants, and fails the build if it finds one. It also checks that
+`VERSION` and the README badge agree. This property is therefore tested rather
+than merely intended — and when the job was first added it immediately caught
+seven stale copies of an out-of-date driver requirement.
 
 ---
 
@@ -124,11 +141,16 @@ first in every launch path.
 
 ### Related: `HSA_OVERRIDE_GFX_VERSION`
 
-With ROCDXG installed, this variable must **not** be set. DXCore enumerates the GPU
-and determines its own architecture; an override makes
+With the WSL bridge in place, this variable must **not** be set. DXCore enumerates
+the GPU and determines its own architecture; an override makes
 `topology_sysfs_get_node_props` reject the value and the GPU becomes invisible.
-`ai_load_env` unsets it when `librocdxg` is present, which is why the Settings menu
-warns loudly about setting it manually.
+`ai_load_env` unsets it when the bridge library is present, which is why the
+Settings menu warns loudly about setting it manually, and why `gpu_diag` reports
+it as a **failure** when found rather than suggesting it as a fallback.
+
+This one caused a lot of confusion for a long time: `rocminfo` keeps listing the
+GPU, so any check that only looks at `rocminfo` says everything is fine while
+PyTorch sees nothing.
 
 ---
 
@@ -282,11 +304,22 @@ long procedure. Each stage re-checks the current state before acting, so the scr
 is safe to re-run after any failure and will skip whatever already succeeded.
 
 ```text
-detect → report → toolkit → migrate → shell env → ROCm → ROCDXG
+detect → report → toolkit → migrate → shell env → remove legacy → ROCm
        → python env → tools → retune → verify
 ```
 
 Two ordering details matter:
+
+- **The legacy teardown runs before the ROCm install.** AMD requires ROCm 7.2.x to
+  be gone before 10.x can be installed — both register `/opt/rocm` through
+  `update-alternatives`. It is a separate stage rather than part of the install so
+  the one destructive step is named in the plan and gated behind its own typed
+  confirmation.
+- **The ROCDXG stage only exists on the legacy channel.** ROCm 10.x ships the
+  bridge, so on the core channel there is nothing to build and the stage is
+  skipped with a line saying why.
+
+And one more:
 
 - **The toolkit updates first, and then the script re-executes itself.** A running
   bash process holds the old library code in memory; after a `git pull` the rest of

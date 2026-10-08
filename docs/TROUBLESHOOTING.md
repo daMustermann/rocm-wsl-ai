@@ -43,17 +43,35 @@ Run through this in order:
    Then reopen Ubuntu. Group membership and the DXCore bridge are only applied to a
    new session.
 
-2. **Is the ROCDXG bridge installed?**
+2. **Can WSL reach the GPU at all?**
 
    ```bash
-   ls -l /opt/rocm/lib/librocdxg.so
-   ldd /opt/rocm/lib/librocdxg.so | grep 'not found'   # should print nothing
+   ls -l /dev/dxg
    ```
 
-   Missing or with unresolved libraries → rebuild it:
-   **Install → Upgrade / repair ROCDXG**.
+   This must be a character device. If it is missing, **nothing else matters** —
+   no ROCm install can make a GPU appear, and PyTorch will never see one. It means
+   the Windows driver is not exposing DXCore, which usually means an out-of-date
+   driver or a WSL instance that was not restarted.
 
-3. **Are you in the `render` and `video` groups?**
+3. **Is the GPU bridge present?** ROCm 10.x ships it inside ROCm and the runtime
+   loads it automatically, so this only ever fails if the ROCm package did not
+   install correctly:
+
+   ```bash
+   rocminfo | grep -i wsl        # want: WSL environment detected.
+   ls -l /opt/rocm/core-*/lib/librocdxg.so
+   ```
+
+   A much better one-line check is the `rocminfo` grep above: it proves the
+   runtime actually *loaded* the bridge, rather than merely finding the file.
+   If it fails, re-run **Install → Repair / reinstall the base environment**.
+
+   > On ROCm 7.2.x this library had to be compiled from source against the
+   > Windows SDK, and lived at `/opt/rocm/lib/librocdxg.so`. If you are still on
+   > the legacy channel that path is correct; on 10.x it has moved.
+
+4. **Are you in the `render` and `video` groups?**
 
    ```bash
    id -nG | tr ' ' '\n' | grep -E 'render|video'
@@ -67,10 +85,11 @@ Run through this in order:
 
    …then `wsl --shutdown` and reopen.
 
-4. **Is the Windows driver new enough?** AMD Adrenalin **26.2.2** or newer. Check
-   with `Settings → GPU diagnostics`, which queries the Windows driver version.
+5. **Is the Windows driver new enough?** AMD Adrenalin **26.10.41.05** or newer is
+   required by ROCm 10.x. Check with `Settings → GPU diagnostics`, which queries
+   the Windows driver version and compares it.
 
-5. **Is the environment actually loaded?** If you are running Python by hand:
+6. **Is the environment actually loaded?** If you are running Python by hand:
 
    ```bash
    source ~/genai_env/bin/activate     # the launcher does this for you
@@ -84,45 +103,76 @@ Run through this in order:
 > instead of reporting an error. The launcher strips it and warns you; remove it
 > from wherever it is set. See [`PERFORMANCE.md`](PERFORMANCE.md).
 
+> **The other trap:** if `HSA_OVERRIDE_GFX_VERSION` **is** set, the runtime
+> *rejects* your device. `rocminfo` still lists the GPU, PyTorch reports none.
+> It is not a workaround. Check and unset it:
+>
+> ```bash
+> echo "${HSA_OVERRIDE_GFX_VERSION:-<unset>}"
+> sed -i '/HSA_OVERRIDE_GFX_VERSION/d' ~/.config/rocm-wsl-ai/user.env
+> ```
+
 ---
 
 ## Base install fails
 
-### `Windows SDK not found`
+### `librocdxg` is missing
 
-ROCDXG (`librocdxg`) is built from source and needs the Windows SDK headers.
-
-1. Install the [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
-2. During setup, check **"Windows SDK for Desktop C++ amd64 Apps"** — it selects the
-   needed sub-components; you can uncheck the rest.
-
-<img src="assets/winsdkinstall.png" width="560" alt="Windows SDK installation options">
-
-Then re-run **Install → Upgrade / repair ROCDXG**. Confirm detection with:
+On ROCm 10.x this library ships inside ROCm, so a missing copy means the ROCm
+package did not install:
 
 ```bash
-ls "/mnt/c/Program Files (x86)/Windows Kits/10/Include"
+dpkg -l | grep amdrocm10.1
+ls -d /opt/rocm/core-*
 ```
 
-If you installed the SDK to a non-default drive, detection fails. Install it to the
-default location, or build ROCDXG manually per AMD's documentation.
+Re-run **Install → Repair / reinstall the base environment**.
+
+If you are on the **legacy 7.2.x channel**, this library is built from source and
+does need the Windows SDK — see
+[WSL2_SETUP_GUIDE.md → Staying on ROCm 7.2.x](WSL2_SETUP_GUIDE.md#staying-on-rocm-72x).
 
 ### ROCm package installation fails or downloads stall
 
-`repo.radeon.com` can be slow or briefly unavailable.
+`stable.repo.amd.com` can be slow or briefly unavailable.
 
 ```bash
 sudo apt update
-sudo apt install -y rocm
+sudo apt install -y amdrocm10.1-gfx1100    # substitute your architecture
 ```
 
-Re-running is safe. Partially installed packages resume.
+Re-running is safe. Partially installed packages resume. Confirm the repository
+is configured as AMD documents it:
+
+```bash
+cat /etc/apt/sources.list.d/amdrocm-stable.sources
+```
+
+If `apt update` reports a missing `Signed-By` key, the keyring did not install:
+
+```bash
+curl -fsSL https://stable.repo.amd.com/rocm/gpg/packages.gpg \
+  | gpg --dearmor | sudo tee /etc/apt/keyrings/amdrocm.gpg >/dev/null
+sudo apt update
+```
+
+### `No matching distribution found for torch`
+
+The `device-*` extra does not exist for your GPU architecture, or the version pin
+is on the wrong package. The universal extra always works:
+
+```bash
+pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ \
+    'rocm[libraries,device-all]' 'torch[device-all]'
+```
+
+Note that the `==x.y.z` pin belongs on `rocm`, never on `torch` — ROCm's version
+number is not PyTorch's.
 
 ### `Unsupported Ubuntu version`
 
-Only Ubuntu 22.04 (jammy) and 24.04 (noble) are supported, because AMD's PyTorch
-wheels are built for the specific Python versions those releases ship (3.10 and
-3.12).
+Ubuntu 22.04 (`jammy`), 24.04 (`noble`) and 26.04 (`resolute`) are supported,
+because ROCm 10.x is published for exactly those releases.
 
 ```bash
 lsb_release -rs
@@ -276,19 +326,34 @@ Python environment and are preserved.
 ### "Update All" replaced my ROCm PyTorch with a CUDA build
 
 This used to happen when a tool's `requirements.txt` pinned `torch`, causing pip to
-fetch the CUDA build from PyPI. The updater now strips `torch`, `torchvision`,
-`torchaudio` and the ROCm Triton package from every requirements file before
-installing.
+fetch the CUDA build from PyPI. The updater now strips every ROCm-managed package
+from each requirements file before installing.
+
+The list has to grow with ROCm, because the package names changed in 10.x. It now
+covers `torch`, `torchvision`, `torchaudio`, `triton`, `triton-rocm`,
+`triton_kernels`, `pytorch-triton*`, `rocm`, `rocm-sdk-*`, and the `amd-torch*`
+/ `amd-torchvision*` device wheels. On 10.x a stray `triton` in a requirements file
+is just as capable of replacing the ROCm build as `torch` itself.
 
 If you already hit it, check and repair:
 
 ```bash
 source ~/genai_env/bin/activate
 python3 -c "import torch; print(torch.__version__, torch.version.hip)"
-# expect: 2.9.1+rocm7.2.3... and a hip version, not None
+# expect: 2.14.0+rocm10.1.0... and a hip version, not None
 ```
 
 If `torch.version.hip` is `None`, reinstall the base environment.
+
+### The upgrade stopped and asks me to type `REMOVE`
+
+That is the legacy teardown, and the prompt is deliberate. ROCm 10.x cannot be
+installed alongside ROCm 7.2.x — both register `/opt/rocm` — so the old packages
+have to go first. Nothing is deleted: `/opt/rocm-7.2.x` is renamed to
+`*.retired-<timestamp>`, and the rollback is documented in
+[UPGRADING.md](UPGRADING.md#rolling-back-to-72x).
+
+If you would rather not, use `./upgrade.sh --target legacy` and stay on 7.2.x.
 
 ---
 
@@ -332,7 +397,7 @@ Check after any Manager-driven dependency install:
 ```bash
 source ~/genai_env/bin/activate
 python3 -c "import torch; print(torch.__version__, torch.version.hip)"
-# expect: 2.10.0+rocm7.2.4...  and a HIP version, never None
+# expect: 2.14.0+rocm10.1.0...  and a HIP version, never None
 ```
 
 If `torch.version.hip` is `None`, or the version has no `+rocm`, the ROCm build has

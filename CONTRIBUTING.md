@@ -12,16 +12,19 @@ third-party tool policy) are non-negotiable.
 
 ## Scope
 
-- **WSL2 only.** Ubuntu 22.04 (jammy) and 24.04 (noble) are the supported
-  distributions. Native Linux, Windows-native ROCm and macOS are explicitly out of
+- **WSL2 only.** Ubuntu 22.04 (jammy), 24.04 (noble) and 26.04 (resolute) are the
+  supported distributions — these are exactly the releases ROCm 10.x is published
+  for. Native Linux, Windows-native ROCm and macOS are explicitly out of
   scope — not because they are uninteresting, but because the toolkit is built
-  around the ROCDXG GPU bridge that only exists in WSL2, and because untestable
+  around the WSL GPU bridge that only exists in WSL2, and because untestable
   support claims are worse than none.
 - **AMD RDNA3 / RDNA4 and supported Ryzen APUs** (Radeon RX 7000 and 9000 series,
   Ryzen Strix / Strix Halo). Pre-RDNA3 cards are not supported by current ROCm.
-- **Bash + Python 3 only.** There is no compiled component in this repository. The
-  one native build the toolkit performs is AMD's own `ROCm/librocdxg`, cloned and
-  built at install time — never vendored here.
+- **Bash + Python 3 only.** There is no compiled component in this repository, and
+  on the default channel nothing is compiled at all — ROCm 10.x ships the WSL GPU
+  bridge itself. The legacy 7.2.x channel still builds AMD's own
+  `ROCm/librocdxg` at install time; it is cloned from AMD's repository and never
+  vendored here.
 
 ---
 
@@ -81,10 +84,23 @@ python3 scripts/utils/perf_engine.py --version    # must print perf_engine <semv
 python3 scripts/utils/perf_engine.py --help
 python3 scripts/utils/perf_engine.py doctor       # works without a GPU
 
-# 5. When you have a GPU, and only then
+# 5. UI smoke test — renders every screen without a GPU, never prompts
+./menu.sh --demo > /dev/null
+
+# 6. No hardcoded upstream endpoints or versions (mirrors the CI job)
+! grep -rnE 'stable\.repo\.amd\.com|repo\.radeon\.com/rocm/(apt|manylinux)|rocm-rel-[0-9]|TARGET_ROCM=|26\.2\.2' \
+    --include='*.sh' --include='*.py' lib scripts install.sh menu.sh upgrade.sh \
+    | grep -v '^lib/version\.sh:' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'
+
+# 7. When you have a GPU, and only then
 python3 scripts/utils/perf_engine.py probe
 python3 scripts/utils/perf_engine.py bench --dry-run
 ```
+
+Step 5 matters more than it looks: `./menu.sh --demo` is what generates the
+screenshots in `docs/assets/`, so it is both the smoke test and the way the README
+images stay honest. If you change the UI, re-run `bash scripts/utils/capture.sh`
+and commit the updated images.
 
 The `-e` list in step 3 is a **measured baseline**, not a preference: every code in
 it fires somewhere in the existing tree, and each one is explained in a comment in

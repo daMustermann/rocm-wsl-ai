@@ -36,24 +36,32 @@ disclosure is appreciated — please give a reasonable window before publishing.
 
 It is **bash and Python 3 scripts that you run inside WSL2 as your own Linux user**.
 There is no daemon, no service account, no compiled binary from this repository, and
-no server of its own. The one native component it builds is AMD's `ROCm/librocdxg`,
-cloned from AMD's repository at install time.
+no server of its own. Nothing is built from source on the default channel —
+ROCm 10.x ships the WSL GPU bridge itself. On the legacy 7.2.x channel the one
+native component built is AMD's `ROCm/librocdxg`, cloned from AMD's repository at
+install time.
 
 That shape determines the whole threat model:
 
 - The scripts run **with your privileges**, so they can read and write everything you
   can, including the Windows filesystem exposed under `/mnt/c`.
 - The installer uses **`sudo`** for the parts that need it: `apt` package
-  installation, adding the Charm (gum) apt repository, installing AMD's
-  `amdgpu-install` package (which registers `repo.radeon.com` as an apt source),
-  `apt install rocm`, and building and installing `librocdxg`. Those steps change
-  the distribution, and they are the moments where a malicious or tampered script
-  would have the most to gain.
+  installation, adding AMD's ROCm repository (`stable.repo.amd.com`, registered via
+  `/etc/apt/sources.list.d/amdrocm-stable.sources`), `apt install
+  amdrocm10.1-gfx<arch>`, and on the legacy channel building and installing
+  `librocdxg`. Those steps change the distribution, and they are the moments where a
+  malicious or tampered script would have the most to gain.
+- **The upgrade can remove packages.** Moving from ROCm 7.2.x to 10.x purges the
+  legacy ROCm packages, because AMD requires it and the two package trees conflict.
+  That is the single most destructive action the toolkit takes. It is confined to
+  one named package-family pattern — never a general `apt remove` — it renames
+  `/opt/rocm-7.2.x` rather than deleting it, and it requires a typed confirmation
+  before running.
 - The toolkit **does not handle secrets**. It never asks for an API token, password,
   SSH key or cloud credential, and it has no telemetry. `perf_engine.py` imports only
   the standard library and makes no network requests at all. Network access happens
-  where you would expect it: `git clone`, `apt`, and `pip` installing PyTorch wheels
-  from AMD's index.
+  where you would expect it: `git clone`, `apt`, and `pip` installing PyTorch from
+  AMD's wheel index.
 - **Integrity is whatever the transport provides.** ROCm and `gum` come from apt
   repositories and are GPG-verified by apt, and everything is fetched over HTTPS —
   but the toolkit itself checks no checksums or signatures, and it clones third-party
@@ -127,13 +135,15 @@ specific commit or tag if the upstream accepts one.
 
 ### 4. `sudo` and the install path
 
-`install.sh` and the base-environment installers add apt repositories and keys
-(`repo.charm.sh` for `gum`; AMD's `repo.radeon.com` via the `amdgpu-install`
-package), install the ROCm stack with `apt`, and build `librocdxg` from source with
-`sudo`. Piping an installer straight into a shell (`curl … | bash`) means that code
-runs without being read first. The toolkit
-supports both, and documents the clone-and-run route as the recommended one. If you
-care about the difference — and you should — read `install.sh` before running it.
+`install.sh` and the base-environment installer add apt repositories and keys
+(`repo.charm.sh` for `gum`; AMD's `stable.repo.amd.com` for ROCm), install the
+ROCm stack with `apt`, and — on the legacy 7.2.x channel only — build `librocdxg`
+from source with `sudo`. The upgrade additionally **purges** the legacy ROCm
+packages, which is the one action that removes software from your system. Piping an
+installer straight into a shell (`curl … | bash`) means that code runs without being
+read first. The toolkit supports both, and documents the clone-and-run route as the
+recommended one. If you care about the difference — and you should — read
+`install.sh` before running it.
 
 ### 5. Servers, ports and network exposure
 
