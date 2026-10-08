@@ -68,7 +68,7 @@ quick_start() {
     3. Come back and choose "Quick start" again
 
   Before starting, make sure Windows has:
-    - AMD Adrenalin driver 26.2.2 or newer
+    - AMD Adrenalin driver 26.10.41.05 or newer
     - The Windows SDK installed
   Both are checked in Settings -> GPU diagnostics.
 EOF
@@ -142,7 +142,7 @@ install_base() {
  • Create an isolated Python environment in ~/genai_env\n\
  • Install the matching AMD PyTorch wheels\n\n\
  Requires on Windows:\n\
- • AMD Adrenalin 26.2.2 or newer\n\
+ • AMD Adrenalin 26.10.41.05 or newer\n\
  • Windows SDK (needed to build ROCDXG)\n\n\
  Takes 10-20 minutes. Afterwards you must restart WSL2.\n\n\
  Run ./upgrade.sh --check to see exactly which versions are current."; then
@@ -182,7 +182,7 @@ install_menu() {
         else
             options+=("repair|Repair / reinstall the base environment")
         fi
-        options+=("upgrade|Upgrade from an older ROCm to 7.2.3 + ROCDXG")
+        options+=("upgrade|Upgrade to the newest ROCm (migrates 7.2.x → 10.x)")
 
         local key name
         for key in $(rocm_ai_all_tool_keys); do
@@ -801,7 +801,7 @@ COMMAND LINE
 REQUIREMENTS
   Windows 11, WSL2 with Ubuntu 22.04 or 24.04
   AMD Radeon RX 7000 or 9000 series, or Ryzen Strix / Strix Halo
-  AMD Adrenalin driver 26.2.2 or newer
+  AMD Adrenalin driver 26.10.41.05 or newer
   Windows SDK (used to build the ROCDXG GPU bridge)
 
 DOCUMENTATION
@@ -893,10 +893,166 @@ check_gum() {
 # ==============================================================================
 # Startup
 # ==============================================================================
+# Demo mode
+# ==============================================================================
+# Render every screen once and exit, without ever blocking on a prompt.
+#
+# Two purposes, both of which need this to be real output rather than mock-ups:
+#
+#   1. screenshots. scripts/utils/capture.py turns this output into the images in
+#      the README, so the pixels come from the same code paths the user runs
+#      rather than from a drawing of what the code is supposed to do.
+#   2. a smoke test that needs no GPU. `./menu.sh --demo` on a machine with no
+#      ROCm at all still exercises the rendering layer and the version
+#      resolvers, which is what CI can run.
+#
+# Menus are printed as their option lists instead of being handed to `choose`,
+# because `choose` waits for a keystroke.
+demo_mode() {
+    # Nothing in a demo may wait for a keypress. gpu_diag's closing read() is the
+    # only interactive part of the screens below, and leaving it in place makes
+    # `./menu.sh --demo` hang under a pty — which is exactly how the screenshots
+    # are captured.
+    export ROCM_AI_NO_PAUSE=1
+
+    printf '\n\033[7m demo: home screen \033[0m\n'
+    render_home
+
+    printf '\n\033[7m demo: main menu \033[0m\n'
+    _demo_menu "What would you like to do?" \
+        "install|Install tools and the base environment" \
+        "launch|Launch a tool" \
+        "perf|Performance" \
+        "shortcuts|Create desktop shortcuts" \
+        "updates|Updates" \
+        "settings|Settings" \
+        "help|Help" \
+        "quit|Quit"
+
+    printf '\n\033[7m demo: install menu \033[0m\n'
+    local -a install_opts=()
+    install_opts+=("base|Base environment — ROCm + PyTorch")
+    install_opts+=("upgrade|Upgrade to the newest ROCm (migrates 7.2.x -> 10.x)")
+    local key name
+    for key in $(rocm_ai_all_tool_keys); do
+        name="$(rocm_ai_tool_name "$key")" || continue
+        if rocm_ai_tool_installed "$key"; then
+            install_opts+=("tool:$key|$name  (installed)")
+        else
+            install_opts+=("tool:$key|$name")
+        fi
+    done
+    install_opts+=("add|Add a third-party tool from any git repository")
+    install_opts+=("back|Back")
+    _demo_menu "Install — what would you like to install?" "${install_opts[@]}"
+
+    printf '\n\033[7m demo: launch menu \033[0m\n'
+    local -a launch_opts=()
+    for key in $(rocm_ai_all_tool_keys); do
+        rocm_ai_tool_installed "$key" || continue
+        name="$(rocm_ai_tool_name "$key")" || continue
+        if tool_running "$key"; then
+            launch_opts+=("$key|$name  (running on $(rocm_ai_tool_effective_port "$key"))")
+        else
+            launch_opts+=("$key|$name  (stopped)")
+        fi
+    done
+    launch_opts+=("stop|Stop all AI servers and free VRAM")
+    launch_opts+=("back|Back")
+    _demo_menu "Launch which tool?" "${launch_opts[@]}"
+
+    printf '\n\033[7m demo: updates \033[0m\n'
+    printf '   %s\n\n' "$(upgrade_status_line)"
+    _demo_menu "Updates" \
+        "all|Upgrade everything (ROCm, PyTorch, tools)" \
+        "check|Check for updates" \
+        "toolkit|Pull the newest toolkit from GitHub" \
+        "one|Update a single tool" \
+        "back|Back"
+
+    printf '\n\033[7m demo: settings \033[0m\n'
+    _demo_menu "Settings" \
+        "ports|Change tool ports" \
+        "sleep|Idle hibernation" \
+        "gfx|GPU architecture override" \
+        "edit|Edit user.env by hand" \
+        "diag|GPU diagnostics" \
+        "paths|Where things live" \
+        "back|Back"
+
+    printf '\n\033[7m demo: resolved environment \033[0m\n'
+    printf '   %-26s %s\n' "install kind"      "$(va_install_kind 2>/dev/null || echo unknown)"
+    printf '   %-26s %s\n' "ROCm"              "$(va_rocm_installed 2>/dev/null || echo none)"
+    printf '   %-26s %s\n' "newest available"  "$(va_latest_rocm 2>/dev/null || echo unknown)"
+    printf '   %-26s %s\n' "architecture"      "gfx${AMDROCM_DEVICE_TARGET#gfx}"
+    printf '   %-26s %s\n' "PyTorch"           "$(va_torch_installed 2>/dev/null || echo none)"
+    printf '   %-26s %s\n' "python tag"        "$(va_python_tag 2>/dev/null || echo unknown)"
+    printf '   %-26s %s\n' "wheel index"       "${ROCM_AI_WHL_INDEX:-legacy channel}"
+    # The Windows driver is read directly rather than via the update script,
+    # which menu.sh does not source. ROCm 10.x needs Adrenalin 26.10.41.05,
+    # which ships as this Windows driver version.
+    local wdrv="unknown"
+    if command -v powershell.exe >/dev/null 2>&1; then
+        wdrv="$(powershell.exe -NoProfile -Command \
+            "(Get-CimInstance Win32_VideoController | Select-Object -First 1 -ExpandProperty DriverVersion)" \
+            2>/dev/null | tr -d '\r')"
+        [ -z "$wdrv" ] && wdrv="unknown"
+    fi
+    printf '   %-26s %s\n' "Windows driver"   "$wdrv"
+    printf '\n'
+
+    printf '\n\033[7m demo: gpu diagnostics \033[0m\n'
+    if declare -f run_gpu_diag >/dev/null 2>&1; then
+        run_gpu_diag || true
+    else
+        printf '   (gpu_diag.sh not loaded)\n'
+    fi
+    printf '\n'
+}
+
+# Print a menu's options instead of waiting for a selection.
+_demo_menu() {
+    local header="$1"; shift
+    local -a entries=("$@")
+    local i=1 entry
+    printf '\n   %s\n' "$header" >&2
+    printf '   %s\n' "$(printf -- '-%.0s' $(seq 1 62))" >&2
+    for entry in "${entries[@]}"; do
+        printf '   %2d) %s\n' "$i" "$(_rocm_ai_label_of "$entry")" >&2
+        i=$((i + 1))
+    done
+    printf '   %s\n\n' "$(printf -- '-%.0s' $(seq 1 62))" >&2
+}
+
+# ==============================================================================
 # Only run any of the below when menu.sh is executed directly. Sourcing it (as
 # tests and other front-ends do) loads the libraries without launching a menu
 # and without blocking on a prompt.
+# ==============================================================================
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    case "${1:-}" in
+        --demo)
+            shift
+            demo_mode
+            exit 0
+            ;;
+        -h|--help)
+            cat <<'USAGE'
+ROCm WSL2 AI Toolkit
+
+  ./menu.sh            interactive menu
+  ./menu.sh --demo     render every screen once and exit (no prompts)
+  ./menu.sh --help     this text
+
+Upgrade:
+  ./upgrade.sh --check              show what would change
+  ./upgrade.sh --target core        move to ROCm 10.x (default)
+  ./upgrade.sh --target legacy      stay on the ROCm 7.2.x channel
+USAGE
+            exit 0
+            ;;
+    esac
+
     check_gum
 
     # One-time welcome, only on a genuinely fresh install.

@@ -251,10 +251,10 @@ render_home() {
 
     printf '\n'
     if _rocm_ai_have_gum; then
-        gum style --border double --margin "0 2" --padding "0 2" --border-foreground 212 \
-            --align center \
-            "$(gum style --bold --foreground 212 "ROCm WSL2 AI Toolkit  v${ROCM_AI_VERSION}")" \
-            "$(gum style --foreground 240 "high-performance AMD AI on Windows, without the setup pain")"
+        gum style --border double --margin "0 2" --padding "0 2" \
+            --border-foreground "$_GUM_ACCENT_HEX" --align center \
+            "$(gum style --bold --foreground "$_GUM_ACCENT_HEX" "ROCm WSL2 AI Toolkit  v${ROCM_AI_VERSION}")" \
+            "$(gum style --foreground "$_GUM_MUTED_HEX" "AMD GPU AI on Windows, without the setup pain")"
     else
         printf '%b============================================================%b\n' "$MAGENTA" "$NC"
         printf '   ROCm WSL2 AI Toolkit  v%s\n' "$ROCM_AI_VERSION"
@@ -262,9 +262,11 @@ render_home() {
     fi
     printf '\n'
 
-    printf '   %bGPU%b        %s\n' "$BOLD" "$NC" "$(gpu_summary)"
-    printf '   %bEngine%b     %b%s%b\n' "$BOLD" "$NC" "$_C_DIM" "$(engine_summary)" "$_C_RESET"
-    printf '   %bTuning%b     %s\n' "$BOLD" "$NC" "$(perf_profile_label)"
+    # One aligned column for every key/value row, so the values line up instead
+    # of starting wherever each label happened to end.
+    printf '   %bGPU%b        %s\n'       "$BOLD" "$NC" "$(gpu_summary)"
+    printf '   %bEngine%b     %b%s%b\n'   "$BOLD" "$NC" "$_C_DIM" "$(engine_summary)" "$_C_RESET"
+    printf '   %bTuning%b     %s\n'       "$BOLD" "$NC" "$(perf_profile_label)"
     printf '   %bTools%b      %s installed\n' "$BOLD" "$NC" "$installed"
     printf '\n'
 
@@ -274,6 +276,8 @@ render_home() {
         printf '\n'
     fi
 
+    # The next step is the most actionable line on the screen, so it is the one
+    # thing in accent colour.
     printf '   %bNext step%b  %b%s%b\n' "$BOLD" "$NC" "$_C_ACC" "$(recommended_next_step)" "$_C_RESET"
     printf '\n'
 }
