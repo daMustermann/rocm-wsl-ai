@@ -188,8 +188,24 @@ va_torch_hip_version() {
     "$py" -c 'import torch; print(torch.version.hip or "")' 2>/dev/null
 }
 
+# shellcheck disable=SC2120  # args come from setup_pytorch_rocm.sh, menu.sh, upgrade.sh
 va_python_tag() {
     # cp310 / cp312 — must match the interpreter that will run PyTorch.
+    #
+    # The argument is optional and defaults to python3, but callers pass an
+    # explicit interpreter everywhere it matters, because the tag has to match
+    # the interpreter that will import PyTorch rather than whatever happens to
+    # be first on PATH:
+    #     va_python_tag "$PYTHON_BIN"      # setup_pytorch_rocm.sh
+    #     va_python_tag "$VENV_PY"         # upgrade.sh
+    #     va_python_tag "$(command -v python3)"   # update_ai_setup.sh
+    #
+    # The "references arguments but none are ever passed" warning fires on
+    # ShellCheck 0.8-0.9 because those callers live in other files and it
+    # analyses one file at a time. 0.10+ suppresses it when the parameter has a
+    # default, which is why CI (0.9) and a current local binary disagree.
+    # Disabled here rather than in the CI -e list, so that a genuinely
+    # argument-less function elsewhere in the tree still fails the build.
     local py="${1:-python3}"
     "$py" -c 'import sys; print("cp%d%d" % sys.version_info[:2])' 2>/dev/null
 }
@@ -538,6 +554,10 @@ va_latest_librocdxg() {
 }
 
 # Newest legacy ROCm release that has an apt repository for this Ubuntu release.
+#
+# SC2120 for the same cross-file reason as va_python_tag: upgrade.sh passes
+# "$CODENAME" explicitly, while the only call inside this file takes none.
+# shellcheck disable=SC2120
 va_latest_legacy_rocm() {
     local codename="${1:-$(va_ubuntu_codename)}"
     local cache_key="latest_rocm_${codename}"

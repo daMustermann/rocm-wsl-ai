@@ -98,6 +98,16 @@ jobs:
       #            functions by name so that `bash -c` children can use them.
       #            ShellCheck cannot see through the indirection; the code is
       #            correct bash.
+      #
+      # SC2120 ("references arguments, but none are ever passed") is
+      # deliberately NOT on this list. It does fire on shellcheck 0.9.0, at two
+      # functions in lib/version.sh whose arguments are supplied by callers in
+      # other files — invisible when one file is analysed at a time. Excluding
+      # it globally would also hide the real version of this bug: a function
+      # that is meant to take an argument but is never called with one, which
+      # is a silent logic error. Both sites carry a targeted
+      # `# shellcheck disable=SC2120` plus the reason in place, so the code
+      # stays enforced everywhere else in the tree.
       - name: Lint every shell script
         run: |
           set -uo pipefail
