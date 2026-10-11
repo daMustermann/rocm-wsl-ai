@@ -2,6 +2,70 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.1] - 2026-10-11
+
+Fixes a packaging mistake in 5.0.0 that broke every tool importing
+torchvision - ComfyUI among them.
+
+### Fixed
+
+- **torchvision was installed unpaired with torch.** The installer passed
+  `torch`, `torchvision` and `torchaudio` to one `pip install`, letting pip
+  resolve each to its newest stable build independently. They are an ABI-locked
+  family, not independent packages: torchvision declares only
+  `Requires-Dist: torch` with no version bound, so pip pairs *any* two of them
+  and reports success. On ROCm 10.1.0 that produced torch 2.14.0 with
+  torchvision 0.28.0, which is the pairing for torch 2.13.
+
+  The versions look correct side by side, and nothing warns about them. The
+  failure only appears when the extension is loaded:
+
+  ```
+  RuntimeError: operator torchvision::nms does not exist
+  ```
+
+  torch 2.14 changed the signature of `c10::cuda::c10_cuda_check_implementation`
+  from five parameters to six, so torchvision 0.28's `_C.so` has a symbol the
+  installed torch does not export. The error names neither package nor the
+  version skew, which is why it is worth spelling out here.
+
+- **torch and torchvision are now installed in two steps.** torch goes in
+  first, then the resolver reads back the version that actually landed and
+  looks up the torchvision built for it (`va_torchvision_spec`). On this index
+  the match for torch 2.14 is `0.29.0a0`, a *pre-release*, which pip will not
+  choose on its own - so the installer passes `--pre` for that package alone
+  and says so. When AMD publishes a stable build, the same code picks it up
+  without a change.
+- **`gpu_diag.sh` reports the mismatch** as its own row, because the symptom
+  points nowhere near the cause.
+- **Both install paths verified afterwards.** Importing torchvision is not the
+  test - it fails *during* registration - so the check asserts the compiled op
+  is actually registered.
+
+### Maintenance
+
+- A CI guard now rejects any `pip install` naming both torch and torchvision, in
+  either the installer or `upgrade.sh`. It is continuation-aware and
+  case-insensitive after the first version of it passed CI while the very bug
+  it guards against sat in the tree; it is negative-tested by reintroducing the
+  5.0.0 shape. Legacy-channel installs name explicit wheel files from one
+  `rocm-rel-X.Y.Z` directory and are exempt, since they cannot drift.
+- A second guard fails if the torch-to-torchvision series mapping in
+  `va_torchvision_spec` is ever changed, so that a deliberate edit forces a
+  re-check against AMD's index.
+
+### If you are on 5.0.0
+
+Nothing else needs doing:
+
+```bash
+cd ~/rocm-wsl-ai && git pull
+./menu.sh -> Settings -> GPU Diagnostics
+```
+
+If the torchvision row reports a mismatch, see
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#torchvision-does-not-match-torch).
+
 ## [5.0.0] - 2026-10-08
 
 Moves the toolkit to **ROCm 10.1**, which is not a version bump but a different

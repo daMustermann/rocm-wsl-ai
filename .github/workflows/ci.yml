@@ -316,6 +316,65 @@ jobs:
           check '26\.2\.2' \
                 "The old 26.2.2 driver floor has reappeared. ROCm 10.x needs 26.10.41.05 — see scripts/utils/update_ai_setup.sh."
 
+          # torch and torchvision must never be resolved in the same pip
+          # command. torchvision declares only `Requires-Dist: torch` with no
+          # version bound, so pip pairs any two of them and reports success;
+          # when they do not actually match, torchvision's compiled extension
+          # fails to load and every tool that imports it dies with
+          # "operator torchvision::nms does not exist". That shipped broken in
+          # 5.0.0, so it is worth a build failure rather than a code review
+          # comment. Install torch first, then resolve the matching
+          # torchvision with va_torchvision_spec.
+          paired="$(
+            # Continuation-aware: the package list lives on the backslash-joined
+            # lines after `pip install`, so matching one physical line at a time
+            # finds nothing. A plain grep here passed CI while the 5.0.0 bug sat
+            # in the tree, which is worse than no guard at all.
+            mapfile -t shell_files < <(
+              find lib scripts -name '*.sh' -type f | sort
+              printf '%s\n' install.sh menu.sh upgrade.sh
+            )
+            awk '
+              FNR == 1 { buf = "" }
+              {
+                line = $0
+                sub(/^[ \t]+/, "", line)
+                if (line ~ /^#/) next          # a comment cannot install anything
+                buf = buf " " line
+                if (line !~ /\\[ \t]*$/) {
+                  # tolower(): the package almost always arrives as
+                  # $PIP_SPEC_TORCHVISION, and a case-sensitive match silently
+                  # passed while the bug it guards against was in the tree.
+                  if (buf ~ /pip[ \t]+install/ && tolower(buf) ~ /torchvision/) {
+                  # Legacy-channel installs name explicit wheel *files*
+                  # ($TORCH_WHEEL, $TORCHVISION_WHEEL). Those all come out of a
+                  # single rocm-rel-X.Y.Z directory via va_resolve_torch_wheels,
+                  # so they are matched by construction and cannot drift. The
+                  # bug being guarded against needs pip to choose two packages
+                  # independently, which only happens when they are named as
+                  # resolvable specs.
+                  if (buf ~ /WHEEL/) next
+                  printf "%s:%d:%s\n", FILENAME, FNR, buf
+                  }
+                  buf = ""
+                }
+              }
+            ' "${shell_files[@]}" 2>/dev/null || true
+          )"
+          if [ -n "$paired" ]; then
+            echo "::error::torch and torchvision are installed in one pip command. They are an ABI-locked pair and pip will pair the wrong ones silently. Install torch first, then torchvision via va_torchvision_spec."
+            echo "$paired" | sed 's/^/  /'
+            rc=1
+          fi
+
+          # The pairing offset is the load-bearing constant in
+          # va_torchvision_spec. If PyTorch ever changes how it numbers
+          # torchvision, this is where it should fail.
+          if ! grep -qE 'tv_series="0\.\$\(\(torch_minor \+ 15\)\)"' lib/version.sh; then
+            echo "::error::the torch->torchvision series mapping in va_torchvision_spec has changed. Re-check the pairing against the AMD index before trusting it."
+            rc=1
+          fi
+
           if [ "$rc" -eq 0 ]; then
             echo "no-pinned-versions: upstream endpoints and versions are discovered, not pinned"
           fi

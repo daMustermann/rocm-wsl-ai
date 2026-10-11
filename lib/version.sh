@@ -435,6 +435,83 @@ va_latest_torch() {
     printf '%s' "$best"
 }
 
+# ---- torchvision must match torch, and nothing else enforces that -----------
+#
+# torchvision's wheel declares a bare `Requires-Dist: torch` with no version
+# bound, so pip will happily install a torchvision built against a different
+# torch than the one next to it. When it does, the compiled extension fails to
+# load and every downstream tool dies with the misleading
+#
+#     RuntimeError: operator torchvision::nms does not exist
+#
+# which names neither torchvision nor the version skew. The pairing is a hard
+# ABI contract: torch 2.14 changed the signature of
+# c10::cuda::c10_cuda_check_implementation from five parameters to six, and a
+# torchvision compiled against the old one has an unresolvable symbol.
+#
+# PyTorch ships them in lockstep, and the offset has been constant for years:
+#   torch 2.10 -> torchvision 0.25     torch 2.13 -> torchvision 0.28
+#   torch 2.11 -> torchvision 0.26     torch 2.14 -> torchvision 0.29
+#   torch 2.12 -> torchvision 0.27
+#
+# so the series is derived rather than tabulated. The derived series is then
+# looked up on the index, which is what actually decides the answer: AMD has
+# shipped the matching torchvision only as a pre-release (0.29.0a0) while torch
+# 2.14.0 was stable, so an unconstrained resolve installs a stable, mismatched
+# torchvision and silently breaks every tool that imports it.
+#
+# Because a pre-release may be the only compatible build, the returned spec is
+# flagged so the caller can pass --pre for this package alone. Passing --pre to
+# the whole install would also make pip consider alpha torch builds.
+#
+#   va_torchvision_spec <device> <torch_version> [pytag] [series]
+#   prints "torchvision[device-gfx1100]==0.29.0a0+rocm10.1.0 pre"
+#   ...or nothing, when no matching build can be found.
+va_torchvision_spec() {
+    local device="$1" torch_ver="$2" pytag="${3:-$(va_python_tag)}" series="${4:-}"
+    local torch_minor tv_series cache_key
+
+    # 2.14 -> 14 -> 0.29
+    torch_minor="$(printf '%s' "$torch_ver" | sed -nE 's/^[0-9]+\.([0-9]+)\..*/\1/p')"
+    [ -n "$torch_minor" ] || return 1
+    tv_series="0.$((torch_minor + 15))"
+
+    cache_key="torchvision_spec_${device}_${torch_ver}_${pytag}_${series:-any}"
+
+    local cached
+    if cached="$(va_cache_get "$cache_key")" && [ -n "$cached" ]; then
+        printf '%s' "$cached"
+        return 0
+    fi
+
+    local html decoded best="" rocmpat='rocm[0-9]+\.[0-9]+\.[0-9]+'
+    html="$(_va_curl "${ROCM_AI_WHL_INDEX}torchvision/")" || html=""
+    if [ -n "$html" ]; then
+        decoded="$(printf '%s' "$html" | sed -e 's/%2B/+/g' -e 's/&amp;/\&/g')"
+        [ -n "$series" ] && rocmpat="rocm${series//./\\.}\.[0-9]+"
+
+        # A pre-release suffix (a0, b1, rc2) is deliberately allowed: on this
+        # index it is the only build that matches the chosen torch.
+        best="$(printf '%s' "$decoded" \
+            | grep -oE "torchvision-${tv_series}\.[0-9]+([a-z]+[0-9]+)?\+${rocmpat}-${pytag}-${pytag}-linux_x86_64\.whl" \
+            | grep -oE "^torchvision-${tv_series}\.[0-9]+([a-z]+[0-9]+)?\+${rocmpat}" \
+            | sed 's/^torchvision-//' | sort -uV | tail -1)"
+    fi
+
+    [ -z "$best" ] && return 1
+
+    # Only the numeric part can carry a pre-release suffix. Testing the whole
+    # string would also match the "+rocm10.1.0" local version, which is always
+    # present, and every build would then be flagged as pre-release.
+    local spec="torchvision[device-${device}]==${best}"
+case "${best%%+*}" in
+    *[a-z]*) spec="$spec pre" ;;
+esac
+
+    va_cache_put "$cache_key" "$spec"
+    printf '%s' "$spec"
+}
+
 # Confirm a series actually has torch wheels for this interpreter, and report the
 # newest torch for it. Prints "<series> <torch>" or fails.
 #

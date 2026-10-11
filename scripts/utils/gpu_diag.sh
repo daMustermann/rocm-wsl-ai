@@ -287,6 +287,51 @@ print(f'{ver}|{avail}|{gpu}')
         _diag_row "kohya_env (training venv)"     info "Not installed (kohya_ss is optional)"
     fi
 
+    # ── torchvision / torch ABI match ─────────────────────────────────────────
+    # Worth its own row because the symptom it causes is badly misattributed.
+    # A torchvision built against a different torch installs cleanly and then
+    # fails inside every tool that imports it with
+    #     RuntimeError: operator torchvision::nms does not exist
+    # which names neither package nor the version skew, so users end up
+    # reinstalling ComfyUI, or blaming ROCm, instead of reinstalling
+    # torchvision. See va_torchvision_spec in lib/version.sh.
+    if [ -f "$genai_venv/bin/activate" ]; then
+        local tv_result
+        tv_result=$(
+            # shellcheck disable=SC1090
+            source "$genai_venv/bin/activate" 2>/dev/null
+            HSA_ENABLE_DXG_DETECTION=1 \
+            python3 -c "
+import importlib, sys
+try:
+    import torch
+except Exception:
+    print('notorch||'); raise SystemExit(0)
+tv_ver = 'none'
+try:
+    tv_ver = importlib.import_module('torchvision').__version__
+except Exception:
+    pass
+# Importing torchvision is not the test: it fails during registration, so the
+# compiled op is what has to be present.
+live = hasattr(torch.ops.torchvision, 'nms')
+print(f'{torch.__version__}|{tv_ver}|{live}')
+" 2>/dev/null || echo "error||False"
+        )
+
+        local tv_torch tv_ver tv_live
+        IFS='|' read -r tv_torch tv_ver tv_live <<< "$tv_result"
+
+        if [ "$tv_ver" = "none" ] || [ -z "$tv_ver" ]; then
+            _diag_row "torchvision"                info "Not installed (only needed by some tools)"
+        elif [ "$tv_live" != "True" ]; then
+            _diag_row "torchvision"                fail "v${tv_ver} does not match torch ${tv_torch%%+*} — compiled extension failed to load"
+            _diag_row "  → fix"                    info "Tools importing it (ComfyUI) will crash with 'operator torchvision::nms does not exist'"
+        else
+            _diag_row "torchvision"                ok   "v${tv_ver} — matches torch ${tv_torch%%+*}"
+        fi
+    fi
+
     # ── User Settings ────────────────────────────────────────────────────────
     _diag_section "User Settings"
 

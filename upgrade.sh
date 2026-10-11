@@ -994,14 +994,60 @@ rebuild_environment() {
     pip uninstall -y torch torchvision torchaudio triton triton-kernels 2>/dev/null || true
 
     log "Installing from ${PIP_INDEX} (this takes a few minutes)"
+    # torch first, torchvision second and matched to what actually landed:
+    # torchvision declares only `Requires-Dist: torch` with no version bound,
+    # so pip pairs any two of them and reports success. A mismatched pair
+    # installs cleanly and then fails at import time with "operator
+    # torchvision::nms does not exist", which names neither package nor the
+    # version skew. See va_torchvision_spec in lib/version.sh.
     if ! pip install --index-url "$PIP_INDEX" \
-            "$PIP_SPEC_ROCM" "$PIP_SPEC_TORCH" \
-            "$PIP_SPEC_TORCHVISION" "$PIP_SPEC_TORCHAUDIO"; then
+            "$PIP_SPEC_ROCM" "$PIP_SPEC_TORCH" "$PIP_SPEC_TORCHAUDIO"; then
         err "PyTorch installation failed."
         err "If this is a device-extra problem, 'torch[device-all]' usually works:"
         err "    pip install --index-url ${PIP_INDEX} 'rocm[libraries,device-all]' 'torch[device-all]'"
         [ -n "$backup" ] && err "Previous environment preserved at $backup"
         return 1
+    fi
+
+    install_torchvision_for_installed_torch() {
+        local got release series tv_spec needs_pre=""
+        got="$(python -c 'import torch; print(torch.__version__)' 2>/dev/null || true)"
+        release="${got%%+*}"
+        series="${got##*+rocm}"; series="${series%%.*}"
+        [ -n "$release" ] || return 1
+
+        tv_spec="$(va_torchvision_spec "$DEVICE_TARGET" "$release" \
+                  "$PYTHON_TAG" "${series:-$ROCM_SERIES}" 2>/dev/null || true)"
+        [ -n "$tv_spec" ] || return 1
+
+        case "$tv_spec" in
+            *" pre") needs_pre="--pre"; tv_spec="${tv_spec% pre}" ;;
+        esac
+        case "$tv_spec" in
+            *a[0-9]*|*b[0-9]*|*rc[0-9]*)
+                warn "torchvision for torch ${release} is a pre-release (${tv_spec})."
+                warn "  AMD publishes no stable torchvision for this torch yet;"
+                warn "  an older stable one would be ABI-incompatible."
+                ;;
+        esac
+
+        log "       torchvision matched to torch ${release}: ${tv_spec}"
+        pip install --index-url "$PIP_INDEX" $needs_pre "$tv_spec" || return 1
+
+        # Importing torchvision is not the test: it fails *during* registration,
+        # so check that the compiled op is actually there.
+        if python -c 'import torch, torchvision, sys; sys.exit(0 if hasattr(torch.ops.torchvision, "nms") else 1)' 2>/dev/null; then
+            printf '       torchvision %s loaded and matches torch\n' \
+                "$(python -c 'import torchvision; print(torchvision.__version__)' 2>/dev/null)"
+        else
+            warn "torchvision installed but its C extension did not load."
+            warn "Tools that import it will fail — see docs/TROUBLESHOOTING.md"
+        fi
+    }
+
+    if ! install_torchvision_for_installed_torch; then
+        warn "No torchvision build matching the installed torch was found; skipped."
+        warn "Tools that import torchvision will not work until AMD publishes one."
     fi
 
     pip install --no-cache-dir sageattention >/dev/null 2>&1 \

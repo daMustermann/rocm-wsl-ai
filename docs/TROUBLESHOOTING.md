@@ -169,6 +169,72 @@ pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ \
 Note that the `==x.y.z` pin belongs on `rocm`, never on `torch` — ROCm's version
 number is not PyTorch's.
 
+### torchvision does not match torch
+
+Symptoms: ComfyUI (or any other tool that imports torchvision) dies during
+startup with
+
+```
+RuntimeError: operator torchvision::nms does not exist
+```
+
+followed by a traceback through `torchvision/_meta_registrations.py`. The message
+is misleading: nothing is wrong with `nms`, and nothing is wrong with ROCm.
+torchvision's compiled extension failed to load.
+
+**What happened.** torchvision's wheel declares `Requires-Dist: torch` with *no
+version bound*, so pip will install any torchvision next to any torch and report
+success. They are in fact an ABI-locked pair — torch 2.14 changed the signature
+of `c10::cuda::c10_cuda_check_implementation` from five parameters to six, so a
+torchvision compiled against torch 2.13 has a symbol the installed torch does not
+export. The versions look plausible side by side, which is why this is easy to
+miss:
+
+```
+torch       2.14.0+rocm10.1.0
+torchvision 0.28.0+rocm10.1.0     <- built for torch 2.13
+```
+
+**Confirm it:**
+
+```bash
+./scripts/utils/gpu_diag.sh | grep -i torchvision
+```
+
+A mismatched pair reports `does not match torch`, with the fix below.
+
+**Fix it.** Install the torchvision that was built for your torch. On ROCm
+10.1.0 that is currently a pre-release, which is why an unconstrained install
+picks the wrong one:
+
+```bash
+source ~/genai_env/bin/activate
+pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ --pre \
+    'torchvision[device-gfx1100]==0.29.0a0+rocm10.1.0'    # your gfx, and 0.29 <-> torch 2.14
+```
+
+Verify — importing torchvision is *not* enough, because it fails during
+registration. The compiled op has to be there:
+
+```bash
+python -c 'import torch, torchvision, sys; sys.exit(0 if hasattr(torch.ops.torchvision,"nms") else 1)' \
+  && echo OK
+```
+
+The pairing is a fixed relationship, not a coincidence:
+
+| torch | torchvision |
+| --- | --- |
+| 2.10 | 0.25 |
+| 2.11 | 0.26 |
+| 2.12 | 0.27 |
+| 2.13 | 0.28 |
+| 2.14 | 0.29 |
+
+Toolkit 5.0.1 and later do this automatically — torch is installed first, then
+the matching torchvision is resolved against what actually landed. If you are on
+5.0.0, either upgrade or apply the command above.
+
 ### `Unsupported Ubuntu version`
 
 Ubuntu 22.04 (`jammy`), 24.04 (`noble`) and 26.04 (`resolute`) are supported,

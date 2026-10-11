@@ -305,21 +305,83 @@ pip uninstall -y torch torchvision torchaudio triton triton-kernels 2>/dev/null 
 log "Installing from ${PIP_INDEX}"
 log "  ${PIP_SPEC_ROCM}"
 log "  ${PIP_SPEC_TORCH}"
-log "  ${PIP_SPEC_TORCHVISION}"
 log "  ${PIP_SPEC_TORCHAUDIO}"
 printf '\n'
 
-# pip resolves the device extras itself, including the amd-torch-device-* wheels
-# that carry the GPU-specific kernels. No wheel is downloaded by hand.
+# torch and rocm go in first. torchvision is installed separately below, because
+# it has to be matched to whatever torch actually landed - see the comment
+# there. pip resolves the device extras itself, including the amd-torch-device-*
+# wheels that carry the GPU-specific kernels. No wheel is downloaded by hand.
 if ! pip install --index-url "$PIP_INDEX" \
         "$PIP_SPEC_ROCM" \
         "$PIP_SPEC_TORCH" \
-        "$PIP_SPEC_TORCHVISION" \
         "$PIP_SPEC_TORCHAUDIO"; then
     err "PyTorch installation failed."
     err "Most often this means the device extra does not exist for this GPU."
     err "Try:  pip install --index-url ${PIP_INDEX} 'torch[device-all]'"
     exit 1
+fi
+
+# ---- torchvision, matched to the installed torch -----------------------------
+#
+# torchvision cannot be installed in the same command as torch, because the
+# wheel declares only `Requires-Dist: torch` with no version bound. pip will
+# therefore pair any torchvision with any torch and report success. When the
+# two do not actually match, torchvision's compiled extension fails to load
+# against the installed torch and every tool that imports it — ComfyUI included
+# — dies with "operator torchvision::nms does not exist", which names neither
+# package nor the version skew.
+#
+# So: read back the torch that is really installed, ask the resolver which
+# torchvision was built for it, and install exactly that.
+installed_torch="$("$HOME/$VENV_NAME/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null || true)"
+torch_release="${installed_torch%%+*}"
+torch_series_local="${installed_torch##*+rocm}"
+torch_series_local="${torch_series_local%%.*}"
+[ -n "$torch_release" ] || torch_release="${TORCH_VERSION:-}"
+[ -n "$torch_series_local" ] || torch_series_local="${ROCM_SERIES:-}"
+
+tv_spec="$(va_torchvision_spec "$DEVICE_TARGET" "$torch_release" "$PYTHON_TAG" "$torch_series_local" 2>/dev/null || true)"
+
+if [ -n "$tv_spec" ]; then
+    tv_needs_pre=""
+    case "$tv_spec" in
+        *" pre") tv_needs_pre="--pre"; tv_spec="${tv_spec% pre}" ;;
+    esac
+
+    case "$tv_spec" in
+        *a[0-9]*|*b[0-9]*|*rc[0-9]*)
+            warn "torchvision matched to torch ${torch_release} is a pre-release."
+            warn "  ${tv_spec}"
+            warn "  AMD had not published a stable build for this torch yet;"
+            warn "  an older stable torchvision would be ABI-incompatible and"
+            warn "  would break every tool that imports torchvision."
+            ;;
+    esac
+
+    log "Installing torchvision matched to torch ${torch_release}"
+    log "  ${tv_spec}"
+    if ! pip install --index-url "$PIP_INDEX" $tv_needs_pre "$tv_spec"; then
+        err "Could not install the torchvision build matching torch ${torch_release}."
+        err "See docs/TROUBLESHOOTING.md -> 'torchvision does not match torch'"
+        exit 1
+    fi
+else
+    # Deliberately not fatal: a mismatched torchvision is worse than none, but
+    # a machine with no torchvision at all still runs tools that do not need it.
+    warn "No torchvision build matching torch ${torch_release} was found on the index."
+    warn "Skipping it. Tools that import torchvision will not work until AMD"
+    warn "publishes one. See docs/TROUBLESHOOTING.md"
+fi
+
+# Verify the extension actually loaded. Importing torchvision succeeds far
+# enough to look fine and then fails during registration, so "it imported" is
+# not the test - the compiled op has to be present.
+if "$HOME/$VENV_NAME/bin/python" -c 'import torch, torchvision, sys; sys.exit(0 if hasattr(torch.ops.torchvision, "nms") else 1)' 2>/dev/null; then
+    success "torchvision $("$HOME/$VENV_NAME/bin/python" -c 'import torchvision; print(torchvision.__version__)' 2>/dev/null) loaded and matches torch"
+else
+    warn "torchvision is installed but its C extension did not load."
+    warn "Tools that import it (ComfyUI, A1111) will fail. See docs/TROUBLESHOOTING.md"
 fi
 
 pip install --quiet sageattention 2>/dev/null \
