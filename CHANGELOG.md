@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.3] - 2026-10-11
+
+### Added
+
+- `scripts/utils/comfy_args.sh` toggles ComfyUI's extra flags in `user.env`:
+  `lowvram`, `reserve`, `off`, `show`. Editing the file by hand means either
+  appending a second `COMFYUI_EXTRA_ARGS` line or sed-ing the old one out, and
+  getting it wrong leaves a file the toolkit will happily source. This replaces
+  the line in place and is idempotent, so it can be run before and after a big
+  model without thinking about it.
+
+  These flags are deliberately *not* a default. `--lowvram` is what makes a
+  17 GB workflow fit in 24 GB, and applying it to everyone would slow down every
+  smaller model on a card that has plenty of room for them.
+
 ## [5.0.2] - 2026-10-11
 
 No functional change. The launcher now says something when a tool runs out of

@@ -309,6 +309,19 @@ which is why it is not the default. A 24 GB card is fast for everything except
 models this size, and forcing it on everyone was a mistake this toolkit made
 once already (see the note in `scripts/start/comfyui.sh`).
 
+Only the big models need this, so toggle it per job rather than leaving it on
+for everything. There is a helper that edits `user.env` safely — it replaces
+the existing line rather than appending a second one:
+
+```bash
+./scripts/utils/comfy_args.sh lowvram    # set --lowvram
+./scripts/utils/comfy_args.sh reserve    # set --reserve-vram 1.5
+./scripts/utils/comfy_args.sh off        # remove it again
+./scripts/utils/comfy_args.sh show       # what is set now
+```
+
+Restart ComfyUI after changing it.
+
 If you would rather keep the speed and only avoid the hard failure:
 
 ```bash

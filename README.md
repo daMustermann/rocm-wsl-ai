@@ -5,7 +5,7 @@
 **Run Stable Diffusion, ComfyUI and local LLMs on an AMD Radeon GPU under WSL2 — measured, not guessed.**
 
 [![CI](https://github.com/daMustermann/rocm-wsl-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/daMustermann/rocm-wsl-ai/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v5.0.2-ff87d7)](https://github.com/daMustermann/rocm-wsl-ai/releases)
+[![Release](https://img.shields.io/badge/release-v5.0.3-ff87d7)](https://github.com/daMustermann/rocm-wsl-ai/releases)
 [![ROCm](https://img.shields.io/badge/ROCm-10.1-ff5f5f)](https://rocm.docs.amd.com/en/docs-10.1.0/)
 [![License](https://img.shields.io/badge/license-MIT-5fff87)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-WSL2%20%2B%20RDNA3%2F4-c8c8c8)](https://learn.microsoft.com/en-us/windows/wsl/install)
