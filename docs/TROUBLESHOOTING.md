@@ -268,6 +268,70 @@ The shortcut uses `$WSL_DISTRO_NAME` to target your distro. Confirm it inside WS
 echo "$WSL_DISTRO_NAME"
 ```
 
+### ComfyUI runs out of memory
+
+The generation fails but **ComfyUI keeps running**, and the log shows:
+
+```
+[ERROR] !!! Exception during processing !!! CUDA error: out of memory
+torch.AcceleratorError: CUDA error: out of memory   (hipErrorOutOfMemory)
+[ERROR] Got an OOM, unloading all loaded models.
+```
+
+This is not a packaging problem and not a broken ROCm install. It means the
+workflow did not fit. From the toolkit 5.0.1 launcher on, this prints a hint
+inline instead of leaving you to find it in a log file.
+
+**What is going on.** ComfyUI reports the staged weights, then has to fit the
+sampler on top:
+
+```
+Model Flux2 prepared for dynamic VRAM loading. 17316MB Staged.
+```
+
+17.3 GB of weights on a 24 GB card leaves roughly 6.6 GB for activations,
+latents and the sampler's fp32 noise tensor. On a large resolution that is not
+enough. The memory summary printed after the error can look contradictory —
+"Active 4323 MiB" — because with async weight offloading the weights live in
+pinned *host* memory and stream in on demand, so torch's device-side accounting
+does not show them. Trust `Total VRAM` and the staged size, not that number.
+
+**Fix: give it more room.** Restart ComfyUI with headroom, via
+**Settings → User Environment**:
+
+```bash
+COMFYUI_EXTRA_ARGS="--lowvram"
+```
+
+`--lowvram` splits the model into per-block chunks that load and free around
+each sampling step. It will not run out of memory, and it costs some speed —
+which is why it is not the default. A 24 GB card is fast for everything except
+models this size, and forcing it on everyone was a mistake this toolkit made
+once already (see the note in `scripts/start/comfyui.sh`).
+
+If you would rather keep the speed and only avoid the hard failure:
+
+```bash
+COMFYUI_EXTRA_ARGS="--reserve-vram 1.5"
+```
+
+That keeps `NORMAL_VRAM` but reserves 1.5 GB, so ComfyUI offloads instead of
+dying. Verified on this hardware: `--lowvram` reports `Set vram state to:
+LOW_VRAM`, `--reserve-vram` leaves it at `NORMAL_VRAM`.
+
+Other levers, in rough order of how much they cost:
+
+| Flag | Effect |
+| --- | --- |
+| `--lowvram` | Biggest effect. Slower. |
+| `--reserve-vram 1.5` | Keeps speed, avoids the crash, may still fail on bigger jobs. |
+| `--cache-none` | Do not hold outputs and latents in VRAM. |
+| `--disable-pinned-memory` | Stops the 22.9 GB of pinned host memory this reports on a 30 GB machine. |
+
+If a specific workflow keeps failing at the same settings, the model is simply
+too large for the card in fp8 — quantising further or using a smaller
+distillation is a better answer than any flag.
+
 ### "Port already in use"
 
 Something is still holding the port — often a tool started from another terminal.

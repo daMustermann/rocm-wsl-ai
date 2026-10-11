@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.2] - 2026-10-11
+
+No functional change. The launcher now says something when a tool runs out of
+VRAM, instead of leaving you to find a stack trace in a log file.
+
+### Added
+
+- **A VRAM out-of-memory is now reported inline.** A mid-session OOM does not
+  stop ComfyUI: it logs the error, unloads its models and goes on serving, so
+  the process stays alive and the launcher's exit-code path never runs. The
+  monitor loop already watches the log for idle hibernation, so it now also
+  checks for `hipErrorOutOfMemory` and prints the two fixes — `--lowvram` and
+  `--reserve-vram` — once per session. It says nothing when there was no OOM.
+
+- `docs/TROUBLESHOOTING.md` gained "ComfyUI runs out of memory", including why
+  the memory summary is misleading here: with async weight offloading the
+  weights sit in pinned *host* memory, so `Active 4323 MiB` is not the figure
+  to reason about. `Total VRAM` and the staged size are.
+
+### Fixed
+
+- **The `PYTORCH_HIP_ALLOC_CONF` comment described the wrong failure.** The
+  toolkit unsets this variable, and is right to: on ROCm 10.x
+  `expandable_segments` is not implemented, so the *first GPU allocation* fails
+  with `hipErrorInvalidValue`. The note claimed a segfault at import time on
+  torch 2.9.1+rocm7.2.3. The conclusion was right and the reasoning was stale
+  enough to invite someone removing it — worth measuring before believing it
+  either way. The comment now records the measured behaviour, and the warning
+  text tells the user why.
+
 ## [5.0.1] - 2026-10-11
 
 Fixes a packaging mistake in 5.0.0 that broke every tool importing

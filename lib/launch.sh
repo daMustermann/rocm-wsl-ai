@@ -134,11 +134,29 @@ ai_load_env() {
     export MIOPEN_CUSTOM_CACHE_DIR="${MIOPEN_CUSTOM_CACHE_DIR:-$ROCM_AI_CONFIG_DIR/miopen}"
     mkdir -p "$MIOPEN_USER_DB_PATH" 2>/dev/null || true
 
-    # 6. Strip the variable that segfaults torch 2.9.1+rocm7.2.3 on import.
+    # 6. Strip PYTORCH_HIP_ALLOC_CONF, which this PyTorch build accepts but
+    #    cannot honour.
+    #
+    #    It is tempting to keep it: expandable_segments is the usual remedy for
+    #    allocator fragmentation, and torch does *read* the setting — a bogus
+    #    key is rejected with "Unrecognized key", so it is not being ignored.
+    #    But on ROCm 10.x the value is not implemented. The import succeeds and
+    #    the very first CUDA allocation fails:
+    #
+    #        PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
+    #        python -c 'import torch; torch.zeros(4, device="cuda")'
+    #        -> torch.AcceleratorError: CUDA error: invalid argument  (hipErrorInvalidValue)
+    #
+    #    Measured on torch 2.14.0+rocm10.1.0. The earlier note here described a
+    #    segfault at import time on torch 2.9.1+rocm7.2.3; the failure mode has
+    #    moved, but the conclusion has not: it cannot be left set.
+    #
     #    An older toolkit version appended this to the venv activate script, so
     #    it can still be lurking in a user's shell.
     if [ -n "${PYTORCH_HIP_ALLOC_CONF:-}" ]; then
-        ai_warn "Ignoring PYTORCH_HIP_ALLOC_CONF — it crashes this PyTorch build."
+        ai_warn "Ignoring PYTORCH_HIP_ALLOC_CONF — this PyTorch build rejects it."
+        ai_dim  "        expandable_segments is not implemented on ROCm 10.x; the first GPU"
+        ai_dim  "        allocation fails with hipErrorInvalidValue."
         ai_dim  "        Remove it from ~/.bashrc or ~/.config/rocm-wsl-ai/user.env."
         unset PYTORCH_HIP_ALLOC_CONF
     fi
@@ -351,8 +369,35 @@ ai_sleep_timeout() {
     printf '%s' "${SMART_SLEEP_TIMEOUT:-1800}"
 }
 
+# A VRAM out-of-memory does not stop the server. ComfyUI logs the error,
+# unloads its models and goes on serving, so the process stays alive and the
+# exit-code path never runs. That used to mean the only clue was a stack trace
+# in a log file the user had to go and find.
+#
+# Prints the hint once per session and returns 0 when it did, so the caller can
+# latch. "hipErrorOutOfMemory" is the HIP spelling; torch still says "CUDA
+# error: out of memory" in the exception text on ROCm builds.
+ai_report_oom_once() {
+    local log="$1" tool_name="$2"
+
+    [ -f "$log" ] || return 1
+    grep -qE 'hipErrorOutOfMemory|CUDA error: out of memory' "$log" 2>/dev/null || return 1
+
+    ai_say ""
+    ai_warn "${tool_name} ran out of VRAM."
+    ai_dim  "  The server is still up; that generation failed and its models were unloaded."
+    ai_dim  "  Large models need more room than the card has to spare."
+    ai_dim  "  Restart with more headroom — Settings → User Environment:"
+    ai_dim  "      COMFYUI_EXTRA_ARGS=\"--lowvram\""
+    ai_dim  "  Or reserve headroom without giving up the speed:"
+    ai_dim  "      COMFYUI_EXTRA_ARGS=\"--reserve-vram 1.5\""
+    ai_dim  "  Details: docs/TROUBLESHOOTING.md → 'ComfyUI runs out of memory'"
+    ai_say ""
+    return 0
+}
+
 ai_run_with_hibernation() {
-    local port="$1"; shift
+    local port="$1" tool_name="$2"; shift 2
     local timeout; timeout="$(ai_sleep_timeout)"
 
     if [ "${SMART_SLEEP_DISABLE:-0}" = "1" ]; then
@@ -390,6 +435,7 @@ ai_run_with_hibernation() {
 
         local last_activity now elapsed
         last_activity="$(date +%s)"
+        local oom_reported=0
 
         while kill -0 "$pid" 2>/dev/null; do
             sleep 5
@@ -399,6 +445,10 @@ ai_run_with_hibernation() {
                 mtime="$(stat -c %Y "$log" 2>/dev/null || echo "$last_activity")"
                 if [ "$mtime" -gt "$last_activity" ] 2>/dev/null; then
                     last_activity="$mtime"
+                fi
+
+                if [ "$oom_reported" -eq 0 ] && ai_report_oom_once "$log" "$tool_name"; then
+                    oom_reported=1
                 fi
             fi
 
@@ -565,7 +615,7 @@ ai_launch() {
         "${serve[@]}"
         exit_code=$?
     else
-        ai_run_with_hibernation "$port" "${serve[@]}"
+        ai_run_with_hibernation "$port" "$name" "${serve[@]}"
         exit_code=$?
     fi
 
